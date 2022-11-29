@@ -5,7 +5,6 @@ import { Binary, BSONRegExp, BSONType, BSONTypeAlias } from './utils/bson';
 export declare interface Document {
   [key: string]: any;
 }
-
 export declare interface ObjectIdLike {
   id: string | Buffer;
   __id?: string;

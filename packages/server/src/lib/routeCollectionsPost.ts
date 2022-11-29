@@ -2,7 +2,7 @@ import {
   EleganteError,
   ErrorCode,
   InternalCollectionName,
-  parseQuery,
+  parseFilter,
   Document,
 } from '@elegante/sdk';
 
@@ -19,7 +19,7 @@ export function routeCollectionsPost({
     try {
       const { db } = EleganteServer;
       const { collectionName } = req.params;
-      const { query, sort, projection, method } = req.body;
+      const { filter, sort, projection, method, allowDiskUse } = req.body;
 
       const docs: Document[] = [];
 
@@ -32,12 +32,16 @@ export function routeCollectionsPost({
        */
       if (!method || method === 'find') {
         const cursor = collection.find<Document>(
-          parseQuery(query ?? null) ?? {},
+          parseFilter(filter ?? null) ?? {},
           {
             sort,
             projection,
           }
         );
+
+        if (allowDiskUse) {
+          cursor.allowDiskUse(true);
+        }
 
         await cursor.forEach((doc) => {
           docs.push(doc);

@@ -56,24 +56,24 @@ const elegante = createServer(
 );
 
 /**
- * create your main express app
+ * create the main express app
  */
 const server = express();
 
 /**
- * tell express to mount elegante server on the `/server` path
+ * tell express to mount Elegante Server instance on the `/server` path
  */
 server.use('/server', elegante);
 
 /**
- * Elegante Server plays nicely with any of your routes
+ * Elegante Server plays nicely with any of existing routes
  */
 server.get('/', (req, res) => {
   res.status(200).send(`Elegante Server v${Version}`);
 });
 
 /**
- * add some job
+ * add a job
  */
 createJob('someHeavyTask', async (req) => {
   console.log('executing someHeavyTask', 'body', req.body || {});
@@ -83,7 +83,7 @@ createJob('someHeavyTask', async (req) => {
 });
 
 /**
- * add some cloud function
+ * add a cloud function
  */
 createFunction('some/inner/:routeParam', async (req, res) => {
   console.log('executing', `some/inner/${req.params.routeParam}`);
