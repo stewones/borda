@@ -1,0 +1,10 @@
+{
+  "name": "@elegante/server",
+  "version": "0.0.1",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongodb": "^4.12.1",
+    "@elegante/sdk": "latest"
+  }
+}
