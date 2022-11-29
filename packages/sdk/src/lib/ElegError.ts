@@ -2,29 +2,33 @@
 import { stringify } from './utils';
 
 export enum ErrorCode {
+  NETWORK_ERROR = -2,
   OTHER_CAUSE = -1,
   INTERNAL_SERVER_ERROR = 1,
   CONNECTION_FAILED = 100,
-  OBJECT_NOT_FOUND = 101,
-  INVALID_QUERY = 102,
-  INVALID_COLLECTION_NAME = 103,
-  MISSING_OBJECT_ID = 104,
-  SERVER_SECRET_EXPOSED = 105,
-  FIND_ERROR = 106,
-  COLLECTION_NAME_REQUIRED = 107,
-  OBJECT_ID_REQUIRED = 108,
+  INVALID_COLLECTION_NAME = 101,
+  SERVER_SECRET_EXPOSED = 102,
+  SERVER_URL_UNDEFINED = 103,
+  FIND_ERROR = 104,
+  COLLECTION_NAME_REQUIRED = 105,
+  OBJECT_ID_REQUIRED = 106,
+  MONGO_METHOD_NOT_SUPPORTED = 107,
 }
 
-export class EleganteError extends Error {
+export class ElegError extends Error {
   code: ErrorCode;
   /**
    * @param {ErrorCode} code An error code constant from <code>EleganteError</code>.
-   * @param {any} message A detailed description of the error.
+   * @param {string|object|Error} message A detailed description of the error.
    */
-  constructor(code: ErrorCode, message: any) {
-    super(message);
+  constructor(code: ErrorCode, message: string | object | Error) {
+    super(message as string);
     this.code = code;
 
+    /**
+     * override the default error message treating also
+     * rest responses to make our Error handling Elegante 💪
+     */
     Object.defineProperty(this, 'message', {
       enumerable: true,
       value:
@@ -36,11 +40,9 @@ export class EleganteError extends Error {
           ? message.toString()
           : stringify(message),
     });
-
-    // console.trace();
   }
 
   override toString() {
-    return `EleganteError [${this.code}]: ${this.message}`;
+    return `EleganteError ${this.code}: ${this.message}`;
   }
 }

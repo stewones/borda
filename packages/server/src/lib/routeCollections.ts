@@ -1,6 +1,5 @@
-import express, { Application } from 'express';
-
-import { EleganteServerParams } from './createServer';
+import { Application } from 'express';
+import { ServerParams } from './createServer';
 import { routeCollectionsGet } from './routeCollectionsGet';
 import { routeCollectionsPost } from './routeCollectionsPost';
 
@@ -9,19 +8,17 @@ export function routeCollections({
   params,
 }: {
   app: Application;
-  params: EleganteServerParams;
+  params: ServerParams;
 }) {
   /**
-   * configure express
+   * @todo
+   * only logged users can access the Collections API via REST
+   * we need to also implement beforeFind, beforeInsert, beforeUpdate, beforeDelete
+   * also we need to implement afterFind, afterInsert, afterUpdate, afterDelete
+   * attaching the user in session to the request plus the query being made
+   * this way users can easily implement their permission system
    */
-  app.use(
-    '/collections',
-    express.urlencoded({
-      extended: true,
-      limit: '1mb',
-    })
-  );
-  app.use('/collections', express.json({ limit: '1mb' }));
+  // app.all('*', handleUserSession)
 
   /**
    * setup rest routes
@@ -32,6 +29,7 @@ export function routeCollections({
       params,
     })
   );
+
   app.get(
     '/collections/:collectionName/:objectId',
     routeCollectionsGet({

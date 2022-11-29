@@ -1,33 +1,33 @@
-import { EleganteClient } from './EleganteClient';
-import { EleganteError, ErrorCode } from './EleganteError';
+import { ElegClient } from './ElegClient';
+import { ElegError, ErrorCode } from './ElegError';
 import { log, isServer } from './utils';
 import { Version } from './Version';
 
-export interface EleganteClientParams {
+export interface ElegClientParams {
   apiKey: string;
   apiSecret?: string;
   serverURL: string;
   serverHeaderPrefix?: string;
 }
 
-const EleganteClientDefaultParams: Partial<EleganteClientParams> = {
+const ElegClientDefaultParams: Partial<ElegClientParams> = {
   serverHeaderPrefix: 'X-Elegante',
 };
 
-export function createClient(options: EleganteClientParams) {
+export function createClient(options: ElegClientParams) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const params = (EleganteClient.params = {
-    ...EleganteClientDefaultParams,
+  const params = (ElegClient.params = {
+    ...ElegClientDefaultParams,
     ...options,
   });
 
   if (!isServer() && params.apiSecret) {
-    throw new EleganteError(
+    throw new ElegError(
       ErrorCode.SERVER_SECRET_EXPOSED,
       'Server secret exposed in client'
     );
   }
 
-  log(`Elegante Client v${Version} started`);
-  return EleganteClient;
+  log(`Elegante Client v${Version}`);
+  return ElegClient;
 }

@@ -85,12 +85,18 @@ createJob('someHeavyTask', async (req) => {
 /**
  * add a cloud function
  */
-createFunction('some/inner/:routeParam', async (req, res) => {
-  console.log('executing', `some/inner/${req.params.routeParam}`);
-  await delay(3000);
-  console.log(`${req.params.routeParam} done`);
-  res.status(200).send(`${req.params.routeParam} done`);
-});
+createFunction(
+  'some/inner/:routeParam',
+  async (req, res) => {
+    console.log('executing', `some/inner/${req.params.routeParam}`);
+    await delay(3000);
+    console.log(`${req.params.routeParam} done`);
+    res.status(200).send(`${req.params.routeParam} done`);
+  },
+  {
+    isPublic: true, // <-- default to false. a session token must be sent to all /functions/* endpoints
+  }
+);
 
 /**
  * start the server

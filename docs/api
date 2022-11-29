@@ -35,8 +35,9 @@ liveQuery.listen(httpServer);
  */
 import { query } from '@elegante/sdk';
 
-const users = await query
-  .collection('User')
+const users = await query<User>({
+  collection: 'User',
+})
   .projection({
     _id: 0,
     _created_at: 1,
@@ -45,15 +46,17 @@ const users = await query
   .sort({
     _created_at: -1,
   })
-  .match({
+  .filter({
     name: {
       $in: ['Raul', 'Elis'],
     },
   })
   .limit(2)
   .skip(0)
-  .allowDiskUse(true)
-  .find();
+  .find({
+    allowDiskUse: true,
+    readPreference: 'PRIMARY',
+  });
 
 console.log(users);
 
@@ -80,11 +83,11 @@ console.log(usersUpdated);
 /**
  * Pointers
  */
+import { pointer } from '@elegante/sdk';
 
-const query = new EleganteQuery();
-const pointer = pointer('User', 'objectId');
+const pointer = pointer('User', 'some-user-id');
 
-const user = await query.collection('Room').insertOne({
+const user = await query({ collection: 'Room' }).insertOne({
   name: 'Room 1',
   owner: pointer,
 });
@@ -92,9 +95,9 @@ const user = await query.collection('Room').insertOne({
 /**
  * Cloud Functions
  */
-import { EleganteCloud } from '@elegante/server';
+import { createFunction } from '@elegante/server';
 
-EleganteCloud.add('hello/:name', (req, res) => {
+createFunction('hello/:name', (req, res) => {
   res.success(`Hello There! ${req.params.name}`);
 });
 
@@ -124,7 +127,7 @@ await jobStatus('makeSomeHeavyTask');
  * The "X-Elegante" part can be white-labelled
  *
  * X-Elegante-Api-Key: ELEGANTE_SERVER
- * X-Elegante-Api-Secret: ELEGANTE_SECRET
+ * X-Elegante-Secret-Key: ELEGANTE_SECRET
  *
  * Secret is only required to run Cloud Jobs
  *

@@ -1,17 +1,18 @@
 import express, { Application, NextFunction, Request, Response } from 'express';
+import cors from 'cors';
 
 import { Db, MongoClient } from 'mongodb';
-import { EleganteError, ErrorCode, log } from '@elegante/sdk';
+import { ElegError, ErrorCode, log } from '@elegante/sdk';
 
-import { EleganteServer } from './EleganteServer';
+import { ElegServer } from './ElegServer';
 import { routeCollections } from './routeCollections';
 import { Version } from './Version';
 
-export interface EleganteServerEvents {
+export interface ServerEvents {
   onDatabaseConnect: (db: Db) => void;
 }
 
-export interface EleganteServerParams {
+export interface ServerParams {
   databaseURI: string;
   apiKey: string;
   apiSecret: string;
@@ -19,11 +20,11 @@ export interface EleganteServerParams {
   serverHeaderPrefix?: string;
 }
 
-export interface EleganteServerDefault extends EleganteServerParams {
-  events: EleganteServerEvents;
+export interface ElegServerDefault extends ServerParams {
+  events: ServerEvents;
 }
 
-const EleganteServerDefaultParams: Partial<EleganteServerDefault> = {
+const ElegServerDefaultParams: Partial<ElegServerDefault> = {
   serverHeaderPrefix: 'X-Elegante',
   events: {
     // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
@@ -32,25 +33,35 @@ const EleganteServerDefaultParams: Partial<EleganteServerDefault> = {
 };
 
 const routeEnsureApiKey =
-  ({ params }: { params: EleganteServerParams }) =>
+  ({ params }: { params: ServerParams }) =>
   (req: Request, res: Response, next: NextFunction) => {
-    const apiKey =
-      (req.headers[
-        `${params.serverHeaderPrefix?.toLowerCase()}-api-key`
-      ] as string) || '';
+    res.removeHeader('X-Powered-By'); // because why not :)
 
-    if (!apiKey || apiKey !== params.apiKey) {
+    const apiKeyHeaderKey = `${params.serverHeaderPrefix}-Api-Key`;
+
+    if (!req.header(apiKeyHeaderKey?.toLowerCase())) {
+      return res.status(400).send('API key required');
+    }
+
+    const apiKey = req.header(apiKeyHeaderKey);
+
+    if (apiKey !== params.apiKey) {
       return res.status(401).send('Unauthorized key');
     }
+
     return next();
   };
 
 const routeEnsureApiSecret =
-  ({ params }: { params: EleganteServerParams }) =>
+  ({ params }: { params: ServerParams }) =>
   (req: Request, res: Response, next: NextFunction) => {
-    const apiSecret = req.headers[
-      `${params.serverHeaderPrefix?.toLowerCase()}-api-secret`
-    ] as string;
+    const apiKeyHeaderKey = `${params.serverHeaderPrefix}-Secret-Key`;
+
+    if (!req.header(apiKeyHeaderKey?.toLowerCase())) {
+      return res.status(400).send('Secret key required');
+    }
+
+    const apiSecret = req.header(apiKeyHeaderKey);
 
     if (apiSecret !== params.apiSecret) {
       return res.status(401).send('Unauthorized secret');
@@ -59,9 +70,9 @@ const routeEnsureApiSecret =
   };
 
 const routeUnlock =
-  ({ params }: { params: EleganteServerParams }) =>
+  ({ params }: { params: ServerParams }) =>
   (req: Request, res: Response, next: NextFunction) => {
-    const apiSecret = req.headers[`${params.serverHeaderPrefix}-Api-Secret`];
+    const apiSecret = req.header(`${params.serverHeaderPrefix}-Secret-Key`);
 
     if (apiSecret === params.apiSecret) {
       res.locals['unlocked'] = true;
@@ -69,30 +80,42 @@ const routeUnlock =
     return next();
   };
 
-async function mongoConnect({ params }: { params: EleganteServerParams }) {
+export async function mongoConnect({ params }: { params: ServerParams }) {
   try {
     const client = new MongoClient(params.databaseURI);
     await client.connect();
     return client.db();
   } catch (err) {
-    return Promise.reject(new EleganteError(ErrorCode.CONNECTION_FAILED, err));
+    return Promise.reject(
+      new ElegError(ErrorCode.CONNECTION_FAILED, err as object)
+    );
   }
 }
 
 export function createServer(
-  options: EleganteServerParams,
-  events: EleganteServerEvents = {
+  options: ServerParams,
+  events: ServerEvents = {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-function
     onDatabaseConnect: (db: Db) => {},
   }
 ): Application {
-  const app = (EleganteServer.app = express());
+  const app = (ElegServer.app = express());
   const { onDatabaseConnect } = events;
 
-  const params = (EleganteServer.params = {
-    ...EleganteServerDefaultParams,
+  const params = (ElegServer.params = {
+    ...ElegServerDefaultParams,
     ...options,
   });
+
+  app.options('*', cors());
+  app.use(cors());
+  app.use(express.json({ limit: '1mb' }));
+  app.use(
+    express.urlencoded({
+      extended: true,
+      limit: '1mb',
+    })
+  );
 
   app.all(
     '/*',
@@ -120,11 +143,11 @@ export function createServer(
 
   mongoConnect({ params })
     .then((db) => {
-      EleganteServer.db = db;
+      ElegServer.db = db;
       onDatabaseConnect(db);
     })
     .catch((err) => log(err));
 
-  log(`Elegante Server v${Version} started`);
+  log(`Elegante Server v${Version}`);
   return app;
 }

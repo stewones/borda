@@ -1,22 +1,22 @@
 import {
-  EleganteError,
+  ElegError,
   ErrorCode,
   InternalCollectionName,
   Document,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { EleganteServerParams } from './createServer';
-import { EleganteServer } from './EleganteServer';
+import { ServerParams } from './createServer';
+import { ElegServer } from './ElegServer';
 
 export function routeCollectionsGet({
   params,
 }: {
-  params: EleganteServerParams;
+  params: ServerParams;
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
-      const { db } = EleganteServer;
+      const { db } = ElegServer;
       const { collectionName, objectId } = req.params;
       const { projection } = req.body;
 
@@ -24,7 +24,7 @@ export function routeCollectionsGet({
         return res
           .status(400)
           .send(
-            new EleganteError(
+            new ElegError(
               ErrorCode.COLLECTION_NAME_REQUIRED,
               'Missing collection name'
             )
@@ -35,7 +35,7 @@ export function routeCollectionsGet({
         return res
           .status(400)
           .send(
-            new EleganteError(ErrorCode.OBJECT_ID_REQUIRED, 'Missing objectId')
+            new ElegError(ErrorCode.OBJECT_ID_REQUIRED, 'Missing objectId')
           );
       }
 
@@ -54,7 +54,9 @@ export function routeCollectionsGet({
 
       return res.status(200).send(doc);
     } catch (err) {
-      return res.status(500).send(new EleganteError(ErrorCode.FIND_ERROR, err));
+      return res
+        .status(500)
+        .send(new ElegError(ErrorCode.FIND_ERROR, err as object));
     }
   };
 }

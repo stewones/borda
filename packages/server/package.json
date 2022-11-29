@@ -5,6 +5,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "mongodb": "^4.12.1",
+    "cors": "^2.8.5",
     "@elegante/sdk": "latest"
   }
 }

@@ -1,11 +1,11 @@
 import { Request } from 'express';
-import { EleganteServer } from './EleganteServer';
+import { ElegServer } from './ElegServer';
 
 export function createJob(
   name: string,
   fn: (req: Request) => Promise<string | void>
 ): void {
-  const { app } = EleganteServer;
+  const { app } = ElegServer;
   app.post(`/jobs/${name}`, async (req, res) => {
     console.time(`job duration: ${name}`);
     try {
