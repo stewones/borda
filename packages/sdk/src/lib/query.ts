@@ -6,7 +6,13 @@ import { log } from './utils';
 import { fetch } from './fetch';
 
 export declare interface Document {
-  [key: string]: any;
+  // _id?: string; // internal
+  // _created_at?: string; // internal
+  // _updated_at?: string; // internal
+  // objectId: string; // external
+  // createdAt: string; // external
+  // updatedAt: string; // external
+  [key: string]: any; // user defined
 }
 export declare class ReadConcern {
   level: ReadConcernLevel | string;
@@ -247,6 +253,7 @@ export declare interface Query<TSchema = Document> {
   /**
    * api
    */
+  collection(name: string): Query<TSchema>;
   projection(
     doc: Partial<{
       [key in keyof TSchema]: number;
@@ -256,23 +263,40 @@ export declare interface Query<TSchema = Document> {
   filter(by: FilterOperations<TSchema>): Query<TSchema>;
   limit(by: number): Query<TSchema>;
   skip(by: number): Query<TSchema>;
+  include(pointers: string[]): Query<TSchema>;
 
   /**
    * methods
    */
-  find(options?: FindOptions): Promise<TSchema[]>;
-  findOne(options?: FindOptions): Promise<TSchema>;
-  count(options?: FindOptions): Promise<number>;
+  find(options?: FindOptions): Promise<TSchema[] | void>;
+  findOne(options?: FindOptions): Promise<TSchema | void>;
+  count(options?: FindOptions): Promise<number | void>;
   execute(
     method: QueryMethod,
     options?: FindOptions
-  ): Promise<number | TSchema | TSchema[]>;
+  ): Promise<number | TSchema | TSchema[] | void>;
 }
 
-export function query<TSchema = Document>(options: { collection: string }) {
+export interface DocumentQuery<T = Document> {
+  filter: FilterOperations<T> | undefined;
+  limit: number | undefined;
+  skip: number | undefined;
+  sort: Sort | undefined;
+  projection: T | undefined;
+  method: QueryMethod | null;
+  options: FindOptions | undefined;
+  include: string[];
+}
+
+export function query<TSchema extends Document>() {
   const bridge: Query<TSchema> = {
     params: {
-      collection: options.collection,
+      include: [],
+    },
+
+    collection: (name: string) => {
+      bridge.params['collection'] = name;
+      return bridge;
     },
 
     projection: (doc) => {
@@ -300,11 +324,16 @@ export function query<TSchema = Document>(options: { collection: string }) {
       return bridge;
     },
 
+    include: (paths) => {
+      bridge.params['include'] = paths;
+      return bridge;
+    },
+
     /**
      * methods
      */
     find: (options) => {
-      return bridge.execute('find', options) as Promise<TSchema[]>;
+      return bridge.execute('find', options) as Promise<TSchema[] | void>;
     },
 
     findOne: (options) => {
@@ -325,30 +354,23 @@ export function query<TSchema = Document>(options: { collection: string }) {
         );
       }
 
-      const body = {
+      const { filter, limit, skip, sort, projection, include } = bridge.params;
+
+      const body: DocumentQuery<TSchema> = {
         method,
         options,
-        filter: bridge.params['filter'],
-        projection: bridge.params['projection'],
-        sort: bridge.params['sort'],
-        limit: bridge.params['limit'],
-        skip: bridge.params['skip'],
+        filter,
+        projection,
+        sort,
+        limit,
+        skip,
+        include,
       };
 
       const headers = {
         [`${ElegClient.params.serverHeaderPrefix}-Api-Key`]:
           ElegClient.params.apiKey,
       };
-
-      if (method === 'findOne') {
-        return fetch(
-          `${ElegClient.params.serverURL}/collections/${bridge.params['collection']}/`,
-          {
-            method: 'GET',
-            headers,
-          }
-        );
-      }
 
       return fetch(
         `${ElegClient.params.serverURL}/collections/${bridge.params['collection']}`,

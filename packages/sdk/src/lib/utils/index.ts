@@ -4,3 +4,4 @@ export * from './isServer';
 export * from './log';
 export * from './stringify';
 export * from './objectFlip';
+export * from './get';

@@ -5,11 +5,11 @@ import {
   parseFilter,
   parseDocs,
   Document,
-  QueryMethod,
+  parseDoc,
+  DocumentQuery,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { FilterOperations, FindOptions, Sort } from 'mongodb';
 import { ServerParams } from './createServer';
 import { ElegServer } from './ElegServer';
 
@@ -20,30 +20,22 @@ export function routeCollectionsPost({
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
-      const { db } = ElegServer;
-      const { collectionName } = req.params;
-      const {
-        filter,
-        limit,
-        sort,
-        projection,
-        method,
-        options,
-      }: {
-        filter: FilterOperations<Document>;
-        limit: number;
-        sort: Sort;
-        projection: Document;
-        method: QueryMethod;
-        options: FindOptions<Document>;
-      } = req.body || {
+      const query = {
         filter: {},
         limit: 10000,
         sort: {},
+        skip: 0,
         projection: {},
         method: null, // <-- required
         options: {},
-      };
+        include: [],
+        ...req.body,
+      } as DocumentQuery;
+
+      const { db } = ElegServer;
+      const { collectionName } = req.params;
+      const { filter, limit, sort, projection, method, options, skip } = query;
+
       const { allowDiskUse } = options || {};
 
       const docs: Document[] = [];
@@ -55,7 +47,7 @@ export function routeCollectionsPost({
       /**
        * find/findOne
        */
-      if (['find', 'findOne'].includes(method)) {
+      if (['find', 'findOne'].includes(method || 'find')) {
         const cursor = collection.find<Document>(parseFilter(filter), {
           sort,
           projection,
@@ -70,12 +62,21 @@ export function routeCollectionsPost({
           cursor.limit(limit);
         }
 
+        if (skip) {
+          cursor.skip(skip);
+        }
+
         await cursor.forEach((doc) => {
           docs.push(doc);
         });
+
         return res
           .status(200)
-          .send(method === 'findOne' ? parseDocs(docs)[0] : parseDocs(docs));
+          .send(
+            method === 'findOne'
+              ? await parseDoc(docs[0])(query)
+              : await parseDocs(docs)(query)
+          );
       }
 
       /**

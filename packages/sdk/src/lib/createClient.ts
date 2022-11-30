@@ -8,10 +8,12 @@ export interface ElegClientParams {
   apiSecret?: string;
   serverURL: string;
   serverHeaderPrefix?: string;
+  debug?: boolean;
 }
 
 const ElegClientDefaultParams: Partial<ElegClientParams> = {
   serverHeaderPrefix: 'X-Elegante',
+  debug: true,
 };
 
 export function createClient(options: ElegClientParams) {

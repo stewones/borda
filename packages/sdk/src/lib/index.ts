@@ -5,4 +5,5 @@ export * from './ElegError';
 export * from './query';
 export * from './fetch';
 export * from './parseFilter';
-export * from './parseDocs';
+export * from './parseDoc';
+export * from './pointer';

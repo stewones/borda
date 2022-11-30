@@ -27,6 +27,7 @@ const client = createClient({
   apiKey: process.env.ELEGANTE_API_KEY || 'ELEGANTE_SERVER',
   apiSecret: process.env.ELEGANTE_API_SECRET || 'ELEGANTE_SECRET',
   serverURL: process.env.ELEGANTE_SERVER_URL || 'http://localhost:3135/server',
+  debug: false,
 });
 
 /**

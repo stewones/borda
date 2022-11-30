@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { isISODate } from './utils';
-import { InternalCollectionFields } from './internal';
+import { InternalFieldName } from './internal';
 
 export function parseFilter(obj: any) {
   for (let key in obj) {
@@ -10,10 +10,10 @@ export function parseFilter(obj: any) {
       /**
        * format internal keys
        */
-      if (InternalCollectionFields[key]) {
-        obj[InternalCollectionFields[key]] = obj[key];
+      if (InternalFieldName[key]) {
+        obj[InternalFieldName[key]] = obj[key];
         delete obj[key];
-        key = InternalCollectionFields[key];
+        key = InternalFieldName[key];
       }
 
       /**

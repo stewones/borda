@@ -9,7 +9,9 @@ export const InternalCollectionName: {
   Statistic: '_Statistic', // workload statistics (enabled by Elegante Control Plane (?) or just Dashboard @todo).
 };
 
-export const InternalCollectionFields: {
+export const ExternalCollectionName = objectFlip(InternalCollectionName);
+
+export const InternalFieldName: {
   [key: string]: string;
 } = {
   createdAt: '_created_at',
@@ -17,4 +19,4 @@ export const InternalCollectionFields: {
   objectId: '_id',
 };
 
-export const ExternalCollectionFields = objectFlip(InternalCollectionFields);
+export const ExternalFieldName = objectFlip(InternalFieldName);
