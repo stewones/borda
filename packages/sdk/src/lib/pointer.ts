@@ -1,3 +1,4 @@
+import { InternalCollectionName } from './internal';
 import { Document } from './query';
 
 /**
@@ -10,5 +11,5 @@ import { Document } from './query';
 export type Pointer = string;
 
 export function pointer<T = Document>(collection: string, objectId: string): T {
-  return `${collection}$${objectId}` as T;
+  return `${InternalCollectionName[collection] ?? collection}$${objectId}` as T;
 }

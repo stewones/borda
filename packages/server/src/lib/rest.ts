@@ -1,9 +1,9 @@
 import { Application } from 'express';
-import { ServerParams } from './createServer';
-import { routeCollectionsGet } from './routeCollectionsGet';
-import { routeCollectionsPost } from './routeCollectionsPost';
+import { ServerParams } from './ElegServer';
+import { restGet } from './restGet';
+import { restPost } from './restPost';
 
-export function routeCollections({
+export function rest({
   app,
   params,
 }: {
@@ -12,7 +12,7 @@ export function routeCollections({
 }) {
   /**
    * @todo
-   * only logged users can access the Collections API via REST
+   * only logged users can access the API via REST
    * we need to also implement beforeFind, beforeInsert, beforeUpdate, beforeDelete
    * also we need to implement afterFind, afterInsert, afterUpdate, afterDelete
    * attaching the user in session to the request plus the query being made
@@ -24,15 +24,19 @@ export function routeCollections({
    * setup rest routes
    */
   app.post(
-    '/collections/:collectionName',
-    routeCollectionsPost({
+    '/:collectionName',
+    restPost({
       params,
     })
   );
 
+  /**
+   * @todo
+   * define api
+   */
   app.get(
-    '/collections/:collectionName/:objectId',
-    routeCollectionsGet({
+    '/:collectionName/:objectId',
+    restGet({
       params,
     })
   );

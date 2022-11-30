@@ -4,14 +4,9 @@ import { ElegClient } from './ElegClient';
 import { ElegError, ErrorCode } from './ElegError';
 import { log } from './utils';
 import { fetch } from './fetch';
+import { InternalFieldName } from './internal';
 
 export declare interface Document {
-  // _id?: string; // internal
-  // _created_at?: string; // internal
-  // _updated_at?: string; // internal
-  // objectId: string; // external
-  // createdAt: string; // external
-  // updatedAt: string; // external
   [key: string]: any; // user defined
 }
 export declare class ReadConcern {
@@ -263,7 +258,7 @@ export declare interface Query<TSchema = Document> {
   filter(by: FilterOperations<TSchema>): Query<TSchema>;
   limit(by: number): Query<TSchema>;
   skip(by: number): Query<TSchema>;
-  include(pointers: string[]): Query<TSchema>;
+  join(pointers: string[]): Query<TSchema>;
 
   /**
    * methods
@@ -285,13 +280,13 @@ export interface DocumentQuery<T = Document> {
   projection: T | undefined;
   method: QueryMethod | null;
   options: FindOptions | undefined;
-  include: string[];
+  join: string[];
 }
 
 export function query<TSchema extends Document>() {
   const bridge: Query<TSchema> = {
     params: {
-      include: [],
+      join: [],
     },
 
     collection: (name: string) => {
@@ -300,7 +295,26 @@ export function query<TSchema extends Document>() {
     },
 
     projection: (doc) => {
-      bridge.params['projection'] = doc;
+      /**
+       * applies a little hack to make sure the projection
+       * also works with pointers. ie: _p_fieldName
+       */
+      const newDoc: any = { ...doc };
+      for (const k in doc) {
+        newDoc['_p_' + k] = doc[k];
+      }
+
+      /**
+       * deal with internal field names
+       */
+      const keys = Object.keys(newDoc);
+      for (const key in InternalFieldName) {
+        if (keys.includes(key)) {
+          newDoc[InternalFieldName[key]] = newDoc[key];
+        }
+      }
+      console.log(newDoc);
+      bridge.params['projection'] = newDoc;
       return bridge;
     },
 
@@ -324,8 +338,8 @@ export function query<TSchema extends Document>() {
       return bridge;
     },
 
-    include: (paths) => {
-      bridge.params['include'] = paths;
+    join: (pointers) => {
+      bridge.params['join'] = pointers;
       return bridge;
     },
 
@@ -354,7 +368,7 @@ export function query<TSchema extends Document>() {
         );
       }
 
-      const { filter, limit, skip, sort, projection, include } = bridge.params;
+      const { filter, limit, skip, sort, projection, join } = bridge.params;
 
       const body: DocumentQuery<TSchema> = {
         method,
@@ -364,7 +378,7 @@ export function query<TSchema extends Document>() {
         sort,
         limit,
         skip,
-        include,
+        join,
       };
 
       const headers = {
@@ -373,7 +387,7 @@ export function query<TSchema extends Document>() {
       };
 
       return fetch(
-        `${ElegClient.params.serverURL}/collections/${bridge.params['collection']}`,
+        `${ElegClient.params.serverURL}/${bridge.params['collection']}`,
         {
           method: 'POST',
           headers,

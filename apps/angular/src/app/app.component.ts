@@ -24,13 +24,13 @@ interface User {
 })
 export class AppComponent {
   constructor() {
-    console.log(
-      parseFilter({
-        createdAt: {
-          $gt: '2022-11-28T11:58:37.051Z',
-        },
-      })
-    );
+    // console.log(
+    //   parseFilter({
+    //     createdAt: {
+    //       $gt: '2022-11-28T11:58:37.051Z',
+    //     },
+    //   })
+    // );
   }
 
   async ngOnInit() {
@@ -59,7 +59,13 @@ export class AppComponent {
     // pointers
     const sales = await query()
       .collection('Sale')
-      .include(['author', 'product', 'product.scrape']) // ','product.author',
+      .projection({
+        author: 1,
+        product: 1,
+        objectId: -1,
+        createdAt: 1,
+      })
+      .join(['author', 'product', 'product.scrape', 'product.author', 'x.y.z']) // ','product.author.some.other.collection',
       .filter({
         createdAt: {
           $gt: '2021-11-28T11:58:37.051Z',

@@ -6,10 +6,12 @@ import {
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { ServerParams } from './createServer';
-import { ElegServer } from './ElegServer';
+import { ElegServer, ServerParams } from './ElegServer';
 
-export function routeCollectionsGet({
+/**
+ * @todo
+ */
+export function restGet({
   params,
 }: {
   params: ServerParams;

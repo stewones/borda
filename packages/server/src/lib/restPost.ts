@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   ElegError,
   ErrorCode,
@@ -10,10 +11,9 @@ import {
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { ServerParams } from './createServer';
-import { ElegServer } from './ElegServer';
+import { ElegServer, ServerParams } from './ElegServer';
 
-export function routeCollectionsPost({
+export function restPost({
   params,
 }: {
   params: ServerParams;
@@ -74,8 +74,8 @@ export function routeCollectionsPost({
           .status(200)
           .send(
             method === 'findOne'
-              ? await parseDoc(docs[0])(query)
-              : await parseDocs(docs)(query)
+              ? await parseDoc(docs[0])(query, params)
+              : await parseDocs(docs)(query, params)
           );
       }
 
