@@ -152,6 +152,9 @@ export function parsePointers<T extends Document>(
           // reuse pointer value
           obj[pointer] = memo[p].data;
 
+          // remove raw _p_ entry
+          delete obj[`_p_${pointer}`];
+
           // console.log('memo', memo[p].data['objectId']);
         }
       }

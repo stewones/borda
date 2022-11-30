@@ -294,27 +294,27 @@ export function query<TSchema extends Document>() {
       return bridge;
     },
 
-    projection: (doc) => {
+    projection: (project) => {
       /**
        * applies a little hack to make sure the projection
        * also works with pointers. ie: _p_fieldName
        */
-      const newDoc: any = { ...doc };
-      for (const k in doc) {
-        newDoc['_p_' + k] = doc[k];
+      const newProject: any = { ...project };
+      for (const k in project) {
+        newProject['_p_' + k] = project[k];
       }
 
       /**
        * deal with internal field names
        */
-      const keys = Object.keys(newDoc);
+      const keys = Object.keys(newProject);
       for (const key in InternalFieldName) {
         if (keys.includes(key)) {
-          newDoc[InternalFieldName[key]] = newDoc[key];
+          newProject[InternalFieldName[key]] = newProject[key];
         }
       }
-      console.log(newDoc);
-      bridge.params['projection'] = newDoc;
+
+      bridge.params['projection'] = newProject;
       return bridge;
     },
 

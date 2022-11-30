@@ -4,9 +4,9 @@ import {
   ErrorCode,
   InternalCollectionName,
   parseFilter,
+  parseDoc,
   parseDocs,
   Document,
-  parseDoc,
   DocumentQuery,
 } from '@elegante/sdk';
 
@@ -83,7 +83,7 @@ export function restPost({
        * count
        */
       if (method === 'count') {
-        const total = await collection.countDocuments();
+        const total = await collection.countDocuments(parseFilter(filter));
         return res.status(200).json(total);
       }
 

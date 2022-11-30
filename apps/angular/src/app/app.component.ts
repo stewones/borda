@@ -1,5 +1,5 @@
 import { Component } from '@angular/core';
-import { createClient, parseFilter, query } from '@elegante/sdk';
+import { createClient, pointer, query } from '@elegante/sdk';
 
 console.time('startup');
 
@@ -57,6 +57,7 @@ export class AppComponent {
     // if (users?.length) console.log('users', users);
 
     // pointers
+    console.log(pointer('Product', 'MCU8z2gBoM'));
     const sales = await query()
       .collection('Sale')
       .projection({
@@ -64,39 +65,47 @@ export class AppComponent {
         product: 1,
         objectId: -1,
         createdAt: 1,
+        total: 1,
       })
-      .join(['author', 'product', 'product.scrape', 'product.author', 'x.y.z']) // ','product.author.some.other.collection',
+      .join([
+        'author',
+        'product',
+        'product.scrape',
+        'product.author',
+        'product.scrape.scrape',
+      ])
       .filter({
-        createdAt: {
-          $gt: '2021-11-28T11:58:37.051Z',
+        product: {
+          $eq: pointer('Product', 'MCU8z2gBoM'),
         },
-        // @todo recursive parse filter $and $or, etc to use Date Object
-        // $and: [
-        //   {
-        //     createdAt: {
-        //       $gt: '2021-11-28T11:58:37.051Z',
-        //     },
-        //   },
-        //   {
-        //     total: {
-        //       $gt: 100,
-        //     },
-        //   },
-        //   {
-        //     total: {
-        //       $lt: 1000,
-        //     },
-        //   },
-        // ],
-
-        // @todo matchesQuery
-        // @workaround lookup
+        createdAt: {
+          $gt: '2021-11-20T11:58:37.051Z',
+        },
+        $and: [
+          {
+            createdAt: {
+              $gt: '2022-11-20T11:58:37.051Z',
+            },
+          },
+          {
+            total: {
+              $gt: 100,
+            },
+          },
+          {
+            total: {
+              $lt: 1000,
+            },
+          },
+        ],
       })
       .sort({
-        total: -1,
+        // total: -1,
       })
       .limit(2)
-      .find()
+      .find({
+        // allowDiskUse: true,
+      })
       .catch((err) => console.log(err));
 
     if (sales?.length) console.log('sales', sales);
