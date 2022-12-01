@@ -107,8 +107,29 @@ export class AppComponent {
      */
     const salesAgg = await query()
       .collection('Sale')
-      .join(['author', 'product.author'])
-      .exclude(['count', 'origin', 'originId', 'cumulative'])
+      .include([
+        'author',
+        'product.author',
+        'product.category',
+        'product.scrape.scrape',
+      ])
+      .exclude([
+        'count',
+        'origin',
+        'originId',
+        'cumulative',
+        'product.content',
+        'product.badges',
+        'product.tags',
+        'product.originLastSync',
+
+        // for security some fields are excluded by default (with possibility to disable this in server with query.unlock(true))
+        // 'product.author._acl',
+        // 'product.author._hashed_password',
+        // 'product.author._wperm',
+        // 'product.author._rperm',
+      ])
+      .unlock(true)
       .pipeline([
         {
           $match: {
@@ -117,7 +138,6 @@ export class AppComponent {
             },
           },
         },
-
         {
           $addFields: {
             product: {

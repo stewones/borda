@@ -1,7 +1,7 @@
 import http from 'http';
 import express from 'express';
 
-import { createClient, delay, log } from '@elegante/sdk';
+import { createClient, delay, log, query } from '@elegante/sdk';
 import {
   createFunction,
   createJob,
@@ -37,7 +37,7 @@ const client = createClient({
   apiKey,
   apiSecret,
   serverURL,
-  debug: true,
+  debug: false,
 });
 
 /**

@@ -19,3 +19,10 @@ export const InternalFieldName: {
 
 export const ExternalCollectionName = objectFlip(InternalCollectionName);
 export const ExternalFieldName = objectFlip(InternalFieldName);
+
+export const InternalSensitiveFields = [
+  '_acl',
+  '_hashed_password',
+  '_wperm',
+  '_rperm',
+];

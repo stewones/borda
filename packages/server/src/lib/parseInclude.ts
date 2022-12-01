@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   DocumentQuery,
-  ExternalCollectionName,
   getPointer,
   isPointer,
+  log,
   query,
 } from '@elegante/sdk';
 import { ServerParams } from './ElegServer';
@@ -11,6 +11,7 @@ import { ServerParams } from './ElegServer';
 /**
  * memoize pointers
  */
+const useMemo = false;
 const memo: {
   [key: string]: {
     data: any;
@@ -31,13 +32,14 @@ setInterval(() => {
   }
 }, 1000 * 1);
 
-export function parseJoin<T extends Document>(
+export function parseInclude<T extends Document>(
   obj: any
-): (docQuery: DocumentQuery, params: ServerParams) => Promise<T> {
-  return async (docQuery, params) => {
-    const { join } = docQuery;
+): (docQuery: DocumentQuery, params: ServerParams, locals: any) => Promise<T> {
+  return async (docQuery, params, locals) => {
+    const { include } = docQuery;
     /**
-     * create a tree structure out of join
+     * create a tree structure out of include
+     * to join the pointers in the following format
      *
      * ie:
      * ['a', 'b', 'b.c', 'b.a', 'x.y.z']
@@ -53,56 +55,49 @@ export function parseJoin<T extends Document>(
      * a, b, x are the pointer names (which should be mapped to the actual collection)
      * while their values are the new join paths to be requested
      */
-    const tree = join.reduce((acc, item) => {
-      const [key, ...rest] = item.split('.');
-      const value = rest.join('.');
-      if (acc[key]) {
-        acc[key].push(value);
-      } else {
-        acc[key] = [value];
-      }
-      acc[key] = acc[key].filter((item) => item);
-      return acc;
-    }, {} as { [key: string]: string[] });
+    const tree = createTree(include);
+    log('tree', tree);
 
     /**
      * parse tree
      */
     for (const pointerField in tree) {
       const pointerValue = obj[`_p_${pointerField}`];
+
+      log('pointerField', pointerField);
+      log('pointerValue', pointerValue);
+      log('isPointer', isPointer(pointerValue));
+
       if (!isPointer(pointerValue)) {
         /**
-         * this means the object may be already resolved
-         * ie: aggregation or something else
-         *
-         * so we need to fetch every pointer in the tree for that object
+         * this means the object may be already populated
+         * ie: aggregation or memoization
+         * so we need to continue in the next tree level
          */
         for (const pointerTreeField of tree[pointerField]) {
           const pointerTreeBase = pointerTreeField.split('.')[0];
-          const pointerTreeValue = obj[`_p_${pointerTreeBase}`];
 
-          console.log('pointerTreeField', pointerTreeField);
-          console.log('pointerTreeBase', pointerTreeBase);
-          console.log('pointerTreeValue', pointerTreeValue);
+          log('pointerTreeField', pointerTreeField);
+          log('pointerTreeBase', pointerTreeBase);
 
-          if (isPointer(pointerTreeValue)) {
-            await parseJoin(obj[`${pointerField}`])(
-              { ...docQuery, join: [pointerTreeField] },
-              params
-            );
-          }
+          await parseInclude(obj[`${pointerField}`])(
+            { ...docQuery, include: [pointerTreeField] },
+            params,
+            locals
+          );
         }
         continue;
       }
 
       const join = tree[pointerField];
 
-      if (!memo[pointerValue]) {
+      if (!memo[pointerValue] || !useMemo) {
         const { collection, objectId } = getPointer(pointerValue);
 
         const doc = await query<T>()
           .collection(collection)
-          .join(join)
+          .include(join)
+          .unlock(locals && locals.unlocked)
           .filter({
             objectId: {
               $eq: objectId,
@@ -125,17 +120,33 @@ export function parseJoin<T extends Document>(
           expires: Date.now() + timeout,
         };
 
-        console.log('no memo', memo[pointerValue].data['objectId']);
-      } else {
+        log('pointerValue', 'no memo', memo[pointerValue].data['objectId']);
+      }
+
+      if (memo[pointerValue] && useMemo) {
         // reuse pointer value
         obj[pointerField] = memo[pointerValue].data;
 
         // remove raw _p_ entry
         delete obj[`_p_${pointerField}`];
 
-        console.log('memo', memo[pointerValue].data['objectId']);
+        log('pointerValue', 'memoized', memo[pointerValue].data['objectId']);
       }
     }
     return Promise.resolve(obj);
   };
+}
+
+export function createTree(arr: string[]) {
+  return arr.reduce((acc, item) => {
+    const [key, ...rest] = item.split('.');
+    const value = rest.join('.');
+    if (acc[key]) {
+      acc[key].push(value);
+    } else {
+      acc[key] = [value];
+    }
+    acc[key] = acc[key].filter((item) => item);
+    return acc;
+  }, {} as { [key: string]: string[] });
 }

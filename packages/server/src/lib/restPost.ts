@@ -82,8 +82,8 @@ export function restPost({
           .status(200)
           .send(
             method === 'findOne'
-              ? await parseDoc(docs[0])(query, params)
-              : await parseDocs(docs)(query, params)
+              ? await parseDoc(docs[0])(query, params, res.locals)
+              : await parseDocs(docs)(query, params, res.locals)
           );
       }
 
@@ -108,7 +108,9 @@ export function restPost({
           docs.push(doc);
         }
 
-        return res.status(200).send(await parseDocs(docs)(query, params));
+        return res
+          .status(200)
+          .send(await parseDocs(docs)(query, params, res.locals));
       }
 
       /**

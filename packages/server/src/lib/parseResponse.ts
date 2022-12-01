@@ -1,13 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ExternalFieldName } from '@elegante/sdk';
+import { ExternalFieldName, InternalSensitiveFields } from '@elegante/sdk';
 
-export function parseResponse(obj: any) {
+export function parseResponse(
+  obj: any,
+  options = { removeSensitiveFields: true }
+): any {
   /**
    * format external keys recursevely
    */
   if (Array.isArray(obj) && obj.every((item) => typeof item === 'object')) {
     for (let i = 0; i < obj.length; i++) {
-      obj[i] = parseResponse(obj[i]);
+      obj[i] = parseResponse(obj[i], options);
     }
   }
 
@@ -18,8 +21,19 @@ export function parseResponse(obj: any) {
         delete obj[field];
         field = ExternalFieldName[field];
       }
+
+      /**
+       *  sensitive fields should only be accessible by the server
+       */
+      if (
+        InternalSensitiveFields.includes(field) &&
+        options.removeSensitiveFields
+      ) {
+        delete obj[field];
+      }
+
       if (typeof obj[field] === 'object') {
-        parseResponse(obj[field]);
+        parseResponse(obj[field], options);
       }
     }
   }

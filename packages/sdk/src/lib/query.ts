@@ -9,7 +9,6 @@ import { InternalFieldName } from './internal';
 export declare interface Document {
   [key: string]: any;
 }
-
 export interface DocumentQuery<T = Document> {
   filter: FilterOperations<T> | undefined;
   limit: number | undefined;
@@ -18,8 +17,8 @@ export interface DocumentQuery<T = Document> {
   projection: T | undefined;
   method: QueryMethod | null;
   options: FindOptions | undefined;
-  join: string[];
   pipeline: Document[];
+  include: string[];
   exclude: string[];
 }
 
@@ -36,42 +35,103 @@ export declare type QueryMethod =
 
 export declare interface Query<TSchema = Document> {
   params: { [key: string]: any };
+
   /**
-   * modifiers
+   * set a mongo collection name for this query
    */
   collection(name: string): Query<TSchema>;
+
+  /**
+   * project 1st level fields for this query
+   */
   projection(
     doc: Partial<{
       [key in keyof TSchema]: number;
     }>
   ): Query<TSchema>;
-  sort(sort: Sort): Query<TSchema>;
+
+  /**
+   * sort documents
+   */
+  sort(by: Sort): Query<TSchema>;
+
+  /**
+   * filter documents unsing mogo-like syntax
+   */
   filter(by: FilterOperations<TSchema>): Query<TSchema>;
+
+  /**
+   * limit results for this query
+   */
   limit(by: number): Query<TSchema>;
+
+  /**
+   * skip results for this query
+   */
   skip(by: number): Query<TSchema>;
-  join(pointers: string[]): Query<TSchema>;
-  pipeline(pipeline: Document[]): Query<TSchema>;
+
+  /**
+   * pipeline documents using mongo-like syntax
+   */
+  pipeline(docs: Document[]): Query<TSchema>;
+
+  /**
+   * include pointer results for this query. can be dot notation. ie: ['product.owner.name']
+   */
+  include(fields: string[]): Query<TSchema>;
+
+  /**
+   * exclude any fields from the result. can be dot notation. ie: ['product.owner.sales']
+   */
   exclude(fields: string[]): Query<TSchema>;
 
   /**
-   * methods
+   * find documents using mongo-like queries
    */
   find(options?: FindOptions): Promise<TSchema[]>;
+
+  /**
+   * find a document using mongo-like queries
+   */
   findOne(options?: FindOptions): Promise<TSchema | void>;
+
+  /**
+   * count documents using mongo-like queries
+   */
   count(options?: FindOptions): Promise<number>;
+
+  /**
+   * aggregate documents using mongo-like queries
+   */
   aggregate(options?: AggregateOptions): Promise<Document[]>;
-  execute(
+
+  /**
+   * run mongo query methods
+   */
+  run(
     method: QueryMethod,
     options?: FindOptions
   ): Promise<number | TSchema | TSchema[] | Document[]>;
+
+  /**
+   * the unlock method appends the apiSecret to the header.
+   * if valid you can make server-wide operations without restrictions.
+   * make sure to only use this when running on server to not expose your api secret.
+   */
+  unlock(isUnlocked: boolean): Query<TSchema>;
 }
 
 export function query<TSchema extends Document>() {
   const bridge: Query<TSchema> = {
     params: {
-      join: [],
+      include: [],
       exclude: [],
+      unlock: false,
     },
+
+    /**
+     * modifiers
+     */
 
     collection: (name: string) => {
       bridge.params['collection'] = name;
@@ -81,7 +141,7 @@ export function query<TSchema extends Document>() {
     projection: (project) => {
       /**
        * applies a little hack to make sure the projection
-       * also works with pointers. ie: _p_fieldName
+       * also work with pointers. ie: _p_fieldName
        */
       const newProject: any = { ...project };
       for (const k in project) {
@@ -102,8 +162,8 @@ export function query<TSchema extends Document>() {
       return bridge;
     },
 
-    sort: (sort) => {
-      bridge.params['sort'] = sort;
+    sort: (by) => {
+      bridge.params['sort'] = by;
       return bridge;
     },
 
@@ -122,13 +182,8 @@ export function query<TSchema extends Document>() {
       return bridge;
     },
 
-    join: (pointers) => {
-      bridge.params['join'] = pointers;
-      return bridge;
-    },
-
-    pipeline: (pipeline) => {
-      bridge.params['pipeline'] = pipeline;
+    include: (fields) => {
+      bridge.params['include'] = fields;
       return bridge;
     },
 
@@ -137,26 +192,32 @@ export function query<TSchema extends Document>() {
       return bridge;
     },
 
+    pipeline: (docs) => {
+      bridge.params['pipeline'] = docs;
+      return bridge;
+    },
+
     /**
      * methods
      */
+
     find: (options) => {
-      return bridge.execute('find', options) as Promise<TSchema[]>;
+      return bridge.run('find', options) as Promise<TSchema[]>;
     },
 
     findOne: (options) => {
-      return bridge.execute('findOne', options) as Promise<TSchema>;
+      return bridge.run('findOne', options) as Promise<TSchema>;
     },
 
     count: (options) => {
-      return bridge.execute('count', options) as Promise<number>;
+      return bridge.run('count', options) as Promise<number>;
     },
 
     aggregate: (options) => {
-      return bridge.execute('aggregate', options) as Promise<Document[]>;
+      return bridge.run('aggregate', options) as Promise<Document[]>;
     },
 
-    execute: async (method, options) => {
+    run: async (method, options) => {
       log(method, bridge.params, options ?? '');
 
       if (!ElegClient.params.serverURL) {
@@ -166,8 +227,17 @@ export function query<TSchema extends Document>() {
         );
       }
 
-      const { filter, limit, skip, sort, projection, join, pipeline, exclude } =
-        bridge.params;
+      const {
+        filter,
+        limit,
+        skip,
+        sort,
+        projection,
+        include,
+        exclude,
+        pipeline,
+        unlock,
+      } = bridge.params;
 
       const body: DocumentQuery<TSchema> = {
         method,
@@ -177,15 +247,21 @@ export function query<TSchema extends Document>() {
         sort,
         limit,
         skip,
-        join,
-        pipeline,
+        include,
         exclude,
+        pipeline,
       };
 
       const headers = {
         [`${ElegClient.params.serverHeaderPrefix}-Api-Key`]:
           ElegClient.params.apiKey,
       };
+
+      if (unlock) {
+        headers[`${ElegClient.params.serverHeaderPrefix}-Secret-Key`] =
+          ElegClient.params.apiSecret ??
+          'THIS_IS_A_SECRET_KEY_ONLY_USED_IN_SERVER';
+      }
 
       const docs = await fetch(
         `${ElegClient.params.serverURL}/${bridge.params['collection']}`,
@@ -201,6 +277,14 @@ export function query<TSchema extends Document>() {
       }
 
       return docs;
+    },
+
+    /**
+     * internal
+     */
+    unlock: (isUnlocked) => {
+      bridge.params['unlock'] = isUnlocked;
+      return bridge;
     },
   };
   return bridge;

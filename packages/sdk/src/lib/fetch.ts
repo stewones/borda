@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetch as fetcher } from 'cross-fetch';
 import { ElegError, ErrorCode } from './ElegError';
+import { isServer } from './utils';
+import { Version } from './Version';
 
 export async function fetch<T = any>(
   url: string,
@@ -14,6 +16,9 @@ export async function fetch<T = any>(
     method: options?.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
+      'user-agent': `Elegante/${Version}; ${
+        isServer() ? 'Server' : 'Browser'
+      } Platform; +https://elegante.dev`,
       ...options?.headers,
     },
   };
