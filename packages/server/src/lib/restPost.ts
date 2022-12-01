@@ -3,15 +3,14 @@ import {
   ElegError,
   ErrorCode,
   InternalCollectionName,
-  parseFilter,
-  parseDoc,
-  parseDocs,
   Document,
   DocumentQuery,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
 import { ElegServer, ServerParams } from './ElegServer';
+import { parseDoc, parseDocs } from './parseDoc';
+import { parseFilter } from './parseFilter';
 
 export function restPost({
   params,
@@ -28,13 +27,22 @@ export function restPost({
         projection: {},
         method: null, // <-- required
         options: {},
-        include: [],
+        join: [],
         ...req.body,
       } as DocumentQuery;
 
       const { db } = ElegServer;
       const { collectionName } = req.params;
-      const { filter, limit, sort, projection, method, options, skip } = query;
+      const {
+        filter,
+        limit,
+        sort,
+        projection,
+        method,
+        options,
+        skip,
+        pipeline,
+      } = query;
 
       const { allowDiskUse } = options || {};
 
@@ -85,6 +93,22 @@ export function restPost({
       if (method === 'count') {
         const total = await collection.countDocuments(parseFilter(filter));
         return res.status(200).json(total);
+      }
+
+      /**
+       * aggregate
+       */
+      if (method && method === 'aggregate') {
+        const cursor = collection.aggregate<Document>(
+          parseFilter(pipeline),
+          options
+        );
+
+        for await (const doc of cursor) {
+          docs.push(doc);
+        }
+
+        return res.status(200).send(await parseDocs(docs)(query, params));
       }
 
       /**

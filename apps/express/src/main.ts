@@ -37,7 +37,7 @@ const client = createClient({
   apiKey,
   apiSecret,
   serverURL,
-  debug: false,
+  debug: true,
 });
 
 /**

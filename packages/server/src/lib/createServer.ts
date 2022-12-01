@@ -1,5 +1,6 @@
-import express, { Application, NextFunction, Request, Response } from 'express';
 import cors from 'cors';
+
+import express, { Application, NextFunction, Request, Response } from 'express';
 
 import { Db, MongoClient } from 'mongodb';
 import { ElegError, ErrorCode, log } from '@elegante/sdk';

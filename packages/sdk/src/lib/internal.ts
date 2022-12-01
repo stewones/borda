@@ -4,12 +4,10 @@ export const InternalCollectionName: {
   [key: string]: string;
 } = {
   User: '_User',
-  Session: '_Session',
-  Job: '_Job',
-  Statistic: '_Statistic', // workload statistics (enabled by Elegante Control Plane (?) or just Dashboard @todo).
+  Session: '_Session', // @todo sign in/up , route protection, etc
+  Job: '_Job', // @todo save job stats (idea: ship an example of a job to cleanup jobs :D so meta)
+  Statistic: '_Statistic', // @todo workload statistics (enabled by Elegante Control Plane (?) or just Dashboard).
 };
-
-export const ExternalCollectionName = objectFlip(InternalCollectionName);
 
 export const InternalFieldName: {
   [key: string]: string;
@@ -19,4 +17,5 @@ export const InternalFieldName: {
   objectId: '_id',
 };
 
+export const ExternalCollectionName = objectFlip(InternalCollectionName);
 export const ExternalFieldName = objectFlip(InternalFieldName);

@@ -15,6 +15,8 @@ export enum ErrorCode {
   OBJECT_ID_REQUIRED = 400,
   MONGO_METHOD_NOT_SUPPORTED = 500,
   MONGO_POINTER_ERROR = 501,
+  PARSE_EXCLUDE_ERROR = 600,
+  PARSE_JOIN_ERROR = 601,
 }
 
 export class ElegError extends Error {
