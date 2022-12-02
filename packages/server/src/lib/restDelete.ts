@@ -25,35 +25,41 @@ export function restDelete({
         InternalCollectionName[collectionName] ?? collectionName
       );
 
-      const doc = await collection.findOne({
-        _id: {
-          $eq: objectId,
-        },
-      });
       const cursor = await collection.findOneAndUpdate(
         {
           _id: {
             $eq: objectId,
           },
         },
-        { $set: { _deleted_at: new Date() } }
+        { $set: { _deleted_at: new Date() } },
+        {
+          returnDocument: 'after',
+          readPreference: 'primary',
+        }
       );
 
       if (cursor.ok) {
         const afterDeleteTrigger = parseResponse(
-          { doc },
+          { doc: cursor.value },
           {
             removeSensitiveFields: !isUnlocked(res.locals),
           }
         );
+        console.log(afterDeleteTrigger);
         // @todo trigger afterDeleteTrigger
         return res.status(200).send();
       }
-      throw cursor.lastErrorObject;
+
+      return Promise.reject(
+        new ElegError(
+          ErrorCode.REST_DOCUMENT_NOT_DELETED,
+          cursor.lastErrorObject ?? 'could not delete document'
+        )
+      );
     } catch (err) {
       return res
         .status(500)
-        .send(new ElegError(ErrorCode.PUT_ERROR, err as object));
+        .send(new ElegError(ErrorCode.REST_DELETE_ERROR, err as object));
     }
   };
 }

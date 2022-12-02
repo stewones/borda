@@ -27,7 +27,23 @@ export class AppComponent {
     //  client.ping().then(() => console.timeEnd('startup'));
   }
 
+  async connectToServer(): Promise<WebSocket> {
+    const ws = new WebSocket('ws://localhost:1337/ws');
+    return new Promise((resolve, reject) => {
+      const timer = setInterval(() => {
+        if (ws.readyState === 1) {
+          clearInterval(timer);
+          resolve(ws);
+        }
+      }, 10);
+    });
+  }
+
   async ngOnInit() {
+    const ws = await this.connectToServer();
+
+    ws.send(JSON.stringify({ hello: 'world' }));
+
     // const users = await query<User>()
     //   .collection('User')
     //   .projection({
@@ -241,8 +257,8 @@ export class AppComponent {
         {
           $unset: ['_p_product'],
         },
-      ])
-      .aggregate();
+      ]);
+    //   .aggregate();
 
     // savesLiveQuery.subscribe((data) => console.log('savesLiveQuery', data));
   }

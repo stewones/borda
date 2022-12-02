@@ -1,13 +1,37 @@
 import http from 'http';
 import express from 'express';
 
-import { createClient, delay, log, query } from '@elegante/sdk';
-import {
-  createFunction,
-  createJob,
-  createServer,
-  Version,
-} from '@elegante/server';
+import { createClient, log } from '@elegante/sdk';
+import { createLiveQueryServer, createServer, Version } from '@elegante/server';
+
+// import WebSocket from 'ws';
+// const wss = new WebSocket.Server({ port: 1337 });
+// const clients = new Map();
+
+// wss.on('connection', (ws) => {
+//   const id = newObjectId();
+//   const color = Math.floor(Math.random() * 360);
+//   const metadata = { id, color };
+//   clients.set(ws, metadata);
+
+//   ws.on('message', (messageAsString: string) => {
+//     const message = JSON.parse(messageAsString);
+//     const metadata = clients.get(ws);
+
+//     message.sender = metadata.id;
+//     message.color = metadata.color;
+
+//     const outbound = JSON.stringify(message);
+
+//     [...clients.keys()].forEach((client) => {
+//       client.send(outbound);
+//     });
+//   });
+
+//   ws.on('close', () => {
+//     clients.delete(ws);
+//   });
+// });
 
 /**
  * server setup
@@ -24,8 +48,6 @@ const databaseURI =
 const apiKey = process.env.ELEGANTE_API_KEY || 'ELEGANTE_SERVER';
 const apiSecret = process.env.ELEGANTE_API_SECRET || 'ELEGANTE_SECRET';
 
-const serverWatchCollections = ['_User', 'Sale'];
-
 const serverMount = process.env.ELEGANTE_SERVER_MOUNT || '/server';
 
 const serverURL = `${
@@ -39,7 +61,7 @@ const client = createClient({
   apiKey,
   apiSecret,
   serverURL,
-  debug: false,
+  debug: true,
 });
 
 /**
@@ -58,7 +80,6 @@ const elegante = createServer(
     apiSecret,
     serverURL,
     serverHeaderPrefix,
-    // serverWatchCollections,
     /**
      * server operations
      */
@@ -66,7 +87,7 @@ const elegante = createServer(
   },
   {
     onDatabaseConnect: async (db) => {
-      log('Elegante Server connected to database 🚀');
+      log('Database connected 🚀');
       const stats = await db.stats();
       delete stats['$clusterTime'];
       delete stats['operationTime'];
@@ -78,7 +99,9 @@ const elegante = createServer(
       client.ping().then(() => console.timeEnd('ping'));
 
       const taskCollection = db.collection('Sale');
-      const changeStream = taskCollection.watch();
+      const changeStream = taskCollection.watch([], {
+        fullDocument: 'updateLookup',
+      });
 
       changeStream.on('change', (change) => {
         console.log('change', change);
@@ -127,35 +150,12 @@ server.get('/', (req, res) => {
 /**
  * add a job
  */
-createJob(
-  {
-    name: 'someHeavyTask',
-    path: 'some/inner/:routeParam', // not required
-  },
-  async (req) => {
-    console.log('executing someHeavyTask', 'body', req.params.routeParam || {});
-    await delay(10000);
-    console.log('someHeavyTask done');
-    return Promise.resolve('someHeavyTask done');
-  }
-);
+import './jobs/someHeavyTask';
 
 /**
  * add a cloud function
  */
-createFunction(
-  {
-    name: 'someInnerPublicTask',
-    path: 'some/inner/:routeParam', // not required
-    isPublic: true, // <-- default to false. a session token must be sent to all /functions/* endpoints
-  },
-  async (req, res) => {
-    console.log('executing', `some/inner/${req.params.routeParam}`);
-    await delay(3000);
-    console.log(`${req.params.routeParam} done`);
-    res.status(200).send(`${req.params.routeParam} done`);
-  }
-);
+import './functions/someInnerPublicTask';
 
 /**
  * start the server
@@ -163,5 +163,21 @@ createFunction(
 const httpPort = 3135;
 const httpServer = http.createServer(server);
 httpServer.listen(httpPort, () => {
-  log(`Elegante Server running on port ${httpPort}`);
+  log(`Server running on port ${httpPort}`);
 });
+
+/**
+ * start the live query server
+ */
+createLiveQueryServer(
+  {
+    collections: ['_User', 'Sale'],
+    port: 3136,
+  },
+  {
+    onLiveQueryConnect: (ws, socket, request, clients) => {
+      const metadata = clients.get(ws);
+      log('livemeta', metadata);
+    },
+  }
+);

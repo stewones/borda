@@ -123,31 +123,36 @@ export function restPost({
         /**
          * creating new documents
          */
-        const data = {
+        const doc = {
           ...req.body,
           _id: newObjectId(),
           _created_at: new Date(),
           _updated_at: new Date(),
         };
-        const cursor = await collection.insertOne(data);
+        const cursor = await collection.insertOne(doc);
 
         if (cursor.acknowledged) {
           const afterSaveTrigger = parseResponse(
-            { before: null, after: data },
+            { before: null, after: doc },
             {
               removeSensitiveFields: !isUnlocked(res.locals),
             }
           );
           // @todo run afterSaveTrigger
-          return res.status(201).send(data);
+          return res.status(201).send(doc);
         }
 
-        throw 'error inserting document';
+        return Promise.reject(
+          new ElegError(
+            ErrorCode.REST_DOCUMENT_NOT_CREATED,
+            'could not create document'
+          )
+        );
       }
     } catch (err) {
       return res
         .status(500)
-        .send(new ElegError(ErrorCode.FIND_ERROR, err as object));
+        .send(new ElegError(ErrorCode.REST_POST_ERROR, err as object));
     }
   };
 }

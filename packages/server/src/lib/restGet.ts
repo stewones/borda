@@ -7,6 +7,8 @@ import {
 
 import { Request, Response } from 'express';
 import { ElegServer, ServerParams } from './ElegServer';
+import { parseResponse } from './parseResponse';
+import { isUnlocked } from './utils/isUnlocked';
 
 /**
  * @todo
@@ -20,45 +22,24 @@ export function restGet({
     try {
       const { db } = ElegServer;
       const { collectionName, objectId } = req.params;
-      const { projection } = req.body;
-
-      if (!collectionName) {
-        return res
-          .status(400)
-          .send(
-            new ElegError(
-              ErrorCode.COLLECTION_NAME_REQUIRED,
-              'Missing collection name'
-            )
-          );
-      }
-
-      if (!objectId) {
-        return res
-          .status(400)
-          .send(
-            new ElegError(ErrorCode.OBJECT_ID_REQUIRED, 'Missing objectId')
-          );
-      }
 
       const collection = db.collection<Document>(
         InternalCollectionName[collectionName] ?? collectionName
       );
 
-      const doc = await collection.findOne<Document>(
-        {
-          _id: objectId,
-        },
-        {
-          projection,
-        }
-      );
+      const doc = await collection.findOne<Document>({
+        _id: objectId,
+      });
 
-      return res.status(200).send(doc);
+      return res.status(200).send(
+        parseResponse(doc, {
+          removeSensitiveFields: !isUnlocked(res.locals),
+        })
+      );
     } catch (err) {
       return res
         .status(500)
-        .send(new ElegError(ErrorCode.FIND_ERROR, err as object));
+        .send(new ElegError(ErrorCode.REST_GET_ERROR, err as object));
     }
   };
 }

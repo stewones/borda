@@ -20,10 +20,23 @@ export const InternalFieldName: {
 export const ExternalCollectionName = objectFlip(InternalCollectionName);
 export const ExternalFieldName = objectFlip(InternalFieldName);
 
+/**
+ * these fields are not allowed to be set by the user
+ * and also can't be exposed as they are reserved for the system
+ */
 export const InternalSensitiveFields = [
+  /**
+   * elegante fields
+   */
+  '_deleted_at',
+  /**
+   * Parse-Server fields
+   * we don't want to expose these fields as they do
+   * et elegante we agree that this kind of feature needs to be
+   * implemented as a plugin to keep the core lean and fast
+   **/
   '_acl',
   '_hashed_password',
   '_wperm',
   '_rperm',
-  '_deleted',
 ];

@@ -16,10 +16,12 @@ export async function fetch<T = any>(
     method: options?.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
-      'user-agent': `Elegante/${Version}; ${
-        isServer() ? 'Server' : 'Browser'
-      } Platform; +https://elegante.dev`,
       ...options?.headers,
+      ...(isServer()
+        ? {
+            'user-agent': `Elegante/${Version}; +https://elegante.dev`,
+          }
+        : {}),
     },
   };
 

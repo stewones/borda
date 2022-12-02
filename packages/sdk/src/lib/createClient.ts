@@ -8,11 +8,13 @@ export interface ElegClientParams {
   apiSecret?: string;
   serverURL: string;
   serverHeaderPrefix?: string;
+  LiveQueryServerPort?: number;
   debug?: boolean;
 }
 
 const ElegClientDefaultParams: Partial<ElegClientParams> = {
   serverHeaderPrefix: 'X-Elegante',
+  LiveQueryServerPort: 3136,
   debug: true,
 };
 
@@ -30,6 +32,6 @@ export function createClient(options: ElegClientParams) {
     );
   }
 
-  log(`Elegante Client v${Version}`);
+  log(`Elegante SDK v${Version}`);
   return ElegClient;
 }

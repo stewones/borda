@@ -4,6 +4,8 @@ import {
   ErrorCode,
   InternalCollectionName,
   Document,
+  objectFieldsUpdated,
+  objectFieldsCreated,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
@@ -25,6 +27,17 @@ export function restPut({
         InternalCollectionName[collectionName] ?? collectionName
       );
 
+      const before = await collection.findOne(
+        {
+          _id: {
+            $eq: objectId,
+          },
+        },
+        {
+          readPreference: 'primaryPreferred',
+        }
+      );
+
       const cursor = await collection.findOneAndUpdate(
         {
           _id: {
@@ -36,30 +49,37 @@ export function restPut({
             ...req.body,
             _updated_at: new Date(),
           },
-        }
+        },
+        { returnDocument: 'after', readPreference: 'primary' }
       );
-      if (cursor.ok) {
-        const before = cursor.value;
-        const after = await collection.findOne({
-          _id: {
-            $eq: objectId,
-          },
-        });
 
+      if (cursor.ok) {
+        const after = cursor.value;
         const afterSaveTrigger = parseResponse(
-          { before, after },
+          {
+            before,
+            after,
+            updatedFields: objectFieldsUpdated(before, after),
+            createdFields: objectFieldsCreated(before, after),
+          },
           {
             removeSensitiveFields: !isUnlocked(res.locals),
           }
         );
-
+        console.log(afterSaveTrigger);
         return res.status(200).send();
       }
-      throw cursor.lastErrorObject;
+
+      return Promise.reject(
+        new ElegError(
+          ErrorCode.REST_DOCUMENT_NOT_UPDATED,
+          cursor.lastErrorObject ?? 'coud not update document'
+        )
+      );
     } catch (err) {
       return res
         .status(500)
-        .send(new ElegError(ErrorCode.PUT_ERROR, err as object));
+        .send(new ElegError(ErrorCode.REST_PUT_ERROR, err as object));
     }
   };
 }
