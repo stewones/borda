@@ -2,8 +2,10 @@ import cors from 'cors';
 import express, { Application, NextFunction, Request, Response } from 'express';
 
 import { ServerParams } from './ElegServer';
+import { restDelete } from './restDelete';
 import { restGet } from './restGet';
 import { restPost } from './restPost';
+import { restPut } from './restPut';
 
 export function rest({
   app,
@@ -52,9 +54,24 @@ export function rest({
   /**
    * setup rest routes
    */
+
   app.post(
     '/:collectionName',
     restPost({
+      params,
+    })
+  );
+
+  app.put(
+    '/:collectionName/:objectId',
+    restPut({
+      params,
+    })
+  );
+
+  app.delete(
+    '/:collectionName/:objectId',
+    restDelete({
       params,
     })
   );

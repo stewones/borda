@@ -25,4 +25,5 @@ export const InternalSensitiveFields = [
   '_hashed_password',
   '_wperm',
   '_rperm',
+  '_deleted',
 ];

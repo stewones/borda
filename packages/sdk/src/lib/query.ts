@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { Observable } from 'rxjs';
 
 import { ElegClient } from './ElegClient';
 import { ElegError, ErrorCode } from './ElegError';
@@ -9,6 +10,14 @@ import { InternalFieldName } from './internal';
 export declare interface Document {
   [key: string]: any;
 }
+
+export type DocumentEvent =
+  | 'enter'
+  | 'insert'
+  | 'update'
+  | 'replace'
+  | 'delete'
+  | 'invalidate';
 export interface DocumentQuery<T = Document> {
   filter: FilterOperations<T> | undefined;
   limit: number | undefined;
@@ -119,6 +128,11 @@ export declare interface Query<TSchema = Document> {
    * make sure to only use this when running on server to not expose your api secret.
    */
   unlock(isUnlocked: boolean): Query<TSchema>;
+
+  /**
+   * Live queries
+   */
+  on(event: DocumentEvent): Observable<TSchema | TSchema[]>;
 }
 
 export function query<TSchema extends Document>() {
@@ -285,6 +299,13 @@ export function query<TSchema extends Document>() {
     unlock: (isUnlocked) => {
       bridge.params['unlock'] = isUnlocked;
       return bridge;
+    },
+
+    on: (event) => {
+      console.log('on', event);
+      return new Observable((subscriber) => {
+        subscriber.next([{ _id: '1' }, { _id: '2' } as any]);
+      });
     },
   };
   return bridge;

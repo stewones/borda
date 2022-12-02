@@ -105,7 +105,78 @@ export class AppComponent {
     /**
      * aggregate
      */
-    const salesAgg = await query()
+    // const salesAgg = await query()
+    //   .collection('Sale')
+    //   .include([
+    //     'author',
+    //     'product.author',
+    //     'product.category',
+    //     'product.scrape.scrape',
+    //   ])
+    //   .exclude([
+    //     'count',
+    //     'origin',
+    //     'originId',
+    //     'cumulative',
+    //     'product.content',
+    //     'product.badges',
+    //     'product.tags',
+    //     'product.originLastSync',
+
+    //     // for security some fields are excluded by default (with possibility to disable this in server with query.unlock(true))
+    //     // 'product.author._acl',
+    //     // 'product.author._hashed_password',
+    //     // 'product.author._wperm',
+    //     // 'product.author._rperm',
+    //   ])
+    //   .unlock(true)
+    //   .pipeline([
+    //     {
+    //       $match: {
+    //         createdAt: {
+    //           $gt: '2022-11-28T11:58:37.051Z',
+    //         },
+    //       },
+    //     },
+    //     {
+    //       $addFields: {
+    //         product: {
+    //           $substr: ['$_p_product', 8, -1],
+    //         },
+    //       },
+    //     },
+    //     {
+    //       $lookup: {
+    //         from: 'Product',
+    //         localField: 'product',
+    //         foreignField: '_id',
+    //         as: 'product',
+    //       },
+    //     },
+    //     {
+    //       $unwind: {
+    //         path: '$product',
+    //       },
+    //     },
+    //     {
+    //       $match: {
+    //         'product.name': {
+    //           $regex: 'Real Media Library',
+    //         },
+    //       },
+    //     },
+    //     {
+    //       $limit: 1,
+    //     },
+    //     {
+    //       $unset: ['_p_product'],
+    //     },
+    //   ])
+    //   .aggregate();
+
+    // console.log('salesAgg', salesAgg);
+
+    const savesLiveQuery = await query()
       .collection('Sale')
       .include([
         'author',
@@ -129,7 +200,6 @@ export class AppComponent {
         // 'product.author._wperm',
         // 'product.author._rperm',
       ])
-      .unlock(true)
       .pipeline([
         {
           $match: {
@@ -174,6 +244,6 @@ export class AppComponent {
       ])
       .aggregate();
 
-    console.log('salesAgg', salesAgg);
+    // savesLiveQuery.subscribe((data) => console.log('savesLiveQuery', data));
   }
 }

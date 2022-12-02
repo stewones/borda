@@ -13,6 +13,7 @@ export interface ServerParams {
   apiSecret: string;
   serverURL: string;
   serverHeaderPrefix?: string;
+  serverWatchCollections?: string; // ?? @todo see if this is necessary
   joinCacheTTL?: number;
 }
 export interface ServerEvents {

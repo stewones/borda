@@ -11,6 +11,9 @@ import { Request, Response } from 'express';
 import { ElegServer, ServerParams } from './ElegServer';
 import { parseDoc, parseDocs } from './parseDoc';
 import { parseFilter } from './parseFilter';
+import { parseResponse } from './parseResponse';
+import { newObjectId } from './utils/crypto';
+import { isUnlocked } from './utils/isUnlocked';
 
 export function restPost({
   params,
@@ -25,7 +28,7 @@ export function restPost({
         sort: {},
         skip: 0,
         projection: {},
-        method: null, // <-- required
+        method: null, // <-- required otherwise we're creating a new document
         options: {},
         join: [],
         ...req.body,
@@ -53,77 +56,94 @@ export function restPost({
       );
 
       /**
-       * find/findOne
+       * searching for documents
        */
-      if (['find', 'findOne'].includes(method || 'find')) {
-        const cursor = collection.find<Document>(parseFilter(filter), {
-          sort,
-          projection,
-          ...options,
-        });
+      if (method) {
+        /**
+         * find/findOne
+         */
+        if (['find', 'findOne'].includes(method)) {
+          const cursor = collection.find<Document>(parseFilter(filter), {
+            sort,
+            projection,
+            ...options,
+          });
 
-        if (allowDiskUse) {
-          cursor.allowDiskUse(true);
+          if (allowDiskUse) {
+            cursor.allowDiskUse(true);
+          }
+
+          if (limit) {
+            cursor.limit(limit);
+          }
+
+          if (skip) {
+            cursor.skip(skip);
+          }
+
+          await cursor.forEach((doc) => {
+            docs.push(doc);
+          });
+
+          return res
+            .status(200)
+            .send(
+              method === 'findOne'
+                ? await parseDoc(docs[0])(query, params, res.locals)
+                : await parseDocs(docs)(query, params, res.locals)
+            );
         }
 
-        if (limit) {
-          cursor.limit(limit);
+        /**
+         * count
+         */
+        if (method === 'count') {
+          const total = await collection.countDocuments(parseFilter(filter));
+          return res.status(200).json(total);
         }
 
-        if (skip) {
-          cursor.skip(skip);
-        }
-
-        await cursor.forEach((doc) => {
-          docs.push(doc);
-        });
-
-        return res
-          .status(200)
-          .send(
-            method === 'findOne'
-              ? await parseDoc(docs[0])(query, params, res.locals)
-              : await parseDocs(docs)(query, params, res.locals)
+        /**
+         * aggregate
+         */
+        if (method && method === 'aggregate') {
+          const cursor = collection.aggregate<Document>(
+            parseFilter(pipeline),
+            options
           );
-      }
 
-      /**
-       * count
-       */
-      if (method === 'count') {
-        const total = await collection.countDocuments(parseFilter(filter));
-        return res.status(200).json(total);
-      }
+          for await (const doc of cursor) {
+            docs.push(doc);
+          }
 
-      /**
-       * aggregate
-       */
-      if (method && method === 'aggregate') {
-        const cursor = collection.aggregate<Document>(
-          parseFilter(pipeline),
-          options
-        );
+          return res
+            .status(200)
+            .send(await parseDocs(docs)(query, params, res.locals));
+        }
+      } else {
+        /**
+         * creating new documents
+         */
+        const data = {
+          ...req.body,
+          _id: newObjectId(),
+          _created_at: new Date(),
+          _updated_at: new Date(),
+        };
+        const cursor = await collection.insertOne(data);
 
-        for await (const doc of cursor) {
-          docs.push(doc);
+        if (cursor.acknowledged) {
+          const afterSaveTrigger = parseResponse(
+            { before: null, after: data },
+            {
+              removeSensitiveFields: !isUnlocked(res.locals),
+            }
+          );
+          // @todo run afterSaveTrigger
+          return res.status(201).send(data);
         }
 
-        return res
-          .status(200)
-          .send(await parseDocs(docs)(query, params, res.locals));
+        throw 'error inserting document';
       }
-
-      /**
-       * not supported
-       */
-      return res
-        .status(400)
-        .send(
-          new ElegError(
-            ErrorCode.MONGO_METHOD_NOT_SUPPORTED,
-            'Method not supported'
-          )
-        );
     } catch (err) {
       return res
         .status(500)

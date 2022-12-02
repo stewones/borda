@@ -15,14 +15,16 @@ import {
 console.time('startup');
 
 /**
- * configure client sdk
- * so we can use the same api in the server
+ * configure sdk
  */
 const databaseURI =
-  process.env.ELEGANTE_DATABASE_URI || 'mongodb://localhost:27017/elegante-dev';
+  process.env.ELEGANTE_DATABASE_URI ||
+  'mongodb://localhost:27017/elegante-dev?directConnection=true&serverSelectionTimeoutMS=2000&appName=elegante';
 
 const apiKey = process.env.ELEGANTE_API_KEY || 'ELEGANTE_SERVER';
 const apiSecret = process.env.ELEGANTE_API_SECRET || 'ELEGANTE_SECRET';
+
+const serverWatchCollections = ['_User', 'Sale'];
 
 const serverMount = process.env.ELEGANTE_SERVER_MOUNT || '/server';
 
@@ -56,6 +58,7 @@ const elegante = createServer(
     apiSecret,
     serverURL,
     serverHeaderPrefix,
+    // serverWatchCollections,
     /**
      * server operations
      */
@@ -64,10 +67,42 @@ const elegante = createServer(
   {
     onDatabaseConnect: async (db) => {
       log('Elegante Server connected to database 🚀');
-      console.table(await db.stats());
+      const stats = await db.stats();
+      delete stats['$clusterTime'];
+      delete stats['operationTime'];
+
+      console.table(stats);
       console.timeEnd('startup');
+
       console.time('ping');
       client.ping().then(() => console.timeEnd('ping'));
+
+      const taskCollection = db.collection('Sale');
+      const changeStream = taskCollection.watch();
+
+      changeStream.on('change', (change) => {
+        console.log('change', change);
+        /**
+         *
+         * // listen to all changes
+         * query.on().subscribe(({ docs, doc, change, before, after }))
+         *
+         * // listen to enter changes
+         * query.on('enter').subscribe(({ docs }))
+         *
+         * // listen to insert changes
+         * query.on('insert').subscribe(({ doc, change}))
+         *
+         * // listen to update changes
+         * query.on('update').subscribe(({ before, after, change}))
+         *
+         * // listen to delete changes
+         * // doc here has only "objectId", so we need to figure out how to deliver the last object
+         * query.on('delete').subscribe(({ doc, change}))
+         *
+         *
+         */
+      });
     },
   }
 );

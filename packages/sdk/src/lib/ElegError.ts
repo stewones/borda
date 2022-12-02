@@ -17,6 +17,8 @@ export enum ErrorCode {
   MONGO_POINTER_ERROR = 501,
   PARSE_EXCLUDE_ERROR = 600,
   PARSE_INCLUDE_ERROR = 601,
+  CREATE_INDEX_FAILED = 700,
+  PUT_ERROR = 800,
 }
 
 export class ElegError extends Error {

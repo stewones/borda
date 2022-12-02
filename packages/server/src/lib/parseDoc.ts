@@ -5,6 +5,7 @@ import { ServerParams } from './ElegServer';
 import { parseExclude } from './parseExclude';
 import { parseInclude } from './parseInclude';
 import { parseResponse } from './parseResponse';
+import { isUnlocked } from './utils/isUnlocked';
 
 export function parseDoc<T extends Document>(
   obj: any
@@ -19,7 +20,7 @@ export function parseDoc<T extends Document>(
 
     return Promise.resolve(
       parseResponse(obj, {
-        removeSensitiveFields: locals && locals.unlocked ? false : true,
+        removeSensitiveFields: !isUnlocked(locals),
       })
     );
   };
