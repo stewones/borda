@@ -14,6 +14,7 @@
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
+    "resolveJsonModule": true,
     "paths": {
       "@elegante/sdk": ["packages/sdk/src/index.ts"],
       "@elegante/server": ["packages/server/src/index.ts"]

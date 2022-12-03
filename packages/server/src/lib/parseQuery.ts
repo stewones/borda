@@ -1,5 +1,5 @@
-import { DocumentQuery, InternalCollectionName } from '@elegante/sdk';
 import { Request } from 'express';
+import { Document, DocumentQuery, InternalCollectionName } from '@elegante/sdk';
 import { ElegServer } from './ElegServer';
 
 /**
