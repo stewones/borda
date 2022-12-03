@@ -2,6 +2,7 @@ export * from './delay';
 export * from './isISODate';
 export * from './isServer';
 export * from './isPointer';
+export * from './isEmpty';
 export * from './log';
 export * from './stringify';
 export * from './objectFlip';

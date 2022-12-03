@@ -34,7 +34,7 @@ export function restPut({
           },
         },
         {
-          readPreference: 'primaryPreferred',
+          readPreference: 'primary',
         }
       );
 

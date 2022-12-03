@@ -1,5 +1,5 @@
 import { InternalCollectionName } from './internal';
-import { Document } from './query';
+import { Document } from './types/query';
 
 /**
  * A string representation of a pointer

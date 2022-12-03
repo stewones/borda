@@ -7,6 +7,16 @@ import { ElegServer, ServerEvents, ServerParams } from './ElegServer';
 import { rest } from './rest';
 import { Version } from './Version';
 
+/**
+ * spin up a new elegante server instance
+ *
+ * @export
+ * @param {ServerParams} options
+ * @param {ServerEvents} [events={
+ *     onDatabaseConnect: (db: Db) => {},
+ *   }]
+ * @returns {*}  {Application}
+ */
 export function createServer(
   options: ServerParams,
   events: ServerEvents = {
@@ -39,6 +49,7 @@ export function createServer(
     .catch((err) => log(err));
 
   log(`Elegante Server v${Version}`);
+
   return app;
 }
 

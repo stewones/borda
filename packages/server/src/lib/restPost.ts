@@ -8,9 +8,11 @@ import {
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
+import { createPipeline } from './createPipeline';
 import { ElegServer, ServerParams } from './ElegServer';
 import { parseDoc, parseDocs } from './parseDoc';
 import { parseFilter } from './parseFilter';
+import { parseQuery } from './parseQuery';
 import { parseResponse } from './parseResponse';
 import { newObjectId } from './utils/crypto';
 import { isUnlocked } from './utils/isUnlocked';
@@ -22,20 +24,8 @@ export function restPost({
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
-      const query = {
-        filter: {},
-        limit: 10000,
-        sort: {},
-        skip: 0,
-        projection: {},
-        method: null, // <-- required otherwise we're creating a new document
-        options: {},
-        join: [],
-        ...req.body,
-      } as DocumentQuery;
-
-      const { db } = ElegServer;
-      const { collectionName } = req.params;
+      const docs: Document[] = [];
+      const query = parseQuery(req);
       const {
         filter,
         limit,
@@ -45,15 +35,9 @@ export function restPost({
         options,
         skip,
         pipeline,
+        collection,
       } = query;
-
       const { allowDiskUse } = options || {};
-
-      const docs: Document[] = [];
-
-      const collection = db.collection<Document>(
-        InternalCollectionName[collectionName] ?? collectionName
-      );
 
       /**
        * searching for documents
@@ -95,6 +79,83 @@ export function restPost({
         }
 
         /**
+         * update
+         */
+        if (method === 'update') {
+          const before = await collection.findOne(parseFilter(filter), {
+            readPreference: 'primary',
+          });
+          const cursor = await collection.findOneAndUpdate(
+            parseFilter(filter),
+            {
+              $set: {
+                ...(req.body?.doc ?? {}),
+                _updated_at: new Date(),
+              },
+            },
+            { returnDocument: 'after', readPreference: 'primary' }
+          );
+
+          if (cursor.ok) {
+            const after = cursor.value;
+            const afterSaveTrigger = parseResponse(
+              {
+                before,
+                after,
+                query,
+                params,
+                locals: res.locals,
+              },
+              {
+                removeSensitiveFields: !isUnlocked(res.locals),
+              }
+            );
+            // @todo run afterSaveTrigger
+            return res.status(200).send();
+          }
+
+          return Promise.reject(
+            new ElegError(
+              ErrorCode.REST_DOCUMENT_NOT_UPDATED,
+              'could not update document'
+            )
+          );
+        }
+
+        /**
+         * delete
+         */
+        if (method === 'delete') {
+          const cursor = await collection.findOneAndUpdate(
+            parseFilter(filter),
+            { $set: { _deleted_at: new Date() } },
+            {
+              returnDocument: 'after',
+              readPreference: 'primary',
+            }
+          );
+
+          if (cursor.ok) {
+            const afterDeleteTrigger = parseResponse(
+              { doc: cursor.value },
+              {
+                removeSensitiveFields: !isUnlocked(res.locals),
+              }
+            );
+            console.log(afterDeleteTrigger);
+            // @todo trigger afterDeleteTrigger
+            return res.status(200).send();
+          }
+
+          return Promise.reject(
+            new ElegError(
+              ErrorCode.REST_DOCUMENT_NOT_DELETED,
+              cursor.lastErrorObject ?? 'could not delete document'
+            )
+          );
+        }
+
+        /**
          * count
          */
         if (method === 'count') {
@@ -107,7 +168,13 @@ export function restPost({
          */
         if (method && method === 'aggregate') {
           const cursor = collection.aggregate<Document>(
-            parseFilter(pipeline),
+            createPipeline<Document>({
+              filter: filter ?? {},
+              pipeline,
+              projection: projection ?? {},
+              limit: limit ?? 10000,
+              skip: skip ?? 0,
+            }),
             options
           );
 

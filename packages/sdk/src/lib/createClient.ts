@@ -8,16 +8,22 @@ export interface ElegClientParams {
   apiSecret?: string;
   serverURL: string;
   serverHeaderPrefix?: string;
-  LiveQueryServerPort?: number;
+  liveQueryServerURL?: string;
   debug?: boolean;
 }
 
 const ElegClientDefaultParams: Partial<ElegClientParams> = {
   serverHeaderPrefix: 'X-Elegante',
-  LiveQueryServerPort: 3136,
   debug: true,
 };
 
+/**
+ * configure a new elegante client
+ *
+ * @export
+ * @param {ElegClientParams} options
+ * @returns {*}
+ */
 export function createClient(options: ElegClientParams) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const params = (ElegClient.params = {

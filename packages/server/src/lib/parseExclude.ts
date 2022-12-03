@@ -43,7 +43,7 @@ export function parseExclude<T extends Document>(
           parse(obj[key], createTree(tree[key]));
         } else {
           delete obj[key];
-          log('deleted', key);
+          log('removed', key);
         }
       }
     };
