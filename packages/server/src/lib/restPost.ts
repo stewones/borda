@@ -1,15 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  ElegError,
-  ErrorCode,
-  InternalCollectionName,
-  Document,
-  DocumentQuery,
-} from '@elegante/sdk';
+import { ElegError, ErrorCode, Document } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
+import { createCursor } from './createCursor';
 import { createPipeline } from './createPipeline';
-import { ElegServer, ServerParams } from './ElegServer';
+import { ServerParams } from './ElegServer';
 import { parseDoc, parseDocs } from './parseDoc';
 import { parseFilter } from './parseFilter';
 import { parseQuery } from './parseQuery';
@@ -25,7 +20,11 @@ export function restPost({
   return async (req: Request, res: Response) => {
     try {
       const docs: Document[] = [];
-      const query = parseQuery(req);
+      const query = parseQuery({
+        ...req.body,
+        collection: req.params['collectionName'],
+      });
+
       const {
         filter,
         limit,
@@ -37,7 +36,6 @@ export function restPost({
         pipeline,
         collection,
       } = query;
-      const { allowDiskUse } = options || {};
 
       /**
        * searching for documents
@@ -47,23 +45,15 @@ export function restPost({
          * find/findOne
          */
         if (['find', 'findOne'].includes(method)) {
-          const cursor = collection.find<Document>(parseFilter(filter), {
-            sort,
+          const cursor = createCursor({
+            collection,
+            options,
+            filter,
+            sort: sort ?? {},
             projection,
-            ...options,
+            limit: limit ?? 10000,
+            skip: skip ?? 0,
           });
-
-          if (allowDiskUse) {
-            cursor.allowDiskUse(true);
-          }
-
-          if (limit) {
-            cursor.limit(limit);
-          }
-
-          if (skip) {
-            cursor.skip(skip);
-          }
 
           await cursor.forEach((doc) => {
             docs.push(doc);
@@ -110,6 +100,7 @@ export function restPost({
                 removeSensitiveFields: !isUnlocked(res.locals),
               }
             );
+
             // @todo run afterSaveTrigger
             return res.status(200).send();
           }
@@ -174,6 +165,7 @@ export function restPost({
               projection: projection ?? {},
               limit: limit ?? 10000,
               skip: skip ?? 0,
+              sort: sort ?? {},
             }),
             options
           );

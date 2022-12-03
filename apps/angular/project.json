@@ -17,7 +17,8 @@
         "inlineStyleLanguage": "scss",
         "assets": ["apps/angular/src/favicon.ico", "apps/angular/src/assets"],
         "styles": ["apps/angular/src/styles.scss"],
-        "scripts": []
+        "scripts": [],
+        "allowedCommonJsDependencies": ["cross-fetch"]
       },
       "configurations": {
         "production": {

@@ -7,23 +7,6 @@ export interface CloudFunctionOptions {
   name: string;
 }
 
-export const handlePublicRoute =
-  (options: CloudFunctionOptions) =>
-  (req: Request, res: Response, next: NextFunction) => {
-    const { unlocked } = res.locals;
-    const { isPublic } = options;
-
-    if (unlocked || isPublic) {
-      return next();
-    }
-
-    /**
-     * @todo
-     * check for user session
-     */
-    return res.status(401).send('Unauthorized session');
-  };
-
 /**
  * Attach a function to Elegant Server
  *
@@ -73,3 +56,20 @@ export function createFunction(
     }
   );
 }
+
+export const handlePublicRoute =
+  (options: CloudFunctionOptions) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const { unlocked } = res.locals;
+    const { isPublic } = options;
+
+    if (unlocked || isPublic) {
+      return next();
+    }
+
+    /**
+     * @todo
+     * check for user session
+     */
+    return res.status(401).send('Unauthorized session');
+  };

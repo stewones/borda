@@ -1,20 +1,34 @@
 import { ElegClient } from './ElegClient';
 
-export async function connectToServer(
-  socketURL: string,
-  callback: (ws: WebSocket) => void
-) {
-  const ws = new WebSocket(socketURL, [
-    `${ElegClient.params.apiKey}`,
-    `sessionToken`, // @todo send sessionToken over the wire to also validade the ws connection
-  ]);
+export interface WebSocketCallback {
+  onConnect: (ws: WebSocket) => void;
+  onOpen: (ws: WebSocket, ev: Event) => void;
+  onError: (ws: WebSocket, err: Event) => void;
+  onClose: (ws: WebSocket, ev: CloseEvent) => void;
+  onMessage: (ws: WebSocket, message: MessageEvent) => void;
+}
 
-  const timer = setInterval(() => {
-    if (ws.readyState === 1) {
-      clearInterval(timer);
-      callback(ws);
-    }
-  }, 10);
+export function webSocketServer(socketURL: string) {
+  return (callback: WebSocketCallback) => {
+    const { onConnect, onOpen, onError, onClose, onMessage } = callback;
+
+    const ws = new WebSocket(socketURL, [
+      `${ElegClient.params.apiKey}`,
+      `sessionToken`, // @todo send sessionToken over the wire to also validade the ws connection
+    ]);
+
+    ws.onopen = (ev) => onOpen(ws, ev);
+    ws.onerror = (err) => onError(ws, err);
+    ws.onclose = (ev) => onClose(ws, ev);
+    ws.onmessage = (ev) => onMessage(ws, ev);
+
+    const timer = setInterval(() => {
+      if (ws.readyState === 1) {
+        clearInterval(timer);
+        onConnect(ws);
+      }
+    }, 10);
+  };
 }
 
 export function getUrl() {

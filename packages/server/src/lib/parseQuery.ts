@@ -1,15 +1,10 @@
-import { Request } from 'express';
-import { Document, DocumentQuery, InternalCollectionName } from '@elegante/sdk';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Document } from 'mongodb';
+import { DocumentQuery, InternalCollectionName } from '@elegante/sdk';
 import { ElegServer } from './ElegServer';
 
-/**
- *
- *
- * @export
- * @param {Request} req
- * @returns {*}
- */
-export function parseQuery(req: Request) {
+export function parseQuery(from: any) {
+  const collectionName = from['collection'];
   const query = {
     filter: {},
     limit: 10000,
@@ -19,11 +14,10 @@ export function parseQuery(req: Request) {
     method: null, // <-- required otherwise we're creating a new document
     options: {},
     join: [],
-    ...req.body,
+    ...from,
   } as DocumentQuery;
 
   const { db } = ElegServer;
-  const { collectionName } = req.params;
 
   const collection = db.collection<Document>(
     InternalCollectionName[collectionName] ?? collectionName

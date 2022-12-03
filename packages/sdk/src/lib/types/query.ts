@@ -1,4 +1,5 @@
 import { Observable } from 'rxjs';
+import { LiveQueryMessage } from './livequery';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export declare interface Document {
@@ -6,12 +7,20 @@ export declare interface Document {
 }
 
 export type DocumentEvent =
-  | 'find'
   | 'insert'
   | 'update'
-  | 'replace'
   | 'delete'
-  | 'invalidate';
+  // not tested
+  | 'replace'
+  | 'invalidate'
+  | 'create'
+  | 'createIndexes'
+  | 'drop'
+  | 'dropDatabase'
+  | 'dropIndexes'
+  | 'modify'
+  | 'rename'
+  | 'shardCollection';
 
 export interface DocumentQuery<T = Document> {
   filter: FilterOperations<T> | undefined;
@@ -30,6 +39,7 @@ export interface DocumentQuery<T = Document> {
 export interface DocumentQueryUnlock<T = any> extends DocumentQuery<T> {
   unlock: boolean;
   collection: string;
+  event?: DocumentEvent | undefined;
 }
 
 export declare type QueryMethod =
@@ -149,12 +159,12 @@ export declare interface Query<TSchema = Document> {
   on(
     event: DocumentEvent,
     options?: ChangeStreamOptions
-  ): Observable<TSchema | TSchema[]>;
+  ): Observable<LiveQueryMessage>;
 
   /**
    * similiar to find but run on websockets
    */
-  once(): Observable<TSchema | TSchema[]>;
+  once(): Observable<LiveQueryMessage>;
 }
 
 export declare type ResumeToken = unknown;

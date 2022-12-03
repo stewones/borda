@@ -32,7 +32,7 @@ export function createPipeline<TSchema>(bridge: {
   const { filter, pipeline, sort, projection, limit, skip } = bridge;
   return [
     ...(!isEmpty(filter) ? [{ $match: parseFilter(filter) }] : []),
-    ...parseFilter(pipeline),
+    ...parseFilter(pipeline ?? []),
     ...(!isEmpty(sort) ? [{ $sort: sort }] : []),
     ...(!isEmpty(projection) ? [{ $project: projection }] : []),
     ...(typeof limit === 'number' ? [{ $limit: limit }] : []),

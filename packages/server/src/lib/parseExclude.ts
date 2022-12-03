@@ -9,7 +9,7 @@ export function parseExclude<T extends Document>(
 ): (docQuery: DocumentQuery, params: ServerParams) => Promise<T> {
   return async (docQuery, params) => {
     const { exclude } = docQuery;
-    log(exclude);
+
     /**
      * create a tree structure out of exclude
      * to delete the fields in the following format
@@ -30,6 +30,7 @@ export function parseExclude<T extends Document>(
      */
     const tree = createTree(exclude);
 
+    log('exclude', exclude);
     log('tree', tree);
 
     /**
@@ -43,7 +44,7 @@ export function parseExclude<T extends Document>(
           parse(obj[key], createTree(tree[key]));
         } else {
           delete obj[key];
-          log('removed', key);
+          log('excluded', key);
         }
       }
     };

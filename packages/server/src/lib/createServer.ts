@@ -77,7 +77,7 @@ export async function createIndexes({
      * create _deleted_at index used for internal soft deletes
      * ie: we don't actually delete the document, we just set _deleted_at to a new Date() object
      * representing the TTL. Then mongo will automatically delete the document after the TTL expires
-     * so project-wide, we should never directly delete a document
+     * so project-wide, we should never directly delete a documentif we want to keep a record of it. ie: hooks like afterDelete
      */
     const collections = db.listCollections();
     const collectionsArray = await collections.toArray();
@@ -86,7 +86,6 @@ export async function createIndexes({
         collection.type === 'collection' &&
         !collection.name.startsWith('system.')
       ) {
-        // await db.collection(collection.name).dropIndex('');
         await db
           .collection(collection.name)
           .createIndex({ _deleted_at: 1 }, { expireAfterSeconds: 0 });

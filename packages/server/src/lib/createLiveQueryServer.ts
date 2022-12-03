@@ -1,12 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Document, ChangeStreamUpdateDocument } from 'mongodb';
-import { DocumentQueryUnlock, ElegError, ErrorCode, log } from '@elegante/sdk';
-
 import WebSocket, { ServerOptions } from 'ws';
 import { IncomingMessage } from 'http';
-import { newObjectId } from './utils/crypto';
+import { Document, ChangeStreamUpdateDocument } from 'mongodb';
+import {
+  DocumentQueryUnlock,
+  ElegError,
+  ErrorCode,
+  log,
+  LiveQueryMessage,
+  DocumentEvent,
+} from '@elegante/sdk';
+
 import { ElegServer } from './ElegServer';
 import { createPipeline } from './createPipeline';
+import { parseQuery } from './parseQuery';
+import { parseDoc, parseDocs } from './parseDoc';
 
 export interface LiveQueryServerParams extends ServerOptions {
   collections: string[]; // allowed collections
@@ -15,21 +23,6 @@ export interface LiveQueryServerParams extends ServerOptions {
 
 export interface LiveQueryServerEvents {
   onLiveQueryConnect: (ws: WebSocket, incoming: IncomingMessage) => void;
-}
-
-export interface LiveQueryMessage {
-  doc?: Document | undefined;
-  docs?: Document[] | undefined;
-  updatedFields?: Partial<Document> | undefined;
-  removedFields?: string[] | undefined;
-  truncatedArrays?:
-    | Array<{
-        /** The name of the truncated field. */
-        field: string;
-        /** The number of elements in the truncated array. */
-        newSize: number;
-      }>
-    | undefined;
 }
 
 /**
@@ -116,11 +109,8 @@ export function createLiveQueryServer(
      */
     ws.on('message', (queryAsString: string) => {
       // queryAsString = queryAsString.slice(0, 2048); // ?? max message length will be 2048
-
       const query: DocumentQueryUnlock = JSON.parse(queryAsString);
-
-      // mongodb only allow certain operators in the pipeline to watch
-      const { filter, pipeline, projection, collection, method } = query;
+      const { collection, method, event } = query;
 
       /**
        * throw exception if the requested collection is not allowed
@@ -137,65 +127,19 @@ export function createLiveQueryServer(
       }
 
       /**
-       * watch the query
+       * resolve the query in realtime or only once
        */
       if (method === 'on') {
-        const task = ElegServer.db.collection(collection);
-        task.aggregate(
-          createPipeline<Document>({
-            filter: filter ?? ({} as any),
-            pipeline,
-            projection: projection ?? {},
-          })
+        handleOn(query, ws, event ?? 'update');
+      } else if (method === 'once') {
+        handleOnce(query, ws);
+      } else {
+        console.log(
+          new ElegError(ErrorCode.INVALID_QUERY_METHOD, 'Invalid query method')
         );
-
-        const stream = task.watch([], {
-          fullDocument: 'updateLookup',
-        });
-
-        stream.on('change', (change: ChangeStreamUpdateDocument) => {
-          console.log(change);
-
-          const {
-            fullDocument,
-            operationType,
-            documentKey,
-            updateDescription,
-          } = change;
-          const { updatedFields, removedFields, truncatedArrays } =
-            updateDescription ?? {};
-
-          /**
-           * send the message over the wire to the client
-           */
-          const message: LiveQueryMessage = {
-            doc: fullDocument,
-            docs: undefined,
-            updatedFields,
-            removedFields,
-            truncatedArrays,
-          };
-
-          ws.send(JSON.stringify(message));
-
-          // example for multicasting
-          // const metadata = clients.get(ws);
-          // [...clients.keys()].forEach((client) => {
-          //   console.log('client', client.metadata);
-          //   client.send(JSON.stringify(message));
-          // });
-        });
-
-        stream.on('error', (err) => {
-          console.error('error', err);
-        });
+        // close connection
+        return ws.close(1008, 'Invalid query method');
       }
-
-      if (method === 'once') {
-      }
-
-      // otherwise close connection
-      ws.close(1008);
     });
 
     ws.on('close', () => {
@@ -203,4 +147,181 @@ export function createLiveQueryServer(
       // clients.delete(ws);
     });
   });
+}
+
+/**
+ * deal with realtime queries where we need to
+ * prepend `fullDocument` to the field name
+ * if it's not an operator ie: doesn't start with `$`
+ */
+
+function addFullDocumentPrefix(obj: any | Array<any>) {
+  if (Array.isArray(obj)) {
+    obj.map((item: any) => addFullDocumentPrefix(item));
+  } else {
+    for (const field in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, field)) {
+        const value = obj[field];
+        if (!field.includes('$') && !field.startsWith('fullDocument.')) {
+          obj[`fullDocument.${field}`] = value;
+          delete obj[field];
+        }
+      }
+
+      if (typeof obj[field] === 'object') {
+        addFullDocumentPrefix(obj[field]);
+      }
+    }
+  }
+
+  return obj;
+}
+
+function handleOn(
+  rawQuery: DocumentQueryUnlock,
+  ws: WebSocket,
+  event: DocumentEvent
+) {
+  const { filter, pipeline, projection, collection } = rawQuery;
+
+  const task = ElegServer.db.collection(collection);
+
+  const stream = task.watch(
+    [
+      {
+        $match: {
+          operationType: {
+            $in: [event],
+          },
+        },
+      },
+      ...addFullDocumentPrefix(
+        createPipeline<Document>({
+          filter: filter ?? ({} as any),
+          pipeline,
+          projection: projection ?? {},
+        })
+      ),
+      // {
+      //   $match: {
+      //     ['fullDocument._p_product']: {
+      //       $eq: 'Product$MCU8z2gBoM',
+      //     },
+      //   },
+      // },
+    ],
+    {
+      fullDocument: 'updateLookup',
+    }
+  );
+
+  stream.on('error', (err) => {
+    log('stream error', err); // @todo doc this
+    // close websocket connection with stream error
+    ws.close(1008, err.toString());
+    stream.close();
+  });
+
+  stream.on('close', () => {
+    log('stream closed');
+    ws.close(1008, 'stream closed');
+  });
+
+  stream.on('init', () => {
+    log('stream initialized');
+  });
+
+  stream.on('change', async (change: ChangeStreamUpdateDocument) => {
+    const { fullDocument, operationType, updateDescription } = change;
+    const { updatedFields, removedFields, truncatedArrays } =
+      updateDescription ?? {};
+
+    let message: LiveQueryMessage | ChangeStreamUpdateDocument;
+
+    if (['insert', 'replace', 'update'].includes(operationType)) {
+      /**
+       * check if it's deleted
+       */
+      if (fullDocument && fullDocument['_deleted_at']) {
+        message = {
+          doc: await parseDoc(fullDocument)(rawQuery, ElegServer.params, {}),
+        };
+      } else {
+        message = {
+          doc: await parseDoc(fullDocument)(rawQuery, ElegServer.params, {}),
+          updatedFields,
+          removedFields,
+          truncatedArrays,
+        };
+      }
+    } else {
+      message = {
+        ...change,
+      };
+    }
+
+    /**
+     * send the message over the wire to the client
+     */
+    if (operationType === event) {
+      // console.log(change);
+      ws.send(JSON.stringify(message));
+    }
+
+    // example for multicasting
+    // const metadata = clients.get(ws);
+    // [...clients.keys()].forEach((client) => {
+    //   console.log('client', client.metadata);
+    //   client.send(JSON.stringify(message));
+    // });
+  });
+}
+
+/**
+ * Should behavior similiar to query.aggregate which is a stronger query.find
+ * but here we have the advantage to traffic over the wire with websockets
+ *
+ * @param {DocumentQueryUnlock} rawQuery
+ * @param {WebSocket} ws
+ */
+async function handleOnce(rawQuery: DocumentQueryUnlock, ws: WebSocket) {
+  const docs: Document[] = [];
+
+  const query = parseQuery(rawQuery);
+
+  const {
+    filter,
+    limit,
+    sort,
+    projection,
+    options,
+    skip,
+    pipeline,
+    collection,
+  } = query;
+
+  const cursor = collection.aggregate<Document>(
+    createPipeline<Document>({
+      filter: filter ?? {},
+      pipeline,
+      projection: projection ?? {},
+      limit: limit ?? 10000,
+      skip: skip ?? 0,
+      sort: sort ?? {},
+    }),
+    options
+  );
+
+  for await (const doc of cursor) {
+    docs.push(doc);
+  }
+
+  /**
+   * send the message over the wire to the client
+   */
+  const message: LiveQueryMessage = {
+    docs: await parseDocs(docs)(query, ElegServer.params, {}),
+  };
+
+  ws.send(JSON.stringify(message));
 }

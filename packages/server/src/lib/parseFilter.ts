@@ -47,7 +47,7 @@ export function parseFilter(obj: any | any[]): any | any[] {
           const operation = obj[field];
           for (const op in operation) {
             const value = operation[op];
-            if (isPointer(value)) {
+            if (isPointer(value) && !field.startsWith('$')) {
               obj['_p_' + field] = operation;
               delete obj[field];
             }

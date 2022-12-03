@@ -1,11 +1,13 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Observable } from 'rxjs';
+
+import { finalize, Observable } from 'rxjs';
 import { ElegClient } from './ElegClient';
 import { ElegError, ErrorCode } from './ElegError';
 import { isEmpty, log } from './utils';
 import { fetch } from './fetch';
 import { InternalFieldName } from './internal';
-import { connectToServer, getUrl } from './websocket';
+import { webSocketServer, getUrl, WebSocketCallback } from './websocket';
 
 import {
   Query,
@@ -137,9 +139,6 @@ export function query<TSchema extends Document>() {
       return bridge.run('aggregate', options) as Promise<Document[]>;
     },
 
-    /**
-     * internal
-     */
     unlock: (isUnlocked) => {
       bridge.params['unlock'] = isUnlocked;
       return bridge;
@@ -148,6 +147,7 @@ export function query<TSchema extends Document>() {
     /**
      * final methods
      */
+
     run: async (method, options, doc) => {
       if (!ElegClient.params.serverURL) {
         throw new ElegError(
@@ -228,7 +228,9 @@ export function query<TSchema extends Document>() {
     },
 
     on: (event, options?: ChangeStreamOptions) => {
-      return new Observable((observer) => {
+      let wss: WebSocket;
+      let wssFinished = false;
+      return new Observable<TSchema>((observer) => {
         if (!ElegClient.params.serverURL) {
           throw new ElegError(
             ErrorCode.SERVER_URL_UNDEFINED,
@@ -238,54 +240,79 @@ export function query<TSchema extends Document>() {
         const socketURLPathname = `/${bridge.params['collection']}`;
         const socketURL = getUrl() + socketURLPathname;
 
-        // connect to socket
-        connectToServer(socketURL, (ws) => {
-          const {
-            filter,
-            limit,
-            skip,
-            sort,
-            projection,
-            include,
-            exclude,
-            pipeline,
-            unlock,
-            collection,
-          } = bridge.params;
+        const webSocket: WebSocketCallback = {
+          onConnect: (ws) => {
+            const {
+              filter,
+              limit,
+              skip,
+              sort,
+              projection,
+              include,
+              exclude,
+              pipeline,
+              unlock,
+              collection,
+            } = bridge.params;
 
-          const body: DocumentQueryUnlock = {
-            options,
-            filter,
-            projection,
-            sort,
-            limit,
-            skip,
-            include,
-            exclude,
-            pipeline,
-            unlock,
-            collection,
-            method: 'on',
-          };
+            const body: DocumentQueryUnlock = {
+              options,
+              filter,
+              projection,
+              sort,
+              limit,
+              skip,
+              include,
+              exclude,
+              pipeline,
+              unlock,
+              collection,
+              event,
+              method: 'on',
+            };
 
-          // send query to the server
-          ws.send(JSON.stringify(body));
+            // send query to the server
+            ws.send(JSON.stringify(body));
+          },
 
-          // listen to the response
-          ws.onmessage = (event: MessageEvent) => {
-            const data = event.data;
+          onOpen: (ws, ev) => {
+            log('on', bridge.params);
+            wss = ws;
+          },
+
+          onMessage: (ws, message) => {
+            const data = message.data;
             try {
               observer.next(JSON.parse(data));
             } catch (err) {
-              observer.error(err);
+              log(err);
+              ws.close();
             }
-          };
+          },
 
-          ws.onerror = (err) => {
-            observer.error(err);
-          };
-        });
-      });
+          onError: (ws, err) => ws.close(),
+
+          onClose: (ws, ev) => {
+            if (wssFinished) return;
+            log('Disconnected from LiveQuery Server', ev.reason, bridge.params);
+            setTimeout(() => {
+              log('Trying to reconnect to LiveQuery Server', bridge.params);
+              webSocketServer(socketURL)(webSocket);
+            }, 5 * 1000);
+          },
+        };
+
+        /**
+         * connect to the server
+         */
+        webSocketServer(socketURL)(webSocket);
+      }).pipe(
+        finalize(() => {
+          log('unsubscribed', bridge.params);
+          wssFinished = true;
+          wss.close();
+        })
+      );
     },
 
     once: () => {
@@ -299,56 +326,65 @@ export function query<TSchema extends Document>() {
         const socketURLPathname = `/${bridge.params['collection']}`;
         const socketURL = getUrl() + socketURLPathname;
 
-        /**
-         * connect to the socket
-         */
-        connectToServer(socketURL, (ws) => {
-          const {
-            filter,
-            limit,
-            skip,
-            sort,
-            projection,
-            include,
-            exclude,
-            pipeline,
-            unlock,
-            collection,
-          } = bridge.params;
+        webSocketServer(socketURL)({
+          onConnect: (ws) => {
+            const {
+              filter,
+              limit,
+              skip,
+              sort,
+              projection,
+              include,
+              exclude,
+              pipeline,
+              unlock,
+              collection,
+            } = bridge.params;
 
-          const body: DocumentQueryUnlock = {
-            filter,
-            projection,
-            sort,
-            limit,
-            skip,
-            include,
-            exclude,
-            pipeline,
-            unlock,
-            collection,
-            method: 'once',
-          };
+            const body: DocumentQueryUnlock = {
+              filter,
+              projection,
+              sort,
+              limit,
+              skip,
+              include,
+              exclude,
+              pipeline,
+              unlock,
+              collection,
+              method: 'on',
+            };
 
-          // send query to the server
-          ws.send(JSON.stringify(body));
+            // send query to the server
+            ws.send(JSON.stringify(body));
+          },
 
-          // listen to the response
-          ws.onmessage = (event: MessageEvent) => {
+          onOpen: (ws, ev) => log('once', bridge.params),
+
+          onMessage: (ws, message) => {
             ws.close(); // this is a one time query
-            const data = event.data;
+            const data = message.data;
             try {
               observer.next(JSON.parse(data));
-              observer.complete();
+              observer.complete(); // this is a one time query
             } catch (err) {
               observer.error(err);
-              observer.complete();
+              observer.complete(); // this is a one time query
             }
-          };
+          },
 
-          ws.onerror = (err) => {
+          onError: (ws, err) => {
             observer.error(err);
-          };
+            observer.complete();
+            ws.close();
+          },
+
+          onClose: (ws, ev) => {
+            // since it's a one time query, we don't need to reconnect
+            observer.error(ev);
+            observer.complete();
+            ws.close();
+          },
         });
       });
     },

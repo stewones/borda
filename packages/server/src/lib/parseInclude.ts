@@ -137,16 +137,18 @@ export function parseInclude<T extends Document>(
   };
 }
 
-export function createTree(arr: string[]) {
-  return arr.reduce((acc, item) => {
-    const [key, ...rest] = item.split('.');
-    const value = rest.join('.');
-    if (acc[key]) {
-      acc[key].push(value);
-    } else {
-      acc[key] = [value];
-    }
-    acc[key] = acc[key].filter((item) => item);
-    return acc;
-  }, {} as { [key: string]: string[] });
+export function createTree(arr: string[] | undefined) {
+  return (
+    arr?.reduce((acc, item) => {
+      const [key, ...rest] = item.split('.');
+      const value = rest.join('.');
+      if (acc[key]) {
+        acc[key].push(value);
+      } else {
+        acc[key] = [value];
+      }
+      acc[key] = acc[key].filter((item) => item);
+      return acc;
+    }, {} as { [key: string]: string[] }) ?? {}
+  );
 }
