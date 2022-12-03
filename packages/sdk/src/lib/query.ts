@@ -13,7 +13,7 @@ import {
   Query,
   Document,
   DocumentQuery,
-  DocumentQueryUnlock,
+  DocumentLiveQuery,
   ChangeStreamOptions,
 } from './types/query';
 
@@ -230,6 +230,8 @@ export function query<TSchema extends Document>() {
     on: (event, options?: ChangeStreamOptions) => {
       let wss: WebSocket;
       let wssFinished = false;
+      let wssConnected = false;
+
       return new Observable<TSchema>((observer) => {
         if (!ElegClient.params.serverURL) {
           throw new ElegError(
@@ -241,6 +243,14 @@ export function query<TSchema extends Document>() {
         const socketURL = getUrl() + socketURLPathname;
 
         const webSocket: WebSocketCallback = {
+          onOpen: (ws, ev) => {
+            log('on', bridge.params);
+            wss = ws;
+            wssConnected = true;
+          },
+
+          onError: (ws, err) => ws.close(),
+
           onConnect: (ws) => {
             const {
               filter,
@@ -255,7 +265,7 @@ export function query<TSchema extends Document>() {
               collection,
             } = bridge.params;
 
-            const body: DocumentQueryUnlock = {
+            const body: DocumentLiveQuery = {
               options,
               filter,
               projection,
@@ -275,11 +285,6 @@ export function query<TSchema extends Document>() {
             ws.send(JSON.stringify(body));
           },
 
-          onOpen: (ws, ev) => {
-            log('on', bridge.params);
-            wss = ws;
-          },
-
           onMessage: (ws, message) => {
             const data = message.data;
             try {
@@ -290,11 +295,18 @@ export function query<TSchema extends Document>() {
             }
           },
 
-          onError: (ws, err) => ws.close(),
-
           onClose: (ws, ev) => {
             if (wssFinished) return;
-            log('Disconnected from LiveQuery Server', ev.reason, bridge.params);
+
+            if (wssConnected) {
+              wssConnected = false;
+              log(
+                'Disconnected from LiveQuery Server',
+                ev.reason,
+                bridge.params
+              );
+            }
+
             setTimeout(() => {
               log('Trying to reconnect to LiveQuery Server', bridge.params);
               webSocketServer(socketURL)(webSocket);
@@ -327,6 +339,7 @@ export function query<TSchema extends Document>() {
         const socketURL = getUrl() + socketURLPathname;
 
         webSocketServer(socketURL)({
+          onOpen: (ws, ev) => log('once', bridge.params),
           onConnect: (ws) => {
             const {
               filter,
@@ -341,7 +354,7 @@ export function query<TSchema extends Document>() {
               collection,
             } = bridge.params;
 
-            const body: DocumentQueryUnlock = {
+            const body: DocumentLiveQuery = {
               filter,
               projection,
               sort,
@@ -358,8 +371,6 @@ export function query<TSchema extends Document>() {
             // send query to the server
             ws.send(JSON.stringify(body));
           },
-
-          onOpen: (ws, ev) => log('once', bridge.params),
 
           onMessage: (ws, message) => {
             ws.close(); // this is a one time query

@@ -3,7 +3,7 @@ import WebSocket, { ServerOptions } from 'ws';
 import { IncomingMessage } from 'http';
 import { Document, ChangeStreamUpdateDocument } from 'mongodb';
 import {
-  DocumentQueryUnlock,
+  DocumentLiveQuery,
   ElegError,
   ErrorCode,
   log,
@@ -49,7 +49,13 @@ export function createLiveQueryServer(
 
   // const clients = new Map();
 
+  wss.on('close', () => {
+    log('LiveQuery connection closed');
+  });
+
   wss.on('connection', (ws: WebSocket, incoming: IncomingMessage) => {
+    log('LiveQuery connection open');
+
     const { headers } = incoming;
 
     // {
@@ -108,8 +114,13 @@ export function createLiveQueryServer(
      * handle incoming query messages
      */
     ws.on('message', (queryAsString: string) => {
+      ws.on('close', () => {
+        log('LiveQuery connection closed');
+        // clients.delete(ws);
+      });
+
       // queryAsString = queryAsString.slice(0, 2048); // ?? max message length will be 2048
-      const query: DocumentQueryUnlock = JSON.parse(queryAsString);
+      const query: DocumentLiveQuery = JSON.parse(queryAsString);
       const { collection, method, event } = query;
 
       /**
@@ -140,11 +151,6 @@ export function createLiveQueryServer(
         // close connection
         return ws.close(1008, 'Invalid query method');
       }
-    });
-
-    ws.on('close', () => {
-      log('livequery connection closed');
-      // clients.delete(ws);
     });
   });
 }
@@ -178,7 +184,7 @@ function addFullDocumentPrefix(obj: any | Array<any>) {
 }
 
 function handleOn(
-  rawQuery: DocumentQueryUnlock,
+  rawQuery: DocumentLiveQuery,
   ws: WebSocket,
   event: DocumentEvent
 ) {
@@ -281,10 +287,10 @@ function handleOn(
  * Should behavior similiar to query.aggregate which is a stronger query.find
  * but here we have the advantage to traffic over the wire with websockets
  *
- * @param {DocumentQueryUnlock} rawQuery
+ * @param {DocumentLiveQuery} rawQuery
  * @param {WebSocket} ws
  */
-async function handleOnce(rawQuery: DocumentQueryUnlock, ws: WebSocket) {
+async function handleOnce(rawQuery: DocumentLiveQuery, ws: WebSocket) {
   const docs: Document[] = [];
 
   const query = parseQuery(rawQuery);

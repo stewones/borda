@@ -27,6 +27,7 @@ interface User {
       Next Total: {{ total }} (Reload the page)
     </button>
     <button (click)="unsubscribe()">Unsubscribe Realtime</button>
+    <button (click)="subscribe()">Subscribe Realtime</button>
   `,
   styles: [],
 })
@@ -223,6 +224,11 @@ export class AppComponent {
 
     this.liveQuery();
     // this.liveQuery();
+  }
+
+  subscribe() {
+    this.unsubscribe();
+    this.liveQuery();
   }
 
   unsubscribe() {

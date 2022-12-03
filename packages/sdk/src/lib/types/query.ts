@@ -36,8 +36,8 @@ export interface DocumentQuery<T = Document> {
   doc?: Document;
 }
 
-export interface DocumentQueryUnlock<T = any> extends DocumentQuery<T> {
-  unlock: boolean;
+export interface DocumentLiveQuery<T = any> extends DocumentQuery<T> {
+  unlock: boolean; // @todo ?? this would be a way to enable live query on a public collection.
   collection: string;
   event?: DocumentEvent | undefined;
 }
