@@ -1,30 +1,40 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Document } from 'mongodb';
-import { DocumentQuery, InternalCollectionName } from '@elegante/sdk';
+import { Collection, Document } from 'mongodb';
+import {
+  DocumentLiveQuery,
+  DocumentQuery,
+  InternalCollectionName,
+} from '@elegante/sdk';
 import { ElegServer } from './ElegServer';
 
-export function parseQuery(from: any) {
-  const collectionName = from['collection'];
+export interface DocQRL extends DocumentQuery {
+  collection$: Collection<Document>;
+  doc?: Document;
+}
+
+export type DocQRLFrom = DocumentQuery | DocumentLiveQuery;
+
+export function parseQuery(from: DocQRLFrom): DocQRL {
+  const collectionName = from.collection ?? '';
   const query = {
-    filter: {},
     limit: 10000,
     sort: {},
     skip: 0,
     projection: {},
-    method: null, // <-- required otherwise we're creating a new document
+    method: null, // <-- required otherwise it should throw an error
     options: {},
-    join: [],
+    include: [],
     ...from,
   } as DocumentQuery;
 
   const { db } = ElegServer;
 
-  const collection = db.collection<Document>(
+  const collection$ = db.collection<Document>(
     InternalCollectionName[collectionName] ?? collectionName
   );
 
   return {
     ...query,
-    collection,
+    collection$,
   };
 }

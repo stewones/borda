@@ -28,29 +28,26 @@ export interface DocumentQuery<T = Document> {
   skip?: number | undefined;
   sort?: Sort | undefined;
   projection?: T | undefined;
-  method?: QueryMethod | null;
+  // method?: QueryMethod | null; // this can't be passed in here, we need to use headers. same to the unlock thing.
   options?: FindOptions | undefined;
   pipeline?: Document[];
   include?: string[];
   exclude?: string[];
   doc?: Document;
-}
-
-export interface DocumentLiveQuery<T = any> extends DocumentQuery<T> {
-  unlock: boolean; // @todo ?? this would be a way to enable live query on a public collection.
-  collection: string;
-  event?: DocumentEvent | undefined;
+  collection?: string;
 }
 
 export declare type QueryMethod =
   | 'find'
   | 'findOne'
   | 'update'
+  | 'insert'
   | 'delete'
   | 'count'
   | 'aggregate'
-  | 'on'
-  | 'once'
+  // user related
+  | 'signUp'
+  | 'signIn'
 
   // @todo
   | 'findOneAndReplace';
@@ -123,6 +120,11 @@ export declare interface Query<TSchema = Document> {
   update(doc: Document): Promise<TSchema | void>;
 
   /**
+   * insert a document
+   */
+  insert(doc: Document): Promise<TSchema>;
+
+  /**
    * delete a document using mongo-like queries
    */
   delete(): Promise<TSchema | void>;
@@ -159,12 +161,12 @@ export declare interface Query<TSchema = Document> {
   on(
     event: DocumentEvent,
     options?: ChangeStreamOptions
-  ): Observable<LiveQueryMessage>;
+  ): Observable<LiveQueryMessage<TSchema>>;
 
   /**
    * similiar to find but run on websockets
    */
-  once(): Observable<LiveQueryMessage>;
+  once(): Observable<LiveQueryMessage<TSchema>>;
 }
 
 export declare type ResumeToken = unknown;

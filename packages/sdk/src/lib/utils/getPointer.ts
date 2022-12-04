@@ -1,4 +1,4 @@
-import { ExternalCollectionName } from '../internal';
+import { ExternalCollectionName } from '../external';
 
 export function getPointer(value: string) {
   const explode = value.split('$');

@@ -1,7 +1,15 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
-import { createClient, pointer, query } from '@elegante/sdk';
-import { from, map, Subscribable, Subscription, tap } from 'rxjs';
+import {
+  FormControl,
+  FormGroup,
+  FormsModule,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
+
+import { createClient, query } from '@elegante/sdk';
+import { map, Subject, takeUntil, tap } from 'rxjs';
 
 console.time('startup');
 
@@ -11,49 +19,126 @@ const client = createClient({
   debug: true,
 });
 
-interface User {
-  createdAt: string;
-  name: string;
-  email: string;
+interface Sale {
+  objectId: string;
+  total: number;
 }
 
 @Component({
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule],
   selector: 'elegante-root',
+  styles: [
+    `
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      input {
+        padding: 0.25rem;
+      }
+
+      button {
+        padding: 0.45rem;
+      }
+    `,
+  ],
   template: `
-    <button (click)="increase()">Increase Total: {{ total$ | async }}</button>
-    <button (click)="reload()">
-      Next Total: {{ total }} (Reload the page)
+    <button (click)="increase()" *ngIf="totalOnce$ | async">
+      Increase Total:
+      {{ (total$ | async) ?? total }}
     </button>
+    <button (click)="reload()">Next Total: {{ total }}</button>
     <button (click)="unsubscribe()">Unsubscribe Realtime</button>
     <button (click)="subscribe()">Subscribe Realtime</button>
+
+    <h2>Sign Up</h2>
+    <form [formGroup]="signUpForm" (ngSubmit)="signUp()">
+      <label for="name">name: </label>
+      <input id="name" type="text" formControlName="name" />
+      <label for="email">email: </label>
+      <input id="email" type="text" formControlName="email" />
+      <label for="password">password: </label>
+      <input id="password" type="text" formControlName="password" />
+      <button type="submit" [disabled]="signUpForm.invalid">
+        Create Account
+      </button>
+    </form>
+
+    <h2>Sign In</h2>
+    <form [formGroup]="signInForm" (ngSubmit)="signIn()">
+      <label for="email">email </label>
+      <input id="email" type="text" formControlName="email" />
+      <label for="password">password: </label>
+      <input id="password" type="text" formControlName="password" />
+      <button type="submit" [disabled]="signInForm.invalid">Login</button>
+    </form>
   `,
-  styles: [],
 })
 export class AppComponent {
-  total$ = from(
-    query<{
-      objectId: string;
-      total: number;
-    }>()
+  unsubscribe$ = new Subject<void>();
+
+  // total once + realtime
+  total = 0;
+  total$ = this.realtime$();
+
+  // total once
+  totalOnce$ = query<Sale>()
+    .collection('Sale')
+    .filter({
+      objectId: {
+        $eq: 'kpg5YGSEBn',
+      },
+    })
+    .once()
+    .pipe(
+      map(({ docs }) => docs && docs[0]),
+      map((sale) => sale?.total ?? 0),
+      tap((total) => (this.total = total))
+    );
+
+  signUpForm = new FormGroup({
+    name: new FormControl('', [Validators.required]),
+    email: new FormControl('', [Validators.email]),
+    password: new FormControl('', [Validators.required]),
+  });
+
+  signInForm = new FormGroup({
+    email: new FormControl('', [Validators.required]),
+    password: new FormControl('', [Validators.required]),
+  });
+
+  constructor() {
+    client.ping().then(() => console.timeEnd('startup'));
+  }
+
+  ngOnDestroy() {}
+  ngOnInit() {}
+
+  realtime$() {
+    return query<Sale>()
       .collection('Sale')
       .filter({
         objectId: {
           $eq: 'kpg5YGSEBn',
         },
       })
-      .findOne()
-  ).pipe(
-    map((sale) => sale?.total ?? 0),
-    tap((total) => (this.total = total))
-  );
-  total = 0;
+      .on('update')
+      .pipe(
+        map(({ doc }) => doc?.total ?? 0),
+        takeUntil(this.unsubscribe$)
+      );
+  }
 
-  realtime$: Subscription | undefined;
+  subscribe() {
+    this.unsubscribe();
+    this.total$ = this.realtime$();
+  }
 
-  constructor() {
-    //  client.ping().then(() => console.timeEnd('startup'));
+  unsubscribe() {
+    this.unsubscribe$.next();
   }
 
   increase() {
@@ -77,280 +162,10 @@ export class AppComponent {
     window.location.reload();
   }
 
-  ngOnDestroy() {}
-
-  async ngOnInit() {
-    // const users = await query<User>()
-    //   .collection('User')
-    //   .projection({
-    //     name: 1,
-    //   })
-    //   .limit(2)
-    //   .filter({
-    //     createdAt: {
-    //       $gt: '2022-11-28T11:58:37.051Z',
-    //     },
-    //   })
-    //   .sort({
-    //     createdAt: -1,
-    //   })
-    //   .find({
-    //     allowDiskUse: true,
-    //   });
-    // if (users?.length) console.log('users', users);
-    /**
-     * pointer example
-     */
-    // const sales = await query()
-    //   .collection('Sale')
-    //   .projection({
-    //     author: 1,
-    //     product: 1,
-    //     objectId: -1,
-    //     createdAt: 1,
-    //     total: 1,
-    //   })
-    //   .join([
-    //     'author',
-    //     'product',
-    //     'product.scrape',
-    //     'product.author',
-    //     'product.scrape.scrape',
-    //   ])
-    //   .filter({
-    //     product: {
-    //       $eq: pointer('Product', 'MCU8z2gBoM'),
-    //     },
-    //     createdAt: {
-    //       $gt: '2021-11-20T11:58:37.051Z',
-    //     },
-    //     $and: [
-    //       {
-    //         createdAt: {
-    //           $gt: '2022-11-20T11:58:37.051Z',
-    //         },
-    //       },
-    //       {
-    //         total: {
-    //           $gt: 100,
-    //         },
-    //       },
-    //       {
-    //         total: {
-    //           $lt: 1000,
-    //         },
-    //       },
-    //     ],
-    //   })
-    //   .sort({
-    //     total: -1,
-    //   })
-    //   .limit(2)
-    //   .find({
-    //     allowDiskUse: true,
-    //   });
-    // console.log('sales', sales.length);
-    /**
-     * aggregate
-     */
-    // const salesAgg = await query()
-    //   .collection('Sale')
-    //   .include([
-    //     'author',
-    //     'product.author',
-    //     'product.category',
-    //     'product.scrape.scrape',
-    //   ])
-    //   .exclude([
-    //     'count',
-    //     'origin',
-    //     'originId',
-    //     'cumulative',
-    //     'product.content',
-    //     'product.badges',
-    //     'product.tags',
-    //     'product.originLastSync',
-    //     // for security some fields are excluded by default (with possibility to disable this in server with query.unlock(true))
-    //     // 'product.author._acl',
-    //     // 'product.author._hashed_password',
-    //     // 'product.author._wperm',
-    //     // 'product.author._rperm',
-    //   ])
-    //   .unlock(true)
-    //   .pipeline([
-    //     {
-    //       $match: {
-    //         createdAt: {
-    //           $gt: '2022-11-28T11:58:37.051Z',
-    //         },
-    //       },
-    //     },
-    //     {
-    //       $addFields: {
-    //         product: {
-    //           $substr: ['$_p_product', 8, -1],
-    //         },
-    //       },
-    //     },
-    //     {
-    //       $lookup: {
-    //         from: 'Product',
-    //         localField: 'product',
-    //         foreignField: '_id',
-    //         as: 'product',
-    //       },
-    //     },
-    //     {
-    //       $unwind: {
-    //         path: '$product',
-    //       },
-    //     },
-    //     {
-    //       $match: {
-    //         'product.name': {
-    //           $regex: 'Real Media Library',
-    //         },
-    //       },
-    //     },
-    //     {
-    //       $limit: 1,
-    //     },
-    //     {
-    //       $unset: ['_p_product'],
-    //     },
-    //   ])
-    //   .aggregate();
-    // console.log('salesAgg', salesAgg);
-
-    this.liveQuery();
-    // this.liveQuery();
+  signUp() {
+    const form = this.signUpForm.getRawValue();
+    console.log(form);
   }
 
-  subscribe() {
-    this.unsubscribe();
-    this.liveQuery();
-  }
-
-  unsubscribe() {
-    this.realtime$?.unsubscribe();
-  }
-
-  async liveQuery() {
-    const salesLiveQuery = query()
-      .collection('Sale')
-      // .include([
-      //   'author',
-      //   'product.author',
-      //   // 'product.category',
-      //   // 'product.scrape.scrape',
-      // ])
-      // .exclude([
-      //   'count',
-      //   'origin',
-      //   'originId',
-      //   'cumulative',
-      //   'product.content',
-      //   'product.badges',
-      //   'product.tags',
-      //   'product.originLastSync',
-      //   // for security some fields are excluded by default (with possibility to disable this in server with query.unlock(true))
-      //   // 'product.author._acl',
-      //   // 'product.author._hashed_password',
-      //   // 'product.author._wperm',
-      //   // 'product.author._rperm',
-      // ])
-      // .filter({
-      //   product: {
-      //     $eq: pointer('Product', 'MCU8z2gBoM'),
-      //   },
-      //   // createdAt: {
-      //   //   $gt: '2021-11-20T11:58:37.051Z',
-      //   // },
-      //   // $and: [
-      //   //   {
-      //   //     createdAt: {
-      //   //       $gt: '2022-11-20T11:58:37.051Z',
-      //   //     },
-      //   //   },
-      //   //   {
-      //   //     total: {
-      //   //       $gt: 100,
-      //   //     },
-      //   //   },
-      //   //   {
-      //   //     total: {
-      //   //       $lt: 1000,
-      //   //     },
-      //   //   },
-      //   // ],
-      // })
-      .pipeline([
-        {
-          // $match: {
-          //   createdAt: {
-          //     $gt: '2022-11-28T11:58:37.051Z',
-          //   },
-          // },
-          $match: {
-            // createdAt: {
-            //   $gt: '2022-11-28T11:58:37.051Z',
-            // },
-            // _p_product: pointer('Product', 'MCU8z2gBoM'),
-            _p_product: {
-              $eq: pointer('Product', 'MCU8z2gBoM'),
-            },
-          },
-        },
-        // {
-        //   $addFields: {
-        //     product: {
-        //       $substr: ['$_p_product', 8, -1],
-        //     },
-        //   },
-        // },
-        // {
-        //   $lookup: {
-        //     from: 'Product',
-        //     localField: 'product',
-        //     foreignField: '_id',
-        //     as: 'product',
-        //   },
-        // },
-        // {
-        //   $unwind: {
-        //     path: '$product',
-        //   },
-        // },
-        // {
-        //   $match: {
-        //     'product.name': {
-        //       $regex: 'system',
-        //       $options: 'i',
-        //     },
-        //   },
-        // },
-        // {
-        //   $limit: 2,
-        // },
-        // {
-        //   $unset: ['_p_product'],
-        // },
-      ])
-      // .sort({
-      //   total: -1,
-      // })
-      // .limit(2)
-      .on('update');
-    //.aggregate();
-    // .on('find');
-
-    this.realtime$ = salesLiveQuery.subscribe({
-      next: (data) => {
-        console.log('data', data);
-      },
-      error: (error) => {
-        console.log('error', error);
-      },
-    });
-  }
+  signIn() {}
 }

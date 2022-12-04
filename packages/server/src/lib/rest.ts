@@ -1,3 +1,4 @@
+import { InternalHeaders } from '@elegante/sdk';
 import express, { Application, NextFunction, Request, Response } from 'express';
 
 import { ServerParams } from './ElegServer';
@@ -90,7 +91,7 @@ const routeEnsureApiKey =
   (req: Request, res: Response, next: NextFunction) => {
     res.removeHeader('X-Powered-By'); // because why not :)
 
-    const apiKeyHeaderKey = `${params.serverHeaderPrefix}-Api-Key`;
+    const apiKeyHeaderKey = `${params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`;
 
     if (!req.header(apiKeyHeaderKey?.toLowerCase())) {
       return res.status(400).send('API key required');
@@ -108,7 +109,7 @@ const routeEnsureApiKey =
 const routeEnsureApiSecret =
   ({ params }: { params: ServerParams }) =>
   (req: Request, res: Response, next: NextFunction) => {
-    const apiKeyHeaderKey = `${params.serverHeaderPrefix}-Secret-Key`;
+    const apiKeyHeaderKey = `${params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`;
 
     if (!req.header(apiKeyHeaderKey?.toLowerCase())) {
       return res.status(400).send('Secret key required');
@@ -125,7 +126,9 @@ const routeEnsureApiSecret =
 const routeUnlock =
   ({ params }: { params: ServerParams }) =>
   (req: Request, res: Response, next: NextFunction) => {
-    const apiSecret = req.header(`${params.serverHeaderPrefix}-Secret-Key`);
+    const apiSecret = req.header(
+      `${params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
+    );
 
     if (apiSecret === params.apiSecret) {
       res.locals['unlocked'] = true;

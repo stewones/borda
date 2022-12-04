@@ -25,6 +25,9 @@ export function restDelete({
         InternalCollectionName[collectionName] ?? collectionName
       );
 
+      /**
+       * @todo run beforeDelete and afterDelete hooks
+       */
       const cursor = await collection.findOneAndUpdate(
         {
           _id: {

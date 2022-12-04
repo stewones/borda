@@ -1,5 +1,6 @@
 import { ElegClientParams } from './createClient';
 import { fetch } from './fetch';
+import { InternalHeaders } from './internal';
 
 export interface ElegClientProtocol {
   params: ElegClientParams;
@@ -12,7 +13,7 @@ export const ElegClient: ElegClientProtocol = {
     fetch(`${ElegClient.params.serverURL}/ping`, {
       headers: {
         'Content-Type': 'text/html',
-        [`${ElegClient.params.serverHeaderPrefix}-Api-Key`]:
+        [`${ElegClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
           ElegClient.params.apiKey,
       },
     }),

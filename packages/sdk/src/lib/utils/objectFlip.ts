@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-type ReverseMap<T extends Record<keyof T, keyof any>> = {
+export type ReverseMap<T extends Record<keyof T, keyof any>> = {
   [P in T[keyof T]]: {
     [K in keyof T]: T[K] extends P ? K : never;
   }[keyof T];

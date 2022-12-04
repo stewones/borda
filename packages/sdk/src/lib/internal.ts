@@ -1,4 +1,8 @@
-import { objectFlip } from './utils';
+export const InternalHeaders = {
+  apiSecret: 'Api-Secret',
+  apiKey: 'Api-Key',
+  apiMethod: 'Api-Method',
+};
 
 export const InternalCollectionName: {
   [key: string]: string;
@@ -17,12 +21,11 @@ export const InternalFieldName: {
   objectId: '_id',
 };
 
-export const ExternalCollectionName = objectFlip(InternalCollectionName);
-export const ExternalFieldName = objectFlip(InternalFieldName);
-
 /**
  * these fields are not allowed to be set by the user
  * and also can't be exposed as they are reserved for the system
+ * sensitive fields are removed by default from responses
+ * unless you explicitly ask for them via `query.unlock(true)`
  */
 export const InternalSensitiveFields = [
   /**

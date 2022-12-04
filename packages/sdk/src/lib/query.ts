@@ -4,16 +4,15 @@
 import { finalize, Observable } from 'rxjs';
 import { ElegClient } from './ElegClient';
 import { ElegError, ErrorCode } from './ElegError';
-import { isEmpty, log } from './utils';
+import { isEmpty, isServer, log } from './utils';
 import { fetch } from './fetch';
-import { InternalFieldName } from './internal';
+import { InternalFieldName, InternalHeaders } from './internal';
 import { webSocketServer, getUrl, WebSocketCallback } from './websocket';
-
+import { DocumentLiveQuery } from './types/livequery';
 import {
   Query,
   Document,
   DocumentQuery,
-  DocumentLiveQuery,
   ChangeStreamOptions,
 } from './types/query';
 
@@ -127,6 +126,10 @@ export function query<TSchema extends Document>() {
       return bridge.run('update', {}, doc) as Promise<void>;
     },
 
+    insert: (doc) => {
+      return bridge.run('insert', {}, doc) as Promise<TSchema>;
+    },
+
     delete: () => {
       return bridge.run('delete', {}) as Promise<void>;
     },
@@ -140,6 +143,17 @@ export function query<TSchema extends Document>() {
     },
 
     unlock: (isUnlocked) => {
+      /**
+       * unlock can only be used in server environment
+       * with proper ApiKey+ApiSecret defined
+       */
+      if (!isServer()) {
+        throw new ElegError(
+          ErrorCode.SERVER_UNLOCK_ONLY,
+          `unlock can only be used in server environment`
+        );
+      }
+
       bridge.params['unlock'] = isUnlocked;
       return bridge;
     },
@@ -172,8 +186,6 @@ export function query<TSchema extends Document>() {
         }
       }
 
-      log(method, bridge.params, options ?? '');
-
       const {
         filter,
         limit,
@@ -186,29 +198,40 @@ export function query<TSchema extends Document>() {
         unlock,
       } = bridge.params;
 
-      const body: DocumentQuery<TSchema> = {
-        method,
-        options,
-        filter,
-        projection,
-        sort,
-        limit,
-        skip,
-        include,
-        exclude,
-        pipeline,
-        doc,
-      };
-
       const headers = {
-        [`${ElegClient.params.serverHeaderPrefix}-Api-Key`]:
+        [`${ElegClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
           ElegClient.params.apiKey,
+        [`${ElegClient.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
+          method,
       };
 
       if (unlock) {
-        headers[`${ElegClient.params.serverHeaderPrefix}-Secret-Key`] =
-          ElegClient.params.apiSecret ??
-          'THIS_IS_A_SECRET_KEY_ONLY_USED_IN_SERVER';
+        headers[
+          `${ElegClient.params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
+        ] = ElegClient.params.apiSecret ?? '👀';
+      }
+
+      let body: Document | DocumentQuery<TSchema>;
+
+      log(method, bridge.params, options ?? '', doc ?? '');
+
+      if (method === 'insert') {
+        body = {
+          ...doc,
+        };
+      } else {
+        body = {
+          options,
+          filter,
+          projection,
+          sort,
+          limit,
+          skip,
+          include,
+          exclude,
+          pipeline,
+          doc,
+        };
       }
 
       const docs = await fetch(
@@ -365,7 +388,7 @@ export function query<TSchema extends Document>() {
               pipeline,
               unlock,
               collection,
-              method: 'on',
+              method: 'once',
             };
 
             // send query to the server

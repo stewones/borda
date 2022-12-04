@@ -146,7 +146,10 @@ export function createLiveQueryServer(
         handleOnce(query, ws);
       } else {
         console.log(
-          new ElegError(ErrorCode.INVALID_QUERY_METHOD, 'Invalid query method')
+          new ElegError(
+            ErrorCode.LIVE_QUERY_INVALID_QUERY_METHOD,
+            'Invalid query method'
+          )
         );
         // close connection
         return ws.close(1008, 'Invalid query method');
@@ -303,10 +306,10 @@ async function handleOnce(rawQuery: DocumentLiveQuery, ws: WebSocket) {
     options,
     skip,
     pipeline,
-    collection,
+    collection$,
   } = query;
 
-  const cursor = collection.aggregate<Document>(
+  const cursor = collection$.aggregate<Document>(
     createPipeline<Document>({
       filter: filter ?? {},
       pipeline,

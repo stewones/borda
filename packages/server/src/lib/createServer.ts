@@ -96,7 +96,7 @@ export async function createIndexes({
     console.log(
       '\x1b[33m%s\x1b[0m',
       `Elegante couldn't create indexes on startup`,
-      new ElegError(ErrorCode.CREATE_INDEX_FAILED, err as object)
+      new ElegError(ErrorCode.INDEX_CREATION_FAILED, err as object)
     );
   }
 }

@@ -27,6 +27,9 @@ export function restGet({
         InternalCollectionName[collectionName] ?? collectionName
       );
 
+      /**
+       * @todo run beforeFind and afterFind hooks
+       */
       const doc = await collection.findOne<Document>({
         _id: objectId,
       });

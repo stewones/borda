@@ -27,6 +27,9 @@ export function restPut({
         InternalCollectionName[collectionName] ?? collectionName
       );
 
+      /**
+       * @todo run beforeUpdate and afterUpdate hooks
+       */
       const before = await collection.findOne(
         {
           _id: {

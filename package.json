@@ -4,8 +4,8 @@
   "license": "MIT",
   "scripts": {},
   "private": true,
-  "dependencies": {},
   "devDependencies": {
+    "@node-rs/bcrypt": "^1.6.1",
     "@angular-devkit/build-angular": "~15.0.0",
     "@angular/animations": "~15.0.0",
     "@angular/cli": "~15.0.0",
