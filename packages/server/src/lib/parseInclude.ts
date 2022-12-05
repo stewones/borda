@@ -6,7 +6,7 @@ import {
   log,
   query,
 } from '@elegante/sdk';
-import { ServerParams } from './ElegServer';
+import { ServerParams } from './EleganteServer';
 
 /**
  * memoize pointers

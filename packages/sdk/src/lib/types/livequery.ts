@@ -3,7 +3,7 @@ import { Document, DocumentEvent, DocumentQuery } from './query';
 
 export type LiveQueryMethod = 'on' | 'once';
 
-export interface LiveQueryMessage<T = Document> {
+export interface LiveQueryMessage<T = any> extends Document {
   doc?: T | undefined;
   docs?: T[] | undefined;
   updatedFields?: Partial<T> | undefined;
@@ -18,7 +18,7 @@ export interface LiveQueryMessage<T = Document> {
     | undefined;
 }
 
-export interface DocumentLiveQuery<T = any> extends DocumentQuery<T> {
+export interface DocumentLiveQuery<T = Document> extends DocumentQuery<T> {
   unlock: boolean; // @todo ?? this would be a way to enable live query on a public collection.
   collection: string;
   event?: DocumentEvent | undefined;

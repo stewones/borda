@@ -1,7 +1,7 @@
 import { Db } from 'mongodb';
 import { Application } from 'express';
 
-export interface ElegServerProtocol {
+export interface EleganteServerProtocol {
   params: ServerParams;
   app: Application;
   db: Db;
@@ -20,7 +20,7 @@ export interface ServerEvents {
   onDatabaseConnect: (db: Db) => void;
 }
 
-export const ElegServerDefaultParams: Partial<ElegServerDefault> = {
+export const EleganteServerDefaultParams: Partial<EleganteServerDefault> = {
   serverHeaderPrefix: 'X-Elegante',
   joinCacheTTL: 1000 * 1,
   events: {
@@ -29,13 +29,13 @@ export const ElegServerDefaultParams: Partial<ElegServerDefault> = {
   },
 };
 
-export const ElegServer: ElegServerProtocol = {
+export const EleganteServer: EleganteServerProtocol = {
   params: {} as ServerParams,
   app: {} as Application,
   db: {} as Db,
-  ...ElegServerDefaultParams,
+  ...EleganteServerDefaultParams,
 };
 
-export interface ElegServerDefault extends ServerParams {
+export interface EleganteServerDefault extends ServerParams {
   events: ServerEvents;
 }

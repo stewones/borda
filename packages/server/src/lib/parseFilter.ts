@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
-  ElegError,
+  EleganteError,
   ErrorCode,
   InternalFieldName,
   isISODate,
@@ -11,7 +11,7 @@ import {
 
 export function parseFilter(obj: any | any[]): any | any[] {
   if (!isServer())
-    throw new ElegError(
+    throw new EleganteError(
       ErrorCode.FILTER_ONLY_SERVER,
       'we should only parse filters in the server'
     );

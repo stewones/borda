@@ -1,9 +1,9 @@
 import express, { Application } from 'express';
 
 import { Db, MongoClient } from 'mongodb';
-import { ElegError, ErrorCode, log } from '@elegante/sdk';
+import { EleganteError, ErrorCode, log } from '@elegante/sdk';
 
-import { ElegServer, ServerEvents, ServerParams } from './ElegServer';
+import { EleganteServer, ServerEvents, ServerParams } from './EleganteServer';
 import { rest } from './rest';
 import { Version } from './Version';
 
@@ -24,12 +24,12 @@ export function createServer(
     onDatabaseConnect: (db: Db) => {},
   }
 ): Application {
-  const app = (ElegServer.app = express());
+  const app = (EleganteServer.app = express());
   const { onDatabaseConnect } = events;
 
-  ElegServer.params = { ...ElegServer.params, ...options };
+  EleganteServer.params = { ...EleganteServer.params, ...options };
 
-  const params = ElegServer.params;
+  const params = EleganteServer.params;
 
   rest({
     app,
@@ -39,7 +39,7 @@ export function createServer(
   mongoConnect({ params })
     .then((db) => {
       try {
-        ElegServer.db = db;
+        EleganteServer.db = db;
         createIndexes({ db, params });
         onDatabaseConnect(db);
       } catch (err) {
@@ -60,7 +60,7 @@ export async function mongoConnect({ params }: { params: ServerParams }) {
     return client.db();
   } catch (err) {
     return Promise.reject(
-      new ElegError(ErrorCode.CONNECTION_FAILED, err as object)
+      new EleganteError(ErrorCode.CONNECTION_FAILED, err as object)
     );
   }
 }
@@ -73,12 +73,6 @@ export async function createIndexes({
   params: ServerParams;
 }) {
   try {
-    /**
-     * create _deleted_at index used for internal soft deletes
-     * ie: we don't actually delete the document, we just set _deleted_at to a new Date() object
-     * representing the TTL. Then mongo will automatically delete the document after the TTL expires
-     * so project-wide, we should never directly delete a documentif we want to keep a record of it. ie: hooks like afterDelete
-     */
     const collections = db.listCollections();
     const collectionsArray = await collections.toArray();
     for (const collection of collectionsArray) {
@@ -86,9 +80,15 @@ export async function createIndexes({
         collection.type === 'collection' &&
         !collection.name.startsWith('system.')
       ) {
+        /**
+         * create _expires_at index used for internal soft deletes
+         * ie: we don't actually delete the document, we just set _expires_at to a new Date() object
+         * representing the TTL. Then mongo will automatically delete the document after the TTL expires
+         * so project-wide, we should never directly delete a documentif we want to keep a record of it. ie: hooks like afterDelete
+         */
         await db
           .collection(collection.name)
-          .createIndex({ _deleted_at: 1 }, { expireAfterSeconds: 0 });
+          .createIndex({ _expires_at: 1 }, { expireAfterSeconds: 0 });
       }
     }
     return;
@@ -96,7 +96,7 @@ export async function createIndexes({
     console.log(
       '\x1b[33m%s\x1b[0m',
       `Elegante couldn't create indexes on startup`,
-      new ElegError(ErrorCode.INDEX_CREATION_FAILED, err as object)
+      new EleganteError(ErrorCode.INDEX_CREATION_FAILED, err as object)
     );
   }
 }

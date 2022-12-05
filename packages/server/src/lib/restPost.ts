@@ -1,22 +1,29 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
-  ElegError,
+  query,
+  EleganteError,
   ErrorCode,
   Document,
   InternalHeaders,
   QueryMethod,
+  validateEmail,
+  User,
+  isEmpty,
+  Session,
+  pointer,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
 import { createFindCursor } from './createFindCursor';
 import { createPipeline } from './createPipeline';
-import { ServerParams } from './ElegServer';
-import { parseDoc, parseDocs } from './parseDoc';
+import { ServerParams } from './EleganteServer';
+import { parseDoc, parseDocForInsertion, parseDocs } from './parseDoc';
 import { parseFilter } from './parseFilter';
 import { DocQRL, parseQuery } from './parseQuery';
 import { parseResponse } from './parseResponse';
-import { newObjectId } from './utils/crypto';
+import { newObjectId, newToken } from './utils/crypto';
 import { isUnlocked } from './utils/isUnlocked';
+import { compare } from './utils/password';
 
 export function restPost({
   params,
@@ -25,41 +32,45 @@ export function restPost({
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
+      const collectionName = req.params['collectionName'];
+
       const method = req.header(
         `${params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`
       ) as QueryMethod;
 
       if (!method) {
-        throw new ElegError(ErrorCode.REST_METHOD_REQUIRED, 'Method required');
+        throw new EleganteError(
+          ErrorCode.REST_METHOD_REQUIRED,
+          'Method required'
+        );
       }
 
-      const collectionName = req.params['collectionName'];
-      const query = parseQuery({
+      const docQRL = parseQuery({
         ...req.body,
         collection: collectionName,
       });
 
-      const { filter, collection$ } = query;
+      const { filter, collection$ } = docQRL;
 
       /**
        * find/findOne
        * @todo run beforeFind and afterFind hooks
        */
       if (['find', 'findOne'].includes(method)) {
-        const docs = await postFind(query);
+        const docs = await postFind(docQRL);
         return res
           .status(200)
           .send(
             method === 'findOne'
-              ? await parseDoc(docs[0])(query, params, res.locals)
-              : await parseDocs(docs)(query, params, res.locals)
+              ? await parseDoc(docs[0])(docQRL, params, res.locals)
+              : await parseDocs(docs)(docQRL, params, res.locals)
           );
       } else if (method === 'update') {
         /**
          * update
          * @todo run beforeUpdate and afterUpdate hooks
          */
-        const { cursor, before } = await postUpdate(query);
+        const { cursor, before } = await postUpdate(docQRL);
         if (cursor.ok) {
           const after = cursor.value;
           const afterSaveTrigger = parseResponse(
@@ -82,7 +93,7 @@ export function restPost({
         }
 
         return Promise.reject(
-          new ElegError(
+          new EleganteError(
             ErrorCode.REST_DOCUMENT_NOT_UPDATED,
             'could not update document'
           )
@@ -92,9 +103,9 @@ export function restPost({
          * delete
          * @todo run beforeDeleteTrigger and afterDeleteTrigger
          */
-        const { cursor } = await postDelete(query);
+        const { cursor } = await postDelete(docQRL);
 
-        if (cursor.ok) {
+        if (cursor.ok && cursor.value) {
           const afterDeleteTrigger = parseResponse(
             { doc: cursor.value },
             {
@@ -104,14 +115,16 @@ export function restPost({
           // console.log(afterDeleteTrigger);
           // @todo trigger afterDeleteTrigger
           return res.status(200).send();
+        } else {
+          res
+            .status(404)
+            .json(
+              new EleganteError(
+                ErrorCode.REST_DOCUMENT_NOT_FOUND,
+                'document not found'
+              )
+            );
         }
-
-        return Promise.reject(
-          new ElegError(
-            ErrorCode.REST_DOCUMENT_NOT_DELETED,
-            cursor.lastErrorObject ?? 'could not delete document'
-          )
-        );
       } else if (method === 'count') {
         /**
          * count
@@ -124,17 +137,17 @@ export function restPost({
          * aggregate
          * @todo run beforeAggregate and afterAggregate triggers
          */
-        const docs = await postAggregate(query);
+        const docs = await postAggregate(docQRL);
         return res
           .status(200)
-          .send(await parseDocs(docs)(query, params, res.locals));
+          .send(await parseDocs(docs)(docQRL, params, res.locals));
       } else if (method === 'insert') {
         /**
          * insert new documents
          * @todo run beforeInsert and afterInsert triggers
          */
         const doc = {
-          ...req.body,
+          ...parseDocForInsertion(req.body),
           _id: newObjectId(),
           _created_at: new Date(),
           _updated_at: new Date(),
@@ -153,7 +166,7 @@ export function restPost({
         }
 
         return Promise.reject(
-          new ElegError(
+          new EleganteError(
             ErrorCode.REST_DOCUMENT_NOT_CREATED,
             'could not create document'
           )
@@ -162,9 +175,18 @@ export function restPost({
         /**
          * user sign up
          */
-        postSignup(query);
+        // postSignUp(docQRL);
+      } else if (collectionName === 'User' && method === 'signIn') {
+        /**
+         * user sign in
+         */
+        return postSignIn(
+          docQRL as DocQRL & { email: string; password: string },
+          res
+        );
       } else {
-        throw new ElegError(
+        // console.log(collectionName, method);
+        throw new EleganteError(
           ErrorCode.REST_METHOD_NOT_FOUND,
           'Method not found'
         );
@@ -172,7 +194,7 @@ export function restPost({
     } catch (err) {
       return res
         .status(500)
-        .send(new ElegError(ErrorCode.REST_POST_ERROR, err as object));
+        .send(new EleganteError(ErrorCode.REST_POST_ERROR, err as object));
     }
   };
 }
@@ -215,7 +237,7 @@ async function postDelete(query: DocQRL) {
 
   const cursor = await collection$.findOneAndUpdate(
     parseFilter(filter),
-    { $set: { _deleted_at: new Date() } },
+    { $set: { _expires_at: new Date() } },
     {
       returnDocument: 'after',
       readPreference: 'primary',
@@ -260,4 +282,98 @@ async function postAggregate(query: DocQRL) {
   return docs;
 }
 
-async function postSignup(query: DocQRL) {}
+async function postSignIn(
+  docQRL: DocQRL & { email: string; password: string },
+  res: Response
+) {
+  const { projection, include, exclude } = docQRL;
+
+  /**
+   * validation chain
+   */
+  if (!validateEmail(docQRL.email)) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(ErrorCode.AUTH_INVALID_EMAIL, 'Invalid email address')
+      );
+  } else if (!docQRL.password) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(
+          ErrorCode.AUTH_PASSWORD_INCORRECT,
+          'password incorrect'
+        )
+      );
+  }
+
+  const user = await query<User>('User')
+    .unlock(true)
+    .projection(
+      !isEmpty(projection)
+        ? {
+            ...projection,
+            password: 1,
+          }
+        : {}
+    )
+    .include(include ?? [])
+    .exclude(exclude ?? [])
+    .filter({
+      email: {
+        $eq: docQRL.email,
+      },
+    })
+    .findOne();
+
+  if (!user) {
+    return res
+      .status(404)
+      .json(
+        new EleganteError(ErrorCode.AUTH_INVALID_EMAIL, 'Invalid email address')
+      );
+  }
+
+  if (!(await compare(docQRL.password, user.password ?? ''))) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(
+          ErrorCode.AUTH_PASSWORD_INCORRECT,
+          'password incorrect'
+        )
+      );
+  }
+
+  /**
+   * because we don't want to expose the user password
+   */
+  delete user.password;
+
+  /**
+   * expires in 1 year
+   * @todo make this an option ?
+   */
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+  /**
+   * generate a new session token
+   */
+  const sessionToken = `e:${newToken()}`;
+  const session = await query<Session>('Session')
+    .unlock(true)
+    .insert({
+      user: pointer('User', user.objectId),
+      sessionToken,
+      expiresAt: expiresAt.toISOString(),
+    });
+
+  delete session.updatedAt;
+  delete session.objectId;
+
+  return res.status(201).json({ ...session, user });
+}
+
+// async function postSignUp(query: DocQRL) {}

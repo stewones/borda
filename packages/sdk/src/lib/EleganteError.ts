@@ -2,6 +2,9 @@
 import { stringify } from './utils';
 
 export enum ErrorCode {
+  AUTH_INVALID_EMAIL = -4,
+  AUTH_PASSWORD_INCORRECT = -3,
+  AUTH_EMAIL_NOT_FOUND = -2,
   NETWORK_ERROR = -1,
   INVALID_COLLECTION_NAME = 1,
   INVALID_DOCUMENT = 2,
@@ -24,15 +27,16 @@ export enum ErrorCode {
   REST_POST_ERROR = 801,
   REST_PUT_ERROR = 802,
   REST_DELETE_ERROR = 803,
-  REST_DOCUMENT_NOT_CREATED = 804,
-  REST_DOCUMENT_NOT_UPDATED = 805,
-  REST_DOCUMENT_NOT_DELETED = 806,
-  REST_METHOD_REQUIRED = 807,
-  REST_METHOD_NOT_FOUND = 808,
+  REST_DOCUMENT_NOT_FOUND = 804,
+  REST_DOCUMENT_NOT_CREATED = 805,
+  REST_DOCUMENT_NOT_UPDATED = 806,
+  REST_DOCUMENT_NOT_DELETED = 807,
+  REST_METHOD_REQUIRED = 808,
+  REST_METHOD_NOT_FOUND = 809,
   LIVE_QUERY_INVALID_QUERY_METHOD = 900,
 }
 
-export class ElegError extends Error {
+export class EleganteError extends Error {
   code: ErrorCode;
   /**
    * @param {ErrorCode} code An error code constant from <code>EleganteError</code>.

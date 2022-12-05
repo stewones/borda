@@ -1,7 +1,7 @@
 import { InternalHeaders } from '@elegante/sdk';
 import express, { Application, NextFunction, Request, Response } from 'express';
 
-import { ServerParams } from './ElegServer';
+import { ServerParams } from './EleganteServer';
 import { restDelete } from './restDelete';
 import { restGet } from './restGet';
 import { restPost } from './restPost';

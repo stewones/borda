@@ -6,6 +6,8 @@ export declare interface Document {
   [key: string]: any;
 }
 
+export type DocumentResponse<T extends Document> = number | void | T | T[];
+
 export type DocumentEvent =
   | 'insert'
   | 'update'

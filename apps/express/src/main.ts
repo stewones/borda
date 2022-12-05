@@ -8,6 +8,7 @@ import { createLiveQueryServer, createServer, Version } from '@elegante/server';
 /**
  * server setup
  */
+const debug = true;
 console.time('startup');
 
 /**
@@ -33,7 +34,7 @@ const client = createClient({
   apiKey,
   apiSecret,
   serverURL,
-  debug: true,
+  debug,
 });
 
 /**
@@ -155,8 +156,11 @@ createLiveQueryServer(
   {
     collections: ['_User', 'Sale'],
     port: liveQueryPort,
+    debug: true,
+  },
+  {
+    onLiveQueryConnect: (ws, socket) => {
+      // do whatever you want with websockets here
+    },
   }
-  // {
-  // onLiveQueryConnect: (ws, socket) => {}, // do whatever you want here
-  // }
 );

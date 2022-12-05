@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { ElegServer } from './ElegServer';
+import { EleganteServer } from './EleganteServer';
 export interface CloudJobOptions {
   path?: string;
   name: string;
@@ -37,7 +37,7 @@ export function createJob(
   options: CloudJobOptions,
   fn: (req: Request) => Promise<string | void>
 ): void {
-  const { app } = ElegServer;
+  const { app } = EleganteServer;
   app.post(`/jobs/${options?.path ?? options.name}`, async (req, res) => {
     console.time(`job duration: ${options.name}`);
     try {

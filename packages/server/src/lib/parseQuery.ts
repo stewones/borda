@@ -5,7 +5,7 @@ import {
   DocumentQuery,
   InternalCollectionName,
 } from '@elegante/sdk';
-import { ElegServer } from './ElegServer';
+import { EleganteServer } from './EleganteServer';
 
 export interface DocQRL extends DocumentQuery {
   collection$: Collection<Document>;
@@ -27,7 +27,7 @@ export function parseQuery(from: DocQRLFrom): DocQRL {
     ...from,
   } as DocumentQuery;
 
-  const { db } = ElegServer;
+  const { db } = EleganteServer;
 
   const collection$ = db.collection<Document>(
     InternalCollectionName[collectionName] ?? collectionName

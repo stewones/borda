@@ -1,12 +1,12 @@
 import {
-  ElegError,
+  EleganteError,
   ErrorCode,
   InternalCollectionName,
   Document,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { ElegServer, ServerParams } from './ElegServer';
+import { EleganteServer, ServerParams } from './EleganteServer';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
 
@@ -20,7 +20,7 @@ export function restGet({
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
-      const { db } = ElegServer;
+      const { db } = EleganteServer;
       const { collectionName, objectId } = req.params;
 
       const collection = db.collection<Document>(
@@ -42,7 +42,7 @@ export function restGet({
     } catch (err) {
       return res
         .status(500)
-        .send(new ElegError(ErrorCode.REST_GET_ERROR, err as object));
+        .send(new EleganteError(ErrorCode.REST_GET_ERROR, err as object));
     }
   };
 }

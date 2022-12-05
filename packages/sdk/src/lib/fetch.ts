@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetch as fetcher } from 'cross-fetch';
-import { ElegError, ErrorCode } from './ElegError';
+import { EleganteError, ErrorCode } from './EleganteError';
 import { isServer } from './utils';
 import { Version } from './Version';
 
@@ -43,7 +43,9 @@ export async function fetch<T = any>(
          * is to just shutdown Elegante Server
          * and try to run the Client SDK
          */
-        Promise.reject(new ElegError(ErrorCode.NETWORK_ERROR, err as object));
+        throw new EleganteError(ErrorCode.NETWORK_ERROR, err as object);
+      } else {
+        throw err;
       }
     });
 }

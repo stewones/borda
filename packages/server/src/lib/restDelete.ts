@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
-  ElegError,
+  EleganteError,
   ErrorCode,
   InternalCollectionName,
   Document,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { ElegServer, ServerParams } from './ElegServer';
+import { EleganteServer, ServerParams } from './EleganteServer';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
 
@@ -18,7 +18,7 @@ export function restDelete({
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
-      const { db } = ElegServer;
+      const { db } = EleganteServer;
       const { collectionName, objectId } = req.params;
 
       const collection = db.collection<Document>(
@@ -34,35 +34,37 @@ export function restDelete({
             $eq: objectId,
           },
         },
-        { $set: { _deleted_at: new Date() } },
+        { $set: { _expires_at: new Date() } },
         {
           returnDocument: 'after',
           readPreference: 'primary',
         }
       );
 
-      if (cursor.ok) {
+      if (cursor.ok && cursor.value) {
         const afterDeleteTrigger = parseResponse(
           { doc: cursor.value },
           {
             removeSensitiveFields: !isUnlocked(res.locals),
           }
         );
-        console.log(afterDeleteTrigger);
+        // console.log(afterDeleteTrigger);
         // @todo trigger afterDeleteTrigger
         return res.status(200).send();
+      } else {
+        res
+          .status(404)
+          .json(
+            new EleganteError(
+              ErrorCode.REST_DOCUMENT_NOT_FOUND,
+              'document not found'
+            )
+          );
       }
-
-      return Promise.reject(
-        new ElegError(
-          ErrorCode.REST_DOCUMENT_NOT_DELETED,
-          cursor.lastErrorObject ?? 'could not delete document'
-        )
-      );
     } catch (err) {
       return res
         .status(500)
-        .send(new ElegError(ErrorCode.REST_DELETE_ERROR, err as object));
+        .send(new EleganteError(ErrorCode.REST_DELETE_ERROR, err as object));
     }
   };
 }

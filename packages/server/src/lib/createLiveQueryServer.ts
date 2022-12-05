@@ -1,17 +1,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import WebSocket, { ServerOptions } from 'ws';
+
 import { IncomingMessage } from 'http';
 import { Document, ChangeStreamUpdateDocument } from 'mongodb';
+
 import {
   DocumentLiveQuery,
-  ElegError,
+  DocumentEvent,
+  LiveQueryMessage,
+  EleganteError,
   ErrorCode,
   log,
-  LiveQueryMessage,
-  DocumentEvent,
+  isDate,
+  print,
 } from '@elegante/sdk';
 
-import { ElegServer } from './ElegServer';
+import { EleganteServer } from './EleganteServer';
 import { createPipeline } from './createPipeline';
 import { parseQuery } from './parseQuery';
 import { parseDoc, parseDocs } from './parseDoc';
@@ -19,10 +23,15 @@ import { parseDoc, parseDocs } from './parseDoc';
 export interface LiveQueryServerParams extends ServerOptions {
   collections: string[]; // allowed collections
   port: number;
+  debug?: boolean;
 }
 
 export interface LiveQueryServerEvents {
-  onLiveQueryConnect: (ws: WebSocket, incoming: IncomingMessage) => void;
+  onLiveQueryConnect: (
+    ws: WebSocket,
+    incoming: IncomingMessage
+    // connections?: Map<WebSocket, any> // not sure yet
+  ) => void;
 }
 
 /**
@@ -31,6 +40,7 @@ export interface LiveQueryServerEvents {
  * @export
  * @param {LiveQueryServerParams} options
  * @param {LiveQueryServerEvents} [events={
+ *     // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-function
  *     onLiveQueryConnect: () => {},
  *   }]
  */
@@ -41,20 +51,43 @@ export function createLiveQueryServer(
     onLiveQueryConnect: () => {},
   }
 ) {
+  const { debug } = options;
+
+  const connections = new Map();
+
   const { onLiveQueryConnect } = events;
 
-  const wss = new WebSocket.Server(options, () =>
-    log(`LiveQuery running on port ${options.port}`)
-  );
-
-  // const clients = new Map();
+  const wss = new WebSocket.Server(options, () => {
+    if (debug) {
+      print(`LiveQuery running on port ${options.port}`, connections.values());
+    }
+  });
 
   wss.on('close', () => {
-    log('LiveQuery connection closed');
+    {
+      if (debug) {
+        print('LiveQuery connection closed', connections.values());
+      }
+    }
   });
 
   wss.on('connection', (ws: WebSocket, incoming: IncomingMessage) => {
-    log('LiveQuery connection open');
+    if (debug) {
+      print('LiveQuery connection open', connections.values());
+    }
+    ws.on('close', () => {
+      if (debug) {
+        print('LiveQuery connection closed', connections.values());
+      }
+
+      connections.delete(ws);
+    });
+
+    // add connection identifier to metadata
+    // this is for multicasting. not sure yet.
+    const addr = incoming.socket.remoteAddress;
+    const metadata = { addr };
+    connections.set(ws, metadata);
 
     const { headers } = incoming;
 
@@ -82,11 +115,14 @@ export function createLiveQueryServer(
     // extract session token from protocols
     const protocolsArray = protocols ? protocols.split(',') : [];
 
-    if (protocolsArray[0] !== ElegServer.params.apiKey) {
+    if (protocolsArray[0] !== EleganteServer.params.apiKey) {
       /**
        * throw an error log so we can know if someone is trying to connect to the live query server
        */
-      console.log(new ElegError(ErrorCode.INVALID_API_KEY, 'Invalid API Key'));
+      console.log(
+        new EleganteError(ErrorCode.INVALID_API_KEY, 'Invalid API Key')
+      );
+      ws.close();
       return wss.close(); // close connection
     }
 
@@ -102,23 +138,13 @@ export function createLiveQueryServer(
      * by themselves to make sure the query is safe
      */
 
-    // add connection identifier to metadata
-    // this is for multicasting. not sure yet.
-    // const connection = newObjectId();
-    // const metadata = { connection };
-    // clients.set(ws, metadata);
     // callback to the consumer
-    onLiveQueryConnect(ws, incoming);
+    onLiveQueryConnect(ws, incoming /*, connections*/);
 
     /**
      * handle incoming query messages
      */
     ws.on('message', (queryAsString: string) => {
-      ws.on('close', () => {
-        log('LiveQuery connection closed');
-        // clients.delete(ws);
-      });
-
       // queryAsString = queryAsString.slice(0, 2048); // ?? max message length will be 2048
       const query: DocumentLiveQuery = JSON.parse(queryAsString);
       const { collection, method, event } = query;
@@ -128,12 +154,13 @@ export function createLiveQueryServer(
        */
       if (!options.collections.includes(collection)) {
         console.log(
-          new ElegError(
+          new EleganteError(
             ErrorCode.COLLECTION_NOT_ALLOWED,
             'Collection not allowed'
           )
         );
         // close connection
+        connections.delete(ws);
         return ws.close(1008, 'Collection not allowed');
       }
 
@@ -141,18 +168,24 @@ export function createLiveQueryServer(
        * resolve the query in realtime or only once
        */
       if (method === 'on') {
-        handleOn(query, ws, event ?? 'update');
+        handleOn(query, ws, event ?? 'update', connections);
       } else if (method === 'once') {
         handleOnce(query, ws);
+        connections.delete(ws);
+        ws.close();
       } else {
         console.log(
-          new ElegError(
+          new EleganteError(
             ErrorCode.LIVE_QUERY_INVALID_QUERY_METHOD,
             'Invalid query method'
           )
         );
         // close connection
+        connections.delete(ws);
         return ws.close(1008, 'Invalid query method');
+      }
+      if (debug) {
+        print('LiveQuery connections', connections.values());
       }
     });
   });
@@ -189,18 +222,21 @@ function addFullDocumentPrefix(obj: any | Array<any>) {
 function handleOn(
   rawQuery: DocumentLiveQuery,
   ws: WebSocket,
-  event: DocumentEvent
+  requestedEvent: DocumentEvent,
+  connections: Map<WebSocket, any>
+  // incoming: IncomingMessage,
+  //
 ) {
   const { filter, pipeline, projection, collection } = rawQuery;
 
-  const task = ElegServer.db.collection(collection);
+  const task = EleganteServer.db.collection(collection);
 
   const stream = task.watch(
     [
       {
         $match: {
           operationType: {
-            $in: [event],
+            $in: [requestedEvent === 'delete' ? 'update' : requestedEvent],
           },
         },
       },
@@ -211,13 +247,6 @@ function handleOn(
           projection: projection ?? {},
         })
       ),
-      // {
-      //   $match: {
-      //     ['fullDocument._p_product']: {
-      //       $eq: 'Product$MCU8z2gBoM',
-      //     },
-      //   },
-      // },
     ],
     {
       fullDocument: 'updateLookup',
@@ -227,12 +256,14 @@ function handleOn(
   stream.on('error', (err) => {
     log('stream error', err); // @todo doc this
     // close websocket connection with stream error
+    connections.delete(ws);
     ws.close(1008, err.toString());
     stream.close();
   });
 
   stream.on('close', () => {
     log('stream closed');
+    connections.delete(ws);
     ws.close(1008, 'stream closed');
   });
 
@@ -245,44 +276,58 @@ function handleOn(
     const { updatedFields, removedFields, truncatedArrays } =
       updateDescription ?? {};
 
-    let message: LiveQueryMessage | ChangeStreamUpdateDocument;
+    // console.log('stream change', change);
 
-    if (['insert', 'replace', 'update'].includes(operationType)) {
-      /**
-       * check if it's deleted
-       */
-      if (fullDocument && fullDocument['_deleted_at']) {
+    let message: LiveQueryMessage | ChangeStreamUpdateDocument | undefined =
+      undefined;
+
+    /**
+     * check if it's deleted
+     */
+    const isDeleted =
+      requestedEvent === 'delete' &&
+      fullDocument &&
+      fullDocument['_expires_at'] &&
+      isDate(fullDocument['_expires_at']);
+
+    if (isDeleted) {
+      message = {
+        doc: await parseDoc(fullDocument)(rawQuery, EleganteServer.params, {}),
+      };
+    } else if (
+      operationType === requestedEvent &&
+      ['insert', 'replace', 'update'].includes(operationType)
+    ) {
+      message = {
+        doc: await parseDoc(fullDocument)(rawQuery, EleganteServer.params, {}),
+        updatedFields,
+        removedFields,
+        truncatedArrays,
+      };
+    } else if (!['delete'].includes(operationType)) {
+      if (operationType === requestedEvent) {
         message = {
-          doc: await parseDoc(fullDocument)(rawQuery, ElegServer.params, {}),
-        };
-      } else {
-        message = {
-          doc: await parseDoc(fullDocument)(rawQuery, ElegServer.params, {}),
-          updatedFields,
-          removedFields,
-          truncatedArrays,
+          ...change,
         };
       }
-    } else {
-      message = {
-        ...change,
-      };
     }
 
     /**
      * send the message over the wire to the client
      */
-    if (operationType === event) {
-      // console.log(change);
+    if (message) {
       ws.send(JSON.stringify(message));
-    }
+      // example for multicasting
 
-    // example for multicasting
-    // const metadata = clients.get(ws);
-    // [...clients.keys()].forEach((client) => {
-    //   console.log('client', client.metadata);
-    //   client.send(JSON.stringify(message));
-    // });
+      // [...connections.keys()].forEach((ws) => {
+      //   const metadata = connections.get(ws);
+      //   console.log('metadata', metadata);
+
+      //   if (metadata.addr === incoming.socket.remoteAddress) {
+      //     ws.send(JSON.stringify(message));
+      //   }
+      // });
+    }
   });
 }
 
@@ -329,7 +374,7 @@ async function handleOnce(rawQuery: DocumentLiveQuery, ws: WebSocket) {
    * send the message over the wire to the client
    */
   const message: LiveQueryMessage = {
-    docs: await parseDocs(docs)(query, ElegServer.params, {}),
+    docs: await parseDocs(docs)(query, EleganteServer.params, {}),
   };
 
   ws.send(JSON.stringify(message));

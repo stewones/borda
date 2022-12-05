@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { ElegServer } from './ElegServer';
+import { EleganteServer } from './EleganteServer';
 
 export interface CloudFunctionOptions {
   isPublic?: boolean;
@@ -38,7 +38,7 @@ export function createFunction(
   options: CloudFunctionOptions,
   fn: (req: Request, res: Response) => Promise<void>
 ): void {
-  const { app } = ElegServer;
+  const { app } = EleganteServer;
   app.post(
     `/functions/${options?.path ?? options.name}`,
     handlePublicRoute(options),

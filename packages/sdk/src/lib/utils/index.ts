@@ -1,5 +1,6 @@
 export * from './delay';
 export * from './isISODate';
+export * from './isDate';
 export * from './isServer';
 export * from './isPointer';
 export * from './isEmpty';
@@ -10,3 +11,4 @@ export * from './objectFieldsCreated';
 export * from './objectFieldsUpdated';
 export * from './get';
 export * from './getPointer';
+export * from './validateEmail';

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
-  ElegError,
+  EleganteError,
   ErrorCode,
   InternalCollectionName,
   Document,
@@ -9,7 +9,7 @@ import {
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { ElegServer, ServerParams } from './ElegServer';
+import { EleganteServer, ServerParams } from './EleganteServer';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
 
@@ -20,7 +20,7 @@ export function restPut({
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
-      const { db } = ElegServer;
+      const { db } = EleganteServer;
       const { collectionName, objectId } = req.params;
 
       const collection = db.collection<Document>(
@@ -74,7 +74,7 @@ export function restPut({
       }
 
       return Promise.reject(
-        new ElegError(
+        new EleganteError(
           ErrorCode.REST_DOCUMENT_NOT_UPDATED,
           cursor.lastErrorObject ?? 'coud not update document'
         )
@@ -82,7 +82,7 @@ export function restPut({
     } catch (err) {
       return res
         .status(500)
-        .send(new ElegError(ErrorCode.REST_PUT_ERROR, err as object));
+        .send(new EleganteError(ErrorCode.REST_PUT_ERROR, err as object));
     }
   };
 }

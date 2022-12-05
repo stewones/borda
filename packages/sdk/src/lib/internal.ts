@@ -2,6 +2,7 @@ export const InternalHeaders = {
   apiSecret: 'Api-Secret',
   apiKey: 'Api-Key',
   apiMethod: 'Api-Method',
+  apiSession: 'Api-Session',
 };
 
 export const InternalCollectionName: {
@@ -16,9 +17,12 @@ export const InternalCollectionName: {
 export const InternalFieldName: {
   [key: string]: string;
 } = {
+  objectId: '_id',
   createdAt: '_created_at',
   updatedAt: '_updated_at',
-  objectId: '_id',
+  expiresAt: '_expires_at',
+  sessionToken: '_session_token',
+  password: '_hashed_password',
 };
 
 /**
@@ -31,15 +35,17 @@ export const InternalSensitiveFields = [
   /**
    * elegante fields
    */
-  '_deleted_at',
+  '_expires_at',
+  '_session_token',
+  '_hashed_password',
   /**
    * Parse-Server fields
-   * we don't want to expose these fields as they do
+   * we don't want to expose these fields in any way
    * et elegante we agree that this kind of feature needs to be
    * implemented as a plugin to keep the core lean and fast
    **/
   '_acl',
-  '_hashed_password',
   '_wperm',
   '_rperm',
+  '_auth_data_MagicAuth',
 ];

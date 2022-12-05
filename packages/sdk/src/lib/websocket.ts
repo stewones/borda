@@ -1,4 +1,4 @@
-import { ElegClient } from './ElegClient';
+import { EleganteClient } from './EleganteClient';
 
 export interface WebSocketCallback {
   onConnect: (ws: WebSocket) => void;
@@ -13,7 +13,7 @@ export function webSocketServer(socketURL: string) {
     const { onConnect, onOpen, onError, onClose, onMessage } = callback;
 
     const ws = new WebSocket(socketURL, [
-      `${ElegClient.params.apiKey}`,
+      `${EleganteClient.params.apiKey}`,
       `sessionToken`, // @todo send sessionToken over the wire to also validade the ws connection
     ]);
 
@@ -32,7 +32,7 @@ export function webSocketServer(socketURL: string) {
 }
 
 export function getUrl() {
-  const serverURL = ElegClient.params.serverURL;
+  const serverURL = EleganteClient.params.serverURL;
 
   // replace port with socket port
   const socketURLWithPort = serverURL.replace(/:(\d+)/, `:3136`);
@@ -46,8 +46,8 @@ export function getUrl() {
   const socketURLWithMount =
     socketProtocol + socketURLWithPort.replace(/https?:\/\//, '');
 
-  const socketURL = ElegClient.params.liveQueryServerURL
-    ? ElegClient.params.liveQueryServerURL
+  const socketURL = EleganteClient.params.liveQueryServerURL
+    ? EleganteClient.params.liveQueryServerURL
     : socketURLWithMount.replace(/\/[^/]*$/, '');
 
   return socketURL;

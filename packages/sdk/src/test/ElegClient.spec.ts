@@ -1,7 +1,7 @@
-import { ElegClient } from '../lib/ElegClient';
+import { EleganteClient } from '../lib/EleganteClient';
 
-describe('ElegClient', () => {
+describe('EleganteClient', () => {
   it('should be defined', () => {
-    expect(ElegClient).toBeDefined();
+    expect(EleganteClient).toBeDefined();
   });
 });

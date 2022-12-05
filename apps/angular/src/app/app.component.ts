@@ -1,5 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+} from '@angular/core';
 import {
   FormControl,
   FormGroup,
@@ -8,15 +12,15 @@ import {
   Validators,
 } from '@angular/forms';
 
-import { createClient, query } from '@elegante/sdk';
-import { map, Subject, takeUntil, tap } from 'rxjs';
+import { createClient, query, Auth, Session } from '@elegante/sdk';
+import { from, map, of, Subject, Subscription, takeUntil, tap } from 'rxjs';
 
 console.time('startup');
 
 const client = createClient({
   apiKey: 'ELEGANTE_SERVER',
   serverURL: 'http://localhost:3135/server',
-  debug: true,
+  debug: false,
 });
 
 interface Sale {
@@ -26,8 +30,9 @@ interface Sale {
 
 @Component({
   standalone: true,
+  selector: 'elegante-app',
   imports: [CommonModule, FormsModule, ReactiveFormsModule],
-  selector: 'elegante-root',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [
     `
       form {
@@ -46,13 +51,29 @@ interface Sale {
     `,
   ],
   template: `
-    <button (click)="increase()" *ngIf="totalOnce$ | async">
-      Increase Total:
-      {{ (total$ | async) ?? total }}
+    <button
+      (click)="increase()"
+      *ngIf="totalOnce$ | async"
+      title="click to increase the counter. which should reflect here in realtime if subscribed. experiment open many tabs at same time and see the changes reflect."
+    >
+      Increase count (realtime):
+      {{ total }}
     </button>
-    <button (click)="reload()">Next Total: {{ total }}</button>
-    <button (click)="unsubscribe()">Unsubscribe Realtime</button>
-    <button (click)="subscribe()">Subscribe Realtime</button>
+    <button (click)="reload()" title="click to refresh the page">
+      Next Total (local): {{ totalNext }}
+    </button>
+    <button
+      (click)="unsubscribe()"
+      title="click to unsubscribe all subscriptions"
+    >
+      Unsubscribe Realtime
+    </button>
+    <button
+      (click)="subscribe()"
+      title="click to re-subscribe all subscriptions"
+    >
+      Re-subscribe Realtime
+    </button>
 
     <h2>Sign Up</h2>
     <form [formGroup]="signUpForm" (ngSubmit)="signUp()">
@@ -75,29 +96,35 @@ interface Sale {
       <input id="password" type="text" formControlName="password" />
       <button type="submit" [disabled]="signInForm.invalid">Login</button>
     </form>
+    {{ error | json }} {{ session | json }}
   `,
 })
 export class AppComponent {
-  unsubscribe$ = new Subject<void>();
-
-  // total once + realtime
   total = 0;
-  total$ = this.realtime$();
+  totalNext = 0;
 
-  // total once
-  totalOnce$ = query<Sale>()
-    .collection('Sale')
-    .filter({
-      objectId: {
-        $eq: 'kpg5YGSEBn',
-      },
-    })
-    .once()
-    .pipe(
-      map(({ docs }) => docs && docs[0]),
-      map((sale) => sale?.total ?? 0),
-      tap((total) => (this.total = total))
-    );
+  unsubscribe$ = new Subject<void>();
+  subscription$: { [key: string]: Subscription } = {};
+
+  // total once query
+  totalOnce$ = from(
+    query<Sale>()
+      .collection('Sale')
+      .filter({
+        objectId: {
+          $eq: 'kpg5YGSEBn',
+        },
+      })
+      .findOne()
+  ).pipe(
+    // map(({ docs }) => docs && docs[0]),
+    map((sale) => sale?.total ?? 0),
+    tap((total) => {
+      this.total = total;
+      this.totalNext = total;
+    }),
+    tap(() => this.cdr.markForCheck())
+  );
 
   signUpForm = new FormGroup({
     name: new FormControl('', [Validators.required]),
@@ -110,39 +137,73 @@ export class AppComponent {
     password: new FormControl('', [Validators.required]),
   });
 
-  constructor() {
+  session: Session | undefined = undefined;
+
+  error: any;
+
+  constructor(private cdr: ChangeDetectorRef) {
     client.ping().then(() => console.timeEnd('startup'));
   }
 
   ngOnDestroy() {}
-  ngOnInit() {}
 
-  realtime$() {
-    return query<Sale>()
-      .collection('Sale')
+  ngOnInit() {
+    this.subscribe();
+  }
+
+  // realtime$() {
+  //   return query<Sale>()
+  //     .collection('Sale')
+  //     .filter({
+  //       objectId: {
+  //         $eq: 'kpg5YGSEBn',
+  //       },
+  //     })
+  //     .on('update')
+  //     .pipe(
+  //       takeUntil(this.unsubscribe$),
+  //       map(({ doc }) => doc?.total ?? 0),
+  //       tap((total) => (this.total = total)),
+  //       tap(() => this.cdr.markForCheck())
+  //     );
+  // }
+
+  subscribe() {
+    this.unsubscribe();
+    this.subscription$['update'] = query<Sale>('Sale')
       .filter({
         objectId: {
           $eq: 'kpg5YGSEBn',
         },
       })
       .on('update')
-      .pipe(
-        map(({ doc }) => doc?.total ?? 0),
-        takeUntil(this.unsubscribe$)
-      );
-  }
+      .subscribe(({ doc }) => {
+        const newTotal = doc?.total ?? 0;
+        console.log('doc update', doc);
+        if (newTotal > 0 && this.total !== newTotal) {
+          this.total = doc?.total ?? 0;
+          this.cdr.markForCheck();
+        }
+      });
 
-  subscribe() {
-    this.unsubscribe();
-    this.total$ = this.realtime$();
+    // this.subscription$['insert'] = query('Sale')
+    //   .on('insert')
+    //   .subscribe(({ doc }) => console.log('inserted new doc', doc));
+
+    // this.subscription$['delete'] = query('Sale')
+    //   .on('delete')
+    //   .subscribe(({ doc, ...rest }) => console.log('deleted doc', doc, rest));
   }
 
   unsubscribe() {
-    this.unsubscribe$.next();
+    for (const key in this.subscription$) {
+      this.subscription$[key].unsubscribe();
+    }
   }
 
   increase() {
-    ++this.total;
+    this.totalNext = this.totalNext + 1;
+    this.cdr.markForCheck();
     query<{
       objectId: string;
       total: number;
@@ -154,7 +215,7 @@ export class AppComponent {
         },
       })
       .update({
-        total: this.total,
+        total: this.totalNext,
       });
   }
 
@@ -163,9 +224,52 @@ export class AppComponent {
   }
 
   signUp() {
+    // Auth.signUp(name, email, password);
+
     const form = this.signUpForm.getRawValue();
-    console.log(form);
+    console.log('@todo', form);
   }
 
-  signIn() {}
+  async signIn() {
+    const { email, password } = this.signInForm.getRawValue();
+    try {
+      const response = await Auth.signIn(email as string, password as string, {
+        projection: {
+          name: 1,
+          email: 1,
+        },
+      });
+
+      const { user, sessionToken, ...rest } = response;
+
+      // stores the session object the way you need if you want
+      // but it's not needed if you just want to grab
+      // the current user in session, you can just
+      //
+      // import { Auth } from '@elegante/sdk';
+      // Auth.current().then(({user, sessionToken, ...rest}) => {
+      //   console.log(user, sessionToken, ...rest);
+      // });
+      //
+      // the session is automatically loaded once the client is configured
+      // but if you ever need to switch user sessions you can
+      //
+      // import { Auth } from '@elegante/sdk';
+      // Auth.become('session-token').then(({user, sessionToken, ...rest}) => {
+      //   console.log(user, sessionToken, ...rest);
+      // });
+
+      this.session = response;
+      this.error = {};
+      this.cdr.markForCheck();
+    } catch (err) {
+      console.error(err);
+      this.error = err;
+      this.cdr.markForCheck();
+    }
+  }
+
+  signBecome() {
+    // Auth.become(token);
+  }
 }
