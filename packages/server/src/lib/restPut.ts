@@ -6,6 +6,9 @@ import {
   Document,
   objectFieldsUpdated,
   objectFieldsCreated,
+  ExternalCollectionName,
+  InternalFieldName,
+  ExternalFieldName,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
@@ -26,6 +29,48 @@ export function restPut({
       const collection = db.collection<Document>(
         InternalCollectionName[collectionName] ?? collectionName
       );
+
+      const payload = {
+        ...req.body,
+        _updated_at: new Date(),
+      };
+
+      /**
+       * can't delete to any of the reserved collections if not unlocked
+       */
+      const reservedCollections = [
+        ...Object.keys(InternalCollectionName),
+        ...Object.keys(ExternalCollectionName),
+      ];
+
+      if (
+        !isUnlocked(res.locals) &&
+        reservedCollections.includes(collectionName)
+      ) {
+        return res
+          .status(405)
+          .json(
+            new EleganteError(
+              ErrorCode.COLLECTION_NOT_ALLOWED,
+              `You can't put on collection ${collectionName} because it's reserved`
+            )
+          );
+      }
+
+      /**
+       * ensure each internal/external field is deleted from the user payload
+       * if session is not unlocked
+       */
+      const reservedFields = [
+        ...Object.keys(InternalFieldName),
+        ...Object.keys(ExternalFieldName),
+      ];
+
+      if (!isUnlocked(res.locals)) {
+        reservedFields.forEach((field) => {
+          delete payload[field];
+        });
+      }
 
       /**
        * @todo run beforeUpdate and afterUpdate hooks
@@ -48,10 +93,7 @@ export function restPut({
           },
         },
         {
-          $set: {
-            ...req.body,
-            _updated_at: new Date(),
-          },
+          $set: payload,
         },
         { returnDocument: 'after', readPreference: 'primary' }
       );
@@ -69,7 +111,7 @@ export function restPut({
             removeSensitiveFields: !isUnlocked(res.locals),
           }
         );
-        console.log(afterSaveTrigger);
+        // console.log(afterSaveTrigger);
         return res.status(200).send();
       }
 

@@ -1,25 +1,26 @@
 import { CommonModule } from '@angular/common';
+
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
 } from '@angular/core';
+
 import {
   FormControl,
   FormGroup,
   FormsModule,
   ReactiveFormsModule,
-  Validators,
 } from '@angular/forms';
 
-import { createClient, query, Auth, Session } from '@elegante/sdk';
-import { from, map, of, Subject, Subscription, takeUntil, tap } from 'rxjs';
+import { createClient, query, Auth, Session, runFunction } from '@elegante/sdk';
+import { map, Subject, Subscription, tap } from 'rxjs';
 
 console.time('startup');
 
 const client = createClient({
   apiKey: 'ELEGANTE_SERVER',
-  serverURL: 'http://localhost:3135/server',
+  serverURL: 'http://localhost:1337/server',
   debug: false,
 });
 
@@ -74,7 +75,7 @@ interface Sale {
     >
       Re-subscribe Realtime
     </button>
-
+    <br />
     <h2>Sign Up</h2>
     <form [formGroup]="signUpForm" (ngSubmit)="signUp()">
       <label for="name">name: </label>
@@ -87,16 +88,33 @@ interface Sale {
         Create Account
       </button>
     </form>
+    <hr />
+    Error: {{ (signUpError | json) ?? '' }}
+    <hr />
+    <br />
+    <ng-container *ngIf="!session">
+      <h2>Sign In</h2>
+      <form [formGroup]="signInForm" (ngSubmit)="signIn()">
+        <label for="email">email </label>
+        <input id="email" type="text" formControlName="email" />
+        <label for="password">password: </label>
+        <input id="password" type="text" formControlName="password" />
+        <button type="submit" [disabled]="signInForm.invalid">
+          Login Account
+        </button>
+      </form>
+    </ng-container>
 
-    <h2>Sign In</h2>
-    <form [formGroup]="signInForm" (ngSubmit)="signIn()">
-      <label for="email">email </label>
-      <input id="email" type="text" formControlName="email" />
-      <label for="password">password: </label>
-      <input id="password" type="text" formControlName="password" />
-      <button type="submit" [disabled]="signInForm.invalid">Login</button>
-    </form>
-    {{ error | json }} {{ session | json }}
+    <button *ngIf="session">
+      Logout from {{ session.user.name }} ({{ session.user.email }})
+    </button>
+
+    <hr />
+
+    Error: {{ (signInError | json) ?? '' }}
+    <hr />
+    Session: {{ (session | json) ?? '' }}
+    <hr />
   `,
 })
 export class AppComponent {
@@ -107,39 +125,38 @@ export class AppComponent {
   subscription$: { [key: string]: Subscription } = {};
 
   // total once query
-  totalOnce$ = from(
-    query<Sale>()
-      .collection('Sale')
-      .filter({
-        objectId: {
-          $eq: 'kpg5YGSEBn',
-        },
-      })
-      .findOne()
-  ).pipe(
-    // map(({ docs }) => docs && docs[0]),
-    map((sale) => sale?.total ?? 0),
-    tap((total) => {
-      this.total = total;
-      this.totalNext = total;
-    }),
-    tap(() => this.cdr.markForCheck())
-  );
+  totalOnce$ = query<Sale>('Sale')
+    .filter({
+      objectId: {
+        $eq: 'kpg5YGSEBn',
+      },
+    })
+    .once()
+    .pipe(
+      map(({ docs }) => docs && docs[0]),
+      map((sale) => sale?.total ?? 0),
+      tap((total) => {
+        this.total = total;
+        this.totalNext = total;
+      }),
+      tap(() => this.cdr.markForCheck())
+    );
 
   signUpForm = new FormGroup({
-    name: new FormControl('', [Validators.required]),
-    email: new FormControl('', [Validators.email]),
-    password: new FormControl('', [Validators.required]),
+    name: new FormControl(''),
+    email: new FormControl(''),
+    password: new FormControl(''),
   });
 
   signInForm = new FormGroup({
-    email: new FormControl('', [Validators.required]),
-    password: new FormControl('', [Validators.required]),
+    email: new FormControl(''),
+    password: new FormControl(''),
   });
 
   session: Session | undefined = undefined;
 
-  error: any;
+  signInError: any;
+  signUpError: any;
 
   constructor(private cdr: ChangeDetectorRef) {
     client.ping().then(() => console.timeEnd('startup'));
@@ -149,24 +166,10 @@ export class AppComponent {
 
   ngOnInit() {
     this.subscribe();
+    runFunction('getLatestUsers')
+      .then((users) => console.log('getLatestUsers', users))
+      .catch((err) => console.log(err));
   }
-
-  // realtime$() {
-  //   return query<Sale>()
-  //     .collection('Sale')
-  //     .filter({
-  //       objectId: {
-  //         $eq: 'kpg5YGSEBn',
-  //       },
-  //     })
-  //     .on('update')
-  //     .pipe(
-  //       takeUntil(this.unsubscribe$),
-  //       map(({ doc }) => doc?.total ?? 0),
-  //       tap((total) => (this.total = total)),
-  //       tap(() => this.cdr.markForCheck())
-  //     );
-  // }
 
   subscribe() {
     this.unsubscribe();
@@ -186,13 +189,13 @@ export class AppComponent {
         }
       });
 
-    // this.subscription$['insert'] = query('Sale')
-    //   .on('insert')
-    //   .subscribe(({ doc }) => console.log('inserted new doc', doc));
+    this.subscription$['insert'] = query('Sale')
+      .on('insert')
+      .subscribe(({ doc }) => console.log('inserted new doc', doc));
 
-    // this.subscription$['delete'] = query('Sale')
-    //   .on('delete')
-    //   .subscribe(({ doc, ...rest }) => console.log('deleted doc', doc, rest));
+    this.subscription$['delete'] = query('Sale')
+      .on('delete')
+      .subscribe(({ doc, ...rest }) => console.log('deleted doc', doc, rest));
   }
 
   unsubscribe() {
@@ -207,8 +210,7 @@ export class AppComponent {
     query<{
       objectId: string;
       total: number;
-    }>()
-      .collection('Sale')
+    }>('Sale')
       .filter({
         objectId: {
           $eq: 'kpg5YGSEBn',
@@ -223,11 +225,48 @@ export class AppComponent {
     window.location.reload();
   }
 
-  signUp() {
-    // Auth.signUp(name, email, password);
+  async signUp() {
+    const { name, email, password } = this.signUpForm.getRawValue();
+    try {
+      const response = await Auth.signUp(
+        name as string,
+        email as string,
+        password as string,
+        {
+          projection: {
+            name: 1,
+            email: 1,
+          },
+        }
+      );
 
-    const form = this.signUpForm.getRawValue();
-    console.log('@todo', form);
+      const { user, sessionToken, ...rest } = response;
+
+      // stores the session object the way you need if you want
+      // but it's not needed if you just want to grab
+      // the current user in session, you can just
+      //
+      // import { Auth } from '@elegante/sdk';
+      // Auth.current().then(({user, sessionToken, ...rest}) => {
+      //   console.log(user, sessionToken, ...rest);
+      // });
+      //
+      // the session is automatically loaded once the client is configured
+      // but if you ever need to switch user sessions you can
+      //
+      // import { Auth } from '@elegante/sdk';
+      // Auth.become('session-token').then(({user, sessionToken, ...rest}) => {
+      //   console.log(user, sessionToken, ...rest);
+      // });
+
+      this.session = response;
+      this.signUpError = {};
+      this.cdr.markForCheck();
+    } catch (err) {
+      console.error(err);
+      this.signUpError = err;
+      this.cdr.markForCheck();
+    }
   }
 
   async signIn() {
@@ -260,11 +299,11 @@ export class AppComponent {
       // });
 
       this.session = response;
-      this.error = {};
+      this.signInError = undefined;
       this.cdr.markForCheck();
     } catch (err) {
       console.error(err);
-      this.error = err;
+      this.signInError = err;
       this.cdr.markForCheck();
     }
   }

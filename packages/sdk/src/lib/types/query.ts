@@ -8,6 +8,10 @@ export declare interface Document {
 
 export type DocumentResponse<T extends Document> = number | void | T | T[];
 
+/**
+ * learn more
+ * https://www.mongodb.com/docs/manual/reference/change-events/
+ */
 export type DocumentEvent =
   | 'insert'
   | 'update'
@@ -26,41 +30,39 @@ export type DocumentEvent =
 
 export interface DocumentQuery<T = Document> {
   filter: FilterOperations<T> | undefined;
-  limit?: number | undefined;
-  skip?: number | undefined;
-  sort?: Sort | undefined;
-  projection?: T | undefined;
-  // method?: QueryMethod | null; // this can't be passed in here, we need to use headers. same to the unlock thing.
+  limit: number;
+  skip: number;
+  sort: Record<string, SortDirection>;
+  projection?: T;
   options?: FindOptions | undefined;
   pipeline?: Document[];
-  include?: string[];
-  exclude?: string[];
+  include: string[];
+  exclude: string[];
   doc?: Document;
   collection?: string;
 }
 
 export declare type QueryMethod =
-  | 'find'
-  | 'findOne'
-  | 'update'
-  | 'insert'
-  | 'delete'
-  | 'count'
+  | 'insert' // 🙆‍♀️
+  | 'find' // 🙆‍♀️
+  | 'findOne' // 🙆‍♀️ can be queryable or straight up to the point with rest get
+  | 'get' // 🙆‍♀️
+  | 'update' // 🙆‍♀️ can be queryable or straight up to the point with rest put
+  | 'put' // 🙆‍♀️
+  | 'remove' // 🙆‍♀️ queryable similiar to find but deletes documents
+  | 'delete' // 🙆‍♀️ rest delete
+  | 'count' // 🙆‍♀️
   | 'aggregate'
+
   // user related
   | 'signUp'
-  | 'signIn'
+  | 'signIn' // 🙆‍♀️
 
-  // @todo
+  // @todo ??
   | 'findOneAndReplace';
 
 export declare interface Query<TSchema = Document> {
   params: { [key: string]: any };
-
-  /**
-   * set a mongo collection name for this query
-   */
-  collection(name: string): Query<TSchema>;
 
   /**
    * project 1st level fields for this query
@@ -113,13 +115,17 @@ export declare interface Query<TSchema = Document> {
 
   /**
    * find a document using mongo-like queries
+   * or direclty by passing its objectId
    */
   findOne(options?: FindOptions): Promise<TSchema | void>;
+  findOne(objectId: string): Promise<TSchema | void>;
 
   /**
    * update a document using mongo-like queries
+   * or direclty by passing its objectId
    */
-  update(doc: Document): Promise<TSchema | void>;
+  update(doc: Document): Promise<void>;
+  update(objectId: string, doc?: Document): Promise<void>;
 
   /**
    * insert a document
@@ -128,8 +134,10 @@ export declare interface Query<TSchema = Document> {
 
   /**
    * delete a document using mongo-like queries
+   * or direclty by passing its objectId
    */
-  delete(): Promise<TSchema | void>;
+  delete(): Promise<void>;
+  delete(objectId: string): Promise<void>;
 
   /**
    * count documents using mongo-like queries
@@ -147,7 +155,8 @@ export declare interface Query<TSchema = Document> {
   run(
     method: QueryMethod,
     options?: FindOptions,
-    doc?: Document
+    doc?: Document,
+    objectId?: string
   ): Promise<number | TSchema | TSchema[] | Document[] | void>;
 
   /**

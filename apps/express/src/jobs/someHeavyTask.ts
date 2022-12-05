@@ -1,4 +1,4 @@
-import { delay } from '@elegante/sdk';
+import { delay, print } from '@elegante/sdk';
 import { createJob } from '@elegante/server';
 
 createJob(
@@ -7,9 +7,9 @@ createJob(
     path: 'some/inner/:routeParam', // not required
   },
   async (req) => {
-    console.log('executing someHeavyTask', 'body', req.params.routeParam || {});
+    print('executing someHeavyTask', 'body', req.params.routeParam || {});
     await delay(10000);
-    console.log('someHeavyTask done');
+    print('someHeavyTask done');
     return Promise.resolve('someHeavyTask done');
   }
 );

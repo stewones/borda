@@ -35,7 +35,7 @@ export function getUrl() {
   const serverURL = EleganteClient.params.serverURL;
 
   // replace port with socket port
-  const socketURLWithPort = serverURL.replace(/:(\d+)/, `:3136`);
+  const socketURLWithPort = serverURL.replace(/:(\d+)/, `:1338`);
 
   // replace http:// or https:// with ws:// or wss://
   const socketProtocol = socketURLWithPort.startsWith('https://')

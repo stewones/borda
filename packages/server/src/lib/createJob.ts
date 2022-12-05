@@ -24,7 +24,7 @@ export interface CloudJobOptions {
  *
  * POST
  *
- * curl --location --request POST 'http://localhost:3135/server/jobs/some/inner/task' \
+ * curl --location --request POST 'http://localhost:1337/server/jobs/some/inner/task' \
  *   --header 'X-Elegante-Api-Key: ELEGANTE_SERVER' \
  *   --header 'X-Elegante-Secret-Key: ELEGANTE_SECRET'
  *

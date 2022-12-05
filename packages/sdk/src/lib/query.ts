@@ -5,7 +5,7 @@ import { finalize, Observable } from 'rxjs';
 import { EleganteClient } from './EleganteClient';
 import { EleganteError, ErrorCode } from './EleganteError';
 import { isEmpty, isServer, log } from './utils';
-import { fetch } from './fetch';
+import { fetch, HttpMethod } from './fetch';
 import { InternalFieldName, InternalHeaders } from './internal';
 import { webSocketServer, getUrl, WebSocketCallback } from './websocket';
 import { DocumentLiveQuery } from './types/livequery';
@@ -18,10 +18,9 @@ import {
   ChangeStreamOptions,
 } from './types/query';
 
-export function query<TSchema extends Document>(collection?: string) {
+export function query<TSchema extends Document>(collection: string) {
   const bridge: Query<TSchema> = {
     params: {
-      collection,
       include: [],
       exclude: [],
       unlock: false,
@@ -30,29 +29,6 @@ export function query<TSchema extends Document>(collection?: string) {
     /**
      * modifiers
      */
-
-    collection: (name: string) => {
-      // ensure collection name doesn't ends with "s" because
-      // it's already means plural and for good architecture practices
-      // we should keep it singular
-      if (name.endsWith('s')) {
-        throw new EleganteError(
-          ErrorCode.COLLECTION_NAME_SHOULD_BE_SINGULAR,
-          `collection name should be singular. ie: 'User' instead of 'Users'`
-        );
-      }
-
-      // ensure collection name is TitleCase
-      if (name !== name[0].toUpperCase() + name.slice(1)) {
-        throw new EleganteError(
-          ErrorCode.COLLECTION_NAME_SHOULD_BE_TITLE_CASE,
-          `collection name should be TitleCase. ie: 'User' instead of 'user'`
-        );
-      }
-
-      bridge.params['collection'] = name;
-      return bridge;
-    },
 
     projection: (project) => {
       /**
@@ -122,20 +98,53 @@ export function query<TSchema extends Document>(collection?: string) {
       return bridge.run('find', options) as Promise<TSchema[]>;
     },
 
-    findOne: (options) => {
-      return bridge.run('findOne', options) as Promise<TSchema | void>;
+    findOne: (optionsOrObjectId) => {
+      const hasDocModifier =
+        !isEmpty(bridge.params['projection']) ||
+        !isEmpty(bridge.params['include']) ||
+        !isEmpty(bridge.params['filter']) ||
+        !isEmpty(bridge.params['pipeline']);
+
+      /**
+       * in case we have objectId and modifiers
+       * we need to run as findOne to make include and others work
+       */
+      if (typeof optionsOrObjectId === 'string' && hasDocModifier) {
+        bridge['params']['filter'] = {
+          _id: optionsOrObjectId,
+        };
+      }
+
+      return bridge.run(
+        typeof optionsOrObjectId === 'string' && !hasDocModifier
+          ? 'get'
+          : 'findOne',
+        typeof optionsOrObjectId === 'string' ? {} : optionsOrObjectId,
+        {},
+        typeof optionsOrObjectId === 'string' ? optionsOrObjectId : undefined
+      ) as Promise<TSchema | void>;
     },
 
-    update: (doc) => {
-      return bridge.run('update', {}, doc) as Promise<void>;
+    update: (objectIdOrDoc, doc?: Document) => {
+      return bridge.run(
+        typeof objectIdOrDoc === 'string' ? 'put' : 'update', // method
+        {}, // options
+        typeof objectIdOrDoc === 'string' ? doc : objectIdOrDoc, // optional: doc
+        typeof objectIdOrDoc === 'string' ? objectIdOrDoc : undefined //  optional: objectId
+      ) as Promise<void>;
     },
 
     insert: (doc) => {
       return bridge.run('insert', {}, doc) as Promise<TSchema>;
     },
 
-    delete: () => {
-      return bridge.run('delete', {}) as Promise<void>;
+    delete: (objectId?: string) => {
+      return bridge.run(
+        typeof objectId === 'string' ? 'delete' : 'remove',
+        {},
+        {},
+        objectId
+      ) as Promise<void>;
     },
 
     count: (options) => {
@@ -166,7 +175,7 @@ export function query<TSchema extends Document>(collection?: string) {
      * final methods
      */
 
-    run: async (method, options, doc) => {
+    run: async (method, options, doc, objectId) => {
       if (!EleganteClient.params.serverURL) {
         throw new EleganteError(
           ErrorCode.SERVER_URL_UNDEFINED,
@@ -181,7 +190,7 @@ export function query<TSchema extends Document>(collection?: string) {
         );
       }
 
-      if (['update', 'delete'].includes(method)) {
+      if (['update', 'remove'].includes(method)) {
         if (isEmpty(bridge.params['filter'])) {
           throw new EleganteError(
             ErrorCode.FILTER_REQUIRED_FOR_DOC_MUTATION,
@@ -215,16 +224,16 @@ export function query<TSchema extends Document>(collection?: string) {
         ] = EleganteClient.params.apiSecret ?? '👀';
       }
 
-      let body: Document | DocumentQuery<TSchema>;
+      let docQuery: Document | DocumentQuery<TSchema>;
 
       log(method, bridge.params, options ?? '', doc ?? '');
 
       if (method === 'insert') {
-        body = {
+        docQuery = {
           ...doc,
         };
       } else {
-        body = {
+        docQuery = {
           options,
           filter,
           projection,
@@ -239,11 +248,19 @@ export function query<TSchema extends Document>(collection?: string) {
       }
 
       const docs = await fetch<DocumentResponse<TSchema>>(
-        `${EleganteClient.params.serverURL}/${bridge.params['collection']}`,
+        `${EleganteClient.params.serverURL}/${bridge.params['collection']}${
+          ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
+        }`,
         {
-          method: 'POST',
+          method: ['get', 'put', 'delete'].includes(method)
+            ? (method.toUpperCase() as HttpMethod)
+            : 'POST',
           headers,
-          body,
+          body: ['put', 'delete'].includes(method)
+            ? doc
+            : method === 'get'
+            ? null
+            : docQuery,
         }
       );
 
@@ -326,8 +343,14 @@ export function query<TSchema extends Document>(collection?: string) {
           },
 
           onClose: (ws, ev) => {
-            if (wssFinished) {
+            if (wssFinished || ev?.code === 1008) {
               wss.close();
+              observer.error(
+                new EleganteError(
+                  ErrorCode.LIVE_QUERY_SOCKET_CLOSE,
+                  ev.reason || ''
+                )
+              );
               return;
             }
             if (wssConnected) {
@@ -350,7 +373,7 @@ export function query<TSchema extends Document>(collection?: string) {
                 bridge.params
               );
               webSocketServer(socketURL)(webSocket);
-            }, 1 * 1000);
+            }, 1 * 500);
           },
         };
 
@@ -440,7 +463,6 @@ export function query<TSchema extends Document>(collection?: string) {
           onClose: (ws, ev) => {
             // since it's a one-time query, we don't need to reconnect
             observer.complete();
-            wss.close();
           },
         });
       }).pipe(
@@ -456,5 +478,26 @@ export function query<TSchema extends Document>(collection?: string) {
       );
     },
   };
+
+  // ensure collection name doesn't ends with "s" because
+  // it's already means plural and for good architecture practices
+  // we should keep it singular
+  if (collection.endsWith('s')) {
+    throw new EleganteError(
+      ErrorCode.COLLECTION_NAME_SHOULD_BE_SINGULAR,
+      `collection name should be singular. ie: 'User' instead of 'Users'`
+    );
+  }
+
+  // ensure collection name is TitleCase
+  if (collection !== collection[0].toUpperCase() + collection.slice(1)) {
+    throw new EleganteError(
+      ErrorCode.COLLECTION_NAME_SHOULD_BE_TITLE_CASE,
+      `collection name should be TitleCase. ie: 'User' instead of 'user'`
+    );
+  }
+
+  bridge.params['collection'] = collection;
+
   return bridge;
 }

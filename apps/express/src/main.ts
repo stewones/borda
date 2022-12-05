@@ -8,7 +8,7 @@ import { createLiveQueryServer, createServer, Version } from '@elegante/server';
 /**
  * server setup
  */
-const debug = true;
+const debug = false;
 console.time('startup');
 
 /**
@@ -24,7 +24,7 @@ const apiSecret = process.env.ELEGANTE_API_SECRET || 'ELEGANTE_SECRET';
 const serverMount = process.env.ELEGANTE_SERVER_MOUNT || '/server';
 
 const serverURL = `${
-  process.env.ELEGANTE_SERVER_URL || 'http://localhost:3135'
+  process.env.ELEGANTE_SERVER_URL || 'http://localhost:1337'
 }${serverMount}`;
 
 const serverHeaderPrefix =
@@ -56,7 +56,7 @@ const elegante = createServer(
     /**
      * server operations
      */
-    joinCacheTTL: 10 * 1000,
+    includeCacheTTL: 1 * 1000 * 10,
   },
   {
     onDatabaseConnect: async (db) => {
@@ -137,12 +137,13 @@ import './jobs/someHeavyTask';
 /**
  * add a cloud function
  */
-import './functions/someInnerPublicTask';
+import './functions/somePublicTask';
+import './functions/getLatestUsers';
 
 /**
  * start the server
  */
-const httpPort = 3135;
+const httpPort = 1337;
 const httpServer = http.createServer(server);
 httpServer.listen(httpPort, () => {
   log(`Server running on port ${httpPort}`);
@@ -151,12 +152,12 @@ httpServer.listen(httpPort, () => {
 /**
  * start the live query server
  */
-const liveQueryPort = 3136;
+const liveQueryPort = 1338;
 createLiveQueryServer(
   {
     collections: ['_User', 'Sale'],
     port: liveQueryPort,
-    debug: true,
+    debug: false,
   },
   {
     onLiveQueryConnect: (ws, socket) => {

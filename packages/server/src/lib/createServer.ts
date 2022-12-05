@@ -1,7 +1,7 @@
 import express, { Application } from 'express';
 
 import { Db, MongoClient } from 'mongodb';
-import { EleganteError, ErrorCode, log } from '@elegante/sdk';
+import { EleganteError, ErrorCode, log, print } from '@elegante/sdk';
 
 import { EleganteServer, ServerEvents, ServerParams } from './EleganteServer';
 import { rest } from './rest';
@@ -18,7 +18,7 @@ import { Version } from './Version';
  * @returns {*}  {Application}
  */
 export function createServer(
-  options: ServerParams,
+  options: Partial<ServerParams>,
   events: ServerEvents = {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-function
     onDatabaseConnect: (db: Db) => {},
@@ -43,7 +43,7 @@ export function createServer(
         createIndexes({ db, params });
         onDatabaseConnect(db);
       } catch (err) {
-        console.log(err);
+        print(err);
       }
     })
     .catch((err) => log(err));
@@ -93,8 +93,7 @@ export async function createIndexes({
     }
     return;
   } catch (err) {
-    console.log(
-      '\x1b[33m%s\x1b[0m',
+    print(
       `Elegante couldn't create indexes on startup`,
       new EleganteError(ErrorCode.INDEX_CREATION_FAILED, err as object)
     );

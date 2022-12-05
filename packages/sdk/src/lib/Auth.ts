@@ -1,4 +1,4 @@
-import { User, Session } from './types';
+import { Session } from './types';
 import { fetch } from './fetch';
 import { EleganteClient } from './EleganteClient';
 import { InternalHeaders } from './internal';
@@ -37,7 +37,15 @@ export abstract class Auth {
   public static signUp(
     name: string,
     email: string,
-    password: string
+    password: string,
+    options?: {
+      /**
+       * modify returned user object
+       */
+      include?: string[];
+      exclude?: string[];
+      projection?: Record<string, number>;
+    }
   ): Promise<Session> {
     const headers = {
       [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
@@ -53,6 +61,7 @@ export abstract class Auth {
         name,
         email,
         password,
+        ...options,
       },
     });
   }

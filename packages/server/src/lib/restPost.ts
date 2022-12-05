@@ -11,6 +11,10 @@ import {
   isEmpty,
   Session,
   pointer,
+  InternalCollectionName,
+  ExternalCollectionName,
+  InternalFieldName,
+  ExternalFieldName,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
@@ -45,6 +49,28 @@ export function restPost({
         );
       }
 
+      /**
+       * can't find to any of the reserved collections if not unlocked
+       */
+      const reservedCollections = [
+        ...Object.keys(InternalCollectionName),
+        ...Object.keys(ExternalCollectionName),
+      ];
+      if (
+        !['signIn', 'signUp'].includes(method) &&
+        !isUnlocked(res.locals) &&
+        reservedCollections.includes(collectionName)
+      ) {
+        return res
+          .status(405)
+          .json(
+            new EleganteError(
+              ErrorCode.COLLECTION_NOT_ALLOWED,
+              `You can't ${method} the collection ${collectionName} because it's reserved`
+            )
+          );
+      }
+
       const docQRL = parseQuery({
         ...req.body,
         collection: collectionName,
@@ -70,7 +96,7 @@ export function restPost({
          * update
          * @todo run beforeUpdate and afterUpdate hooks
          */
-        const { cursor, before } = await postUpdate(docQRL);
+        const { cursor, before } = await postUpdate(docQRL, res);
         if (cursor.ok) {
           const after = cursor.value;
           const afterSaveTrigger = parseResponse(
@@ -87,7 +113,7 @@ export function restPost({
           //   query,
           //  params,
           //  locals: res.locals,
-
+          // console.log(afterSaveTrigger);
           // @todo run afterSaveTrigger
           return res.status(200).send();
         }
@@ -98,9 +124,9 @@ export function restPost({
             'could not update document'
           )
         );
-      } else if (method === 'delete') {
+      } else if (method === 'remove') {
         /**
-         * delete
+         * remove
          * @todo run beforeDeleteTrigger and afterDeleteTrigger
          */
         const { cursor } = await postDelete(docQRL);
@@ -175,7 +201,10 @@ export function restPost({
         /**
          * user sign up
          */
-        // postSignUp(docQRL);
+        return postSignUp(
+          docQRL as DocQRL & { name: string; email: string; password: string },
+          res
+        );
       } else if (collectionName === 'User' && method === 'signIn') {
         /**
          * user sign in
@@ -191,37 +220,58 @@ export function restPost({
           'Method not found'
         );
       }
-    } catch (err) {
+    } catch (err: any) {
       return res
-        .status(500)
-        .send(new EleganteError(ErrorCode.REST_POST_ERROR, err as object));
+        .status(405)
+        .send(
+          err?.code
+            ? err
+            : new EleganteError(ErrorCode.REST_POST_ERROR, err as object)
+        );
     }
   };
 }
 
-async function postFind(query: DocQRL) {
+async function postFind(docQRL: DocQRL) {
   const docs: Document[] = [];
-  const cursor = createFindCursor(query);
+  const cursor = createFindCursor(docQRL);
   await cursor.forEach((doc) => {
     docs.push(doc);
   });
   return docs;
 }
 
-async function postUpdate(query: DocQRL) {
-  const { filter, collection$, doc } = query;
+async function postUpdate(docQRL: DocQRL, res: Response) {
+  const { filter, collection$, doc } = docQRL;
 
   const before = await collection$.findOne(parseFilter(filter), {
     readPreference: 'primary',
   });
 
+  const payload: any = {
+    ...(doc ?? {}),
+    _updated_at: new Date(),
+  };
+
+  /**
+   * ensure each internal/external field is deleted from the user payload
+   * if session is not unlocked
+   */
+  const reservedFields = [
+    ...Object.keys(InternalFieldName),
+    ...Object.keys(ExternalFieldName),
+  ];
+
+  if (!isUnlocked(res.locals)) {
+    reservedFields.forEach((field) => {
+      delete payload[field];
+    });
+  }
+
   const cursor = await collection$.findOneAndUpdate(
     parseFilter(filter),
     {
-      $set: {
-        ...(doc ?? {}),
-        _updated_at: new Date(),
-      },
+      $set: payload,
     },
     { returnDocument: 'after', readPreference: 'primary' }
   );
@@ -331,7 +381,7 @@ async function postSignIn(
     return res
       .status(404)
       .json(
-        new EleganteError(ErrorCode.AUTH_INVALID_EMAIL, 'Invalid email address')
+        new EleganteError(ErrorCode.AUTH_EMAIL_NOT_FOUND, 'User not found')
       );
   }
 
@@ -362,7 +412,7 @@ async function postSignIn(
    * generate a new session token
    */
   const sessionToken = `e:${newToken()}`;
-  const session = await query<Session>('Session')
+  const session = await query<Partial<Session>>('Session')
     .unlock(true)
     .insert({
       user: pointer('User', user.objectId),
@@ -376,4 +426,85 @@ async function postSignIn(
   return res.status(201).json({ ...session, user });
 }
 
-// async function postSignUp(query: DocQRL) {}
+async function postSignUp(
+  docQRL: DocQRL & { name: string; email: string; password: string },
+  res: Response
+) {
+  const { name, email, password, projection, include, exclude } = docQRL;
+
+  /**
+   * validation chain
+   */
+  if (!name) {
+    return res
+      .status(400)
+      .json(new EleganteError(ErrorCode.AUTH_NAME_REQUIRED, 'Name required'));
+  } else if (!validateEmail(docQRL.email)) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(ErrorCode.AUTH_INVALID_EMAIL, 'Invalid email address')
+      );
+  } else if (!docQRL.password) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(
+          ErrorCode.AUTH_PASSWORD_INCORRECT,
+          'password incorrect'
+        )
+      );
+  }
+
+  const checkUserExists = await query<User>('User')
+    .unlock(true)
+    .projection({ email: 1 })
+    .filter({
+      email: {
+        $eq: docQRL.email,
+      },
+    })
+    .findOne();
+
+  if (checkUserExists) {
+    return res
+      .status(404)
+      .json(
+        new EleganteError(
+          ErrorCode.AUTH_EMAIL_ALREADY_EXISTS,
+          'This email is already in use'
+        )
+      );
+  }
+
+  // @todo create new user + session and return session
+
+  /**
+   * because we don't want to expose the user password
+   */
+  // delete user.password;
+
+  // /**
+  //  * expires in 1 year
+  //  * @todo make this an option ?
+  //  */
+  // const expiresAt = new Date();
+  // expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+  // /**
+  //  * generate a new session token
+  //  */
+  // const sessionToken = `e:${newToken()}`;
+  // const session = await query<Session>('Session')
+  //   .unlock(true)
+  //   .insert({
+  //     user: pointer('User', user.objectId),
+  //     sessionToken,
+  //     expiresAt: expiresAt.toISOString(),
+  //   });
+
+  // delete session.updatedAt;
+  // delete session.objectId;
+
+  // return res.status(201).json({ ...session, user });
+}

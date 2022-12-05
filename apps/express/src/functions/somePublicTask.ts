@@ -1,0 +1,28 @@
+import { delay, print, runFunction } from '@elegante/sdk';
+import { createFunction } from '@elegante/server';
+
+createFunction(
+  'somePublicTask',
+  {
+    /**
+     * default to false. a session token must be sent to all /functions/* endpoints
+     * experiment commenting out the following line and see console output
+     */
+    isPublic: true,
+  },
+  async (req, res) => {
+    print('executing', `somePublicTask`, req.body);
+    await delay(3000);
+    print(`somePublicTask done`);
+    res.status(200).send(`somePublicTask done`);
+  }
+);
+
+(async () => {
+  await delay(100);
+  print('executing somePublicTask function in 5 seconds');
+  await delay(5000);
+  runFunction('somePublicTask', {
+    somePayload: `Look Im A Payload`,
+  }).catch(print);
+})();

@@ -1,11 +1,14 @@
 import { NextFunction, Request, Response } from 'express';
 import { EleganteServer } from './EleganteServer';
+import {
+  CloudFunctionOptions,
+  Document,
+  EleganteClient,
+  EleganteError,
+  ErrorCode,
+} from '@elegante/sdk';
 
-export interface CloudFunctionOptions {
-  isPublic?: boolean;
-  path?: string;
-  name: string;
-}
+// export const CloudFunction: CloudFunctionProtocol = new Map();
 
 /**
  * Attach a function to Elegant Server
@@ -26,7 +29,7 @@ export interface CloudFunctionOptions {
  *
  * POST
  *
- * curl --location --request POST 'http://localhost:3135/server/functions/some/inner/logic' \
+ * curl --location --request POST 'http://localhost:1337/server/functions/some/inner/logic' \
  * --header 'X-Elegante-Api-Key: ELEGANTE_SERVER'
  *
  *
@@ -35,22 +38,29 @@ export interface CloudFunctionOptions {
  * @param {(req: Request, res: Response) => Promise<void>} fn
  */
 export function createFunction(
+  name: string,
   options: CloudFunctionOptions,
-  fn: (req: Request, res: Response) => Promise<void>
+  fn: (req: Request, res: Response) => Promise<Document | Document[] | void>
 ): void {
-  const { app } = EleganteServer;
+  const { app, params } = EleganteServer;
   app.post(
-    `/functions/${options?.path ?? options.name}`,
+    `/functions/${name}`,
     handlePublicRoute(options),
     async (req, res) => {
-      console.time(`function duration: ${options.name}`);
+      if (EleganteClient.params.debug) {
+        console.time(`function duration: ${name}`);
+      }
       try {
         await fn(req, res);
         // @todo save statistic to db when we have Elegante Models
-        console.timeEnd(`function duration: ${options.name}`);
+        if (EleganteClient.params.debug) {
+          console.timeEnd(`function duration: ${name}`);
+        }
       } catch (err) {
         res.status(500).send(err);
-        console.timeEnd(`function duration: ${options.name}`);
+        if (EleganteClient.params.debug) {
+          console.timeEnd(`function duration: ${name}`);
+        }
         // @todo save statistic to db when we have Elegante Models
       }
     }
@@ -71,5 +81,7 @@ export const handlePublicRoute =
      * @todo
      * check for user session
      */
-    return res.status(401).send('Unauthorized session');
+    return res
+      .status(401)
+      .send(new EleganteError(ErrorCode.UNAUTHORIZED, 'Unauthorized'));
   };

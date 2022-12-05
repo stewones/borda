@@ -13,6 +13,7 @@ import {
   log,
   isDate,
   print,
+  InternalCollectionName,
 } from '@elegante/sdk';
 
 import { EleganteServer } from './EleganteServer';
@@ -92,7 +93,7 @@ export function createLiveQueryServer(
     const { headers } = incoming;
 
     // {
-    //   host: 'localhost:3136',
+    //   host: 'localhost:1338',
     //   connection: 'Upgrade',
     //   pragma: 'no-cache',
     //   'cache-control': 'no-cache',
@@ -119,9 +120,7 @@ export function createLiveQueryServer(
       /**
        * throw an error log so we can know if someone is trying to connect to the live query server
        */
-      console.log(
-        new EleganteError(ErrorCode.INVALID_API_KEY, 'Invalid API Key')
-      );
+      print(new EleganteError(ErrorCode.INVALID_API_KEY, 'Invalid API Key'));
       ws.close();
       return wss.close(); // close connection
     }
@@ -150,10 +149,22 @@ export function createLiveQueryServer(
       const { collection, method, event } = query;
 
       /**
+       * can't subscribe to any of the reserved collections
+       */
+      const reservedCollections = Object.keys(InternalCollectionName);
+      if (reservedCollections.includes(collection)) {
+        const message = `You can't subscribe to the collection ${collection} because it's reserved`;
+        log(
+          new EleganteError(ErrorCode.LIVE_QUERY_INVALID_COLLECTION, message)
+        );
+        return ws.close(1008, message);
+      }
+
+      /**
        * throw exception if the requested collection is not allowed
        */
       if (!options.collections.includes(collection)) {
-        console.log(
+        print(
           new EleganteError(
             ErrorCode.COLLECTION_NOT_ALLOWED,
             'Collection not allowed'
@@ -170,11 +181,9 @@ export function createLiveQueryServer(
       if (method === 'on') {
         handleOn(query, ws, event ?? 'update', connections);
       } else if (method === 'once') {
-        handleOnce(query, ws);
-        connections.delete(ws);
-        ws.close();
+        handleOnce(query, ws, connections);
       } else {
-        console.log(
+        print(
           new EleganteError(
             ErrorCode.LIVE_QUERY_INVALID_QUERY_METHOD,
             'Invalid query method'
@@ -338,7 +347,11 @@ function handleOn(
  * @param {DocumentLiveQuery} rawQuery
  * @param {WebSocket} ws
  */
-async function handleOnce(rawQuery: DocumentLiveQuery, ws: WebSocket) {
+async function handleOnce(
+  rawQuery: DocumentLiveQuery,
+  ws: WebSocket,
+  connections: Map<WebSocket, any>
+) {
   const docs: Document[] = [];
 
   const query = parseQuery(rawQuery);
@@ -378,4 +391,10 @@ async function handleOnce(rawQuery: DocumentLiveQuery, ws: WebSocket) {
   };
 
   ws.send(JSON.stringify(message));
+
+  /**
+   * close connection
+   */
+  connections.delete(ws);
+  ws.close();
 }

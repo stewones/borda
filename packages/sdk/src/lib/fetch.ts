@@ -4,10 +4,12 @@ import { EleganteError, ErrorCode } from './EleganteError';
 import { isServer } from './utils';
 import { Version } from './Version';
 
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
 export async function fetch<T = any>(
   url: string,
   options?: {
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    method?: HttpMethod;
     body?: any;
     headers?: Record<string, string>;
   }

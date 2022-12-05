@@ -35,9 +35,12 @@ export const InternalSensitiveFields = [
   /**
    * elegante fields
    */
+  'password',
+  'sessionToken',
   '_expires_at',
   '_session_token',
   '_hashed_password',
+
   /**
    * Parse-Server fields
    * we don't want to expose these fields in any way

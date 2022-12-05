@@ -5,8 +5,8 @@ import {
   EleganteError,
   ErrorCode,
   InternalFieldName,
-  InternalSensitiveFields,
   isISODate,
+  log,
 } from '@elegante/sdk';
 import { ServerParams } from './EleganteServer';
 import { parseExclude } from './parseExclude';
@@ -82,7 +82,7 @@ export function parseDocForInsertion(obj: any): any {
 
     return obj;
   } catch (err: any) {
-    console.log(err);
+    log(err);
     throw err.toString();
   }
 }

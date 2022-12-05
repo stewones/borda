@@ -17,13 +17,9 @@ export type DocQRLFrom = DocumentQuery | DocumentLiveQuery;
 export function parseQuery(from: DocQRLFrom): DocQRL {
   const collectionName = from.collection ?? '';
   const query = {
-    limit: 10000,
-    sort: {},
-    skip: 0,
     projection: {},
     method: null, // <-- required otherwise it should throw an error
     options: {},
-    include: [],
     ...from,
   } as DocumentQuery;
 

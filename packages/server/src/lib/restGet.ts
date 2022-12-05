@@ -3,6 +3,7 @@ import {
   ErrorCode,
   InternalCollectionName,
   Document,
+  ExternalCollectionName,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
@@ -26,6 +27,27 @@ export function restGet({
       const collection = db.collection<Document>(
         InternalCollectionName[collectionName] ?? collectionName
       );
+
+      /**
+       * can't delete to any of the reserved collections if not unlocked
+       */
+      const reservedCollections = [
+        ...Object.keys(InternalCollectionName),
+        ...Object.keys(ExternalCollectionName),
+      ];
+      if (
+        !isUnlocked(res.locals) &&
+        reservedCollections.includes(collectionName)
+      ) {
+        return res
+          .status(405)
+          .json(
+            new EleganteError(
+              ErrorCode.COLLECTION_NOT_ALLOWED,
+              `You can't get on collection ${collectionName} because it's reserved`
+            )
+          );
+      }
 
       /**
        * @todo run beforeFind and afterFind hooks

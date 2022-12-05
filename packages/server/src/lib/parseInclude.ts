@@ -11,13 +11,15 @@ import { ServerParams } from './EleganteServer';
 /**
  * memoize pointers
  */
-const useMemo = false;
-const memo: {
-  [key: string]: {
+const useMemo = true;
+type Memo = Map<
+  string,
+  {
     data: any;
     expires: number;
-  };
-} = {};
+  }
+>;
+export const memo: Memo = new Map();
 
 /**
  * scheduler for cleaning up memo
@@ -25,9 +27,10 @@ const memo: {
 setInterval(() => {
   const now = Date.now();
   for (const key in memo) {
-    const value = memo[key];
-    if (now > value.expires) {
-      delete memo[key];
+    const value = memo.get(key);
+    if (value && now > value.expires) {
+      log('removing memo', key);
+      memo.delete(key);
     }
   }
 }, 1000 * 1);
@@ -62,7 +65,7 @@ export function parseInclude<T extends Document>(
      * parse tree
      */
     for (const pointerField in tree) {
-      const pointerValue = obj[`_p_${pointerField}`];
+      const pointerValue = obj[`_p_${pointerField}`] || obj[pointerField];
 
       log('pointerField', pointerField);
       log('pointerValue', pointerValue);
@@ -91,13 +94,12 @@ export function parseInclude<T extends Document>(
 
       const join = tree[pointerField];
 
-      if (!memo[pointerValue] || !useMemo) {
+      if (!memo.get(pointerValue) || !useMemo) {
         const { collection, objectId } = getPointer(pointerValue);
 
-        const doc = await query<T>()
-          .collection(collection)
+        const doc = await query<T>(collection)
           .include(join)
-          .unlock(locals && locals.unlocked)
+          .unlock(true) // here we force unlock because `parseInclude` run in the server anyways 💁‍♂️
           .filter({
             objectId: {
               $eq: objectId,
@@ -114,23 +116,33 @@ export function parseInclude<T extends Document>(
         obj[pointerField] = doc;
 
         // memoize pointer value
-        const timeout = params.joinCacheTTL ?? 1000;
-        memo[pointerValue] = {
-          data: obj[pointerField],
-          expires: Date.now() + timeout,
-        };
+        const timeout = params.includeCacheTTL;
 
-        log('pointerValue', 'no memo', memo[pointerValue].data['objectId']);
+        if (timeout > 0) {
+          memo.set(pointerValue, {
+            data: obj[pointerField],
+            expires: Date.now() + timeout,
+          });
+          log(
+            'pointerValue',
+            'no memo',
+            memo.get(pointerValue)?.data['objectId']
+          );
+        }
       }
 
-      if (memo[pointerValue] && useMemo) {
+      if (memo.get(pointerValue) && useMemo) {
         // reuse pointer value
-        obj[pointerField] = memo[pointerValue].data;
+        obj[pointerField] = memo.get(pointerValue)?.data;
 
         // remove raw _p_ entry
         delete obj[`_p_${pointerField}`];
 
-        log('pointerValue', 'memoized', memo[pointerValue].data['objectId']);
+        log(
+          'pointerValue',
+          'memoized',
+          memo.get(pointerValue)?.data['objectId']
+        );
       }
     }
     return Promise.resolve(obj);

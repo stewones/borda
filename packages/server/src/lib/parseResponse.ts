@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ExternalFieldName, InternalSensitiveFields } from '@elegante/sdk';
+import { ExternalFieldName, InternalSensitiveFields, log } from '@elegante/sdk';
 
 export function parseResponse(
   obj: any,
@@ -46,7 +46,7 @@ export function parseResponse(
 
     return obj;
   } catch (err: any) {
-    console.log(err);
+    log(err);
     throw err.toString();
   }
 }
