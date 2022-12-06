@@ -24,7 +24,7 @@ import {
   LocalStorage,
   Record,
 } from '@elegante/sdk';
-import { from, map, Subject, Subscription, tap } from 'rxjs';
+import { Subject, Subscription } from 'rxjs';
 
 console.time('startup');
 
@@ -134,7 +134,7 @@ interface Counter extends Record {
 
     <ng-container *ngIf="session?.token">
       <br />
-      <h2>Users</h2>
+      <h2>Public Users</h2>
       <br />
       <table cellPadding="5" cellSpacing="10">
         <tr>
@@ -246,6 +246,8 @@ export class AppComponent {
           (user) => user.objectId !== doc.objectId
         );
         this.cdr.markForCheck();
+
+        this.loadLatestUsers();
       });
 
     this.subscription$['userInsert'] = query<User>('PublicUser')
@@ -384,7 +386,12 @@ export class AppComponent {
   loadLatestUsers() {
     runFunction<User[]>('getLatestUsers')
       .then((users) => {
-        this.users = users ?? [];
+        users.map((user) => {
+          if (!this.users.find((u) => u.objectId === user.objectId)) {
+            this.users.push(user);
+          }
+        });
+
         this.cdr.markForCheck();
       })
       .catch((err) => console.error(err));

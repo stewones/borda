@@ -7,8 +7,6 @@ Cloud.addFunction(
     isPublic: true,
   },
   async ({ req, res }) => {
-    const { session } = res.locals;
-    //console.log(session);
     try {
       res.status(200).send(
         await query('PublicUser')
@@ -20,6 +18,11 @@ Cloud.addFunction(
           })
           .sort({ updatedAt: -1 })
           .limit(5)
+          .filter({
+            expiresAt: {
+              $exists: false,
+            },
+          })
           .find({
             allowDiskUse: true,
           })

@@ -266,7 +266,7 @@ export function query<TSchema extends Document>(collection: string) {
       );
 
       if (isEmpty(docs)) {
-        return undefined;
+        return method === 'find' ? [] : undefined;
       }
 
       return docs;
