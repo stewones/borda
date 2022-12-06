@@ -29,7 +29,7 @@ import { from, map, Subject, Subscription, tap } from 'rxjs';
 console.time('startup');
 
 createClient({
-  apiKey: 'ELEGANTE_SERVER',
+  apiKey: '**elegante**',
   serverURL: 'http://localhost:1337/server',
   debug: false,
 }).catch((err) => console.error(err));

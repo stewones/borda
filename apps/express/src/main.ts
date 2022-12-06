@@ -18,8 +18,8 @@ const databaseURI =
   process.env.ELEGANTE_DATABASE_URI ||
   'mongodb://localhost:27017/elegante-dev?directConnection=true&serverSelectionTimeoutMS=2000&appName=elegante';
 
-const apiKey = process.env.ELEGANTE_API_KEY || 'ELEGANTE_SERVER';
-const apiSecret = process.env.ELEGANTE_API_SECRET || 'ELEGANTE_SECRET';
+const apiKey = process.env.ELEGANTE_API_KEY || '**elegante**';
+const apiSecret = process.env.ELEGANTE_API_SECRET || '**secret**';
 
 const serverMount = process.env.ELEGANTE_SERVER_MOUNT || '/server';
 

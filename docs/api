@@ -7,8 +7,8 @@ const elegante = new createServer({
   databaseURI:
     process.env.ELEGANTE_DATABASE_URI ||
     'mongodb://localhost:27017/elegante-dev',
-  apiKey: process.env.ELEGANTE_API_KEY || 'ELEGANTE_SERVER',
-  apiSecret: process.env.ELEGANTE_API_SECRET || 'ELEGANTE_SECRET',
+  apiKey: process.env.ELEGANTE_API_KEY || '**elegante**',
+  apiSecret: process.env.ELEGANTE_API_SECRET || '**secret**',
   serverURL: process.env.ELEGANTE_SERVER_URL || 'http://localhost:1337/server',
   serverHeaderPrefix: process.env.ELEGANTE_SERVER_HEADER_ID || 'X-Elegante',
 });
