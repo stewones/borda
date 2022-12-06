@@ -29,7 +29,7 @@ export type DocumentEvent =
   | 'shardCollection';
 
 export interface DocumentQuery<T = Document> {
-  filter: FilterOperations<T> | undefined;
+  filter: FilterOperations<T>;
   limit: number;
   skip: number;
   sort: Record<string, SortDirection>;
@@ -38,7 +38,7 @@ export interface DocumentQuery<T = Document> {
   pipeline?: Document[];
   include: string[];
   exclude: string[];
-  doc?: Document;
+  doc?: Document | null | undefined;
   collection?: string;
 }
 

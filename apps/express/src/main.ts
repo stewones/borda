@@ -2,7 +2,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 
-import { createClient, log } from '@elegante/sdk';
+import { createClient, log, ping } from '@elegante/sdk';
 import { createLiveQueryServer, createServer, Version } from '@elegante/server';
 
 /**
@@ -30,7 +30,7 @@ const serverURL = `${
 const serverHeaderPrefix =
   process.env.ELEGANTE_SERVER_HEADER_PREFIX || 'X-Elegante';
 
-const client = createClient({
+createClient({
   apiKey,
   apiSecret,
   serverURL,
@@ -69,7 +69,7 @@ const elegante = createServer(
       console.timeEnd('startup');
 
       console.time('ping');
-      client.ping().then(() => console.timeEnd('ping'));
+      ping().then(() => console.timeEnd('ping'));
 
       // const taskCollection = db.collection('Sale');
 
@@ -130,24 +130,31 @@ server.get('/', (req, res) => {
 });
 
 /**
- * add a job
+ * add jobs
  */
 import './jobs/someHeavyTask';
 
 /**
- * add a cloud function
+ *
+ * add cloud functions
  */
 import './functions/somePublicTask';
 import './functions/getLatestUsers';
+import './functions/getCounter';
+import './functions/increaseCounter';
+
+/**
+ * add triggers
+ */
+import './triggers/afterSaveUser';
+import './triggers/afterDeletePublicUser';
 
 /**
  * start the server
  */
 const httpPort = 1337;
 const httpServer = http.createServer(server);
-httpServer.listen(httpPort, () => {
-  log(`Server running on port ${httpPort}`);
-});
+httpServer.listen(httpPort, () => log(`Server running on port ${httpPort}`));
 
 /**
  * start the live query server
@@ -155,7 +162,7 @@ httpServer.listen(httpPort, () => {
 const liveQueryPort = 1338;
 createLiveQueryServer(
   {
-    collections: ['_User', 'Sale'],
+    collections: ['PublicUser', 'Counter'],
     port: liveQueryPort,
     debug: false,
   },

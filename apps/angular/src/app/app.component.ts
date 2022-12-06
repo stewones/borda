@@ -13,20 +13,30 @@ import {
   ReactiveFormsModule,
 } from '@angular/forms';
 
-import { createClient, query, Auth, Session, runFunction } from '@elegante/sdk';
-import { map, Subject, Subscription, tap } from 'rxjs';
+import {
+  createClient,
+  query,
+  Auth,
+  Session,
+  runFunction,
+  User,
+  ping,
+  LocalStorage,
+  Record,
+} from '@elegante/sdk';
+import { from, map, Subject, Subscription, tap } from 'rxjs';
 
 console.time('startup');
 
-const client = createClient({
+createClient({
   apiKey: 'ELEGANTE_SERVER',
   serverURL: 'http://localhost:1337/server',
   debug: false,
-});
+}).catch((err) => console.error(err));
 
-interface Sale {
-  objectId: string;
+interface Counter extends Record {
   total: number;
+  name: string;
 }
 
 @Component({
@@ -49,19 +59,22 @@ interface Sale {
       button {
         padding: 0.45rem;
       }
+
+      table {
+        width: 100%;
+      }
     `,
   ],
   template: `
     <button
       (click)="increase()"
-      *ngIf="totalOnce$ | async"
       title="click to increase the counter. which should reflect here in realtime if subscribed. experiment open many tabs at same time and see the changes reflect."
     >
       Increase count (realtime):
-      {{ total }}
+      {{ counter.total }}
     </button>
     <button (click)="reload()" title="click to refresh the page">
-      Next Total (local): {{ totalNext }}
+      Next Total (local): {{ counterTotalNext }}
     </button>
     <button
       (click)="unsubscribe()"
@@ -76,6 +89,7 @@ interface Sale {
       Re-subscribe Realtime
     </button>
     <br />
+
     <h2>Sign Up</h2>
     <form [formGroup]="signUpForm" (ngSubmit)="signUp()">
       <label for="name">name: </label>
@@ -88,11 +102,13 @@ interface Sale {
         Create Account
       </button>
     </form>
+
     <hr />
     Error: {{ (signUpError | json) ?? '' }}
     <hr />
     <br />
-    <ng-container *ngIf="!session">
+
+    <ng-container *ngIf="!session?.token">
       <h2>Sign In</h2>
       <form [formGroup]="signInForm" (ngSubmit)="signIn()">
         <label for="email">email </label>
@@ -105,7 +121,7 @@ interface Sale {
       </form>
     </ng-container>
 
-    <button *ngIf="session">
+    <button *ngIf="session" (click)="signOut()">
       Logout from {{ session.user.name }} ({{ session.user.email }})
     </button>
 
@@ -115,32 +131,33 @@ interface Sale {
     <hr />
     Session: {{ (session | json) ?? '' }}
     <hr />
+
+    <ng-container *ngIf="session?.token">
+      <br />
+      <h2>Users</h2>
+      <br />
+      <table cellPadding="5" cellSpacing="10">
+        <tr>
+          <th align="left">name</th>
+          <th align="left">email</th>
+          <th>createdAt</th>
+          <th>actions</th>
+        </tr>
+        <tr *ngFor="let user of users">
+          <td>{{ user.name }}</td>
+          <td>{{ user.email }}</td>
+          <td align="center">{{ user.createdAt }}</td>
+          <td align="center">
+            <button (click)="deleteUser(user.objectId)">Delete</button>
+          </td>
+        </tr>
+      </table>
+    </ng-container>
   `,
 })
 export class AppComponent {
-  total = 0;
-  totalNext = 0;
-
   unsubscribe$ = new Subject<void>();
   subscription$: { [key: string]: Subscription } = {};
-
-  // total once query
-  totalOnce$ = query<Sale>('Sale')
-    .filter({
-      objectId: {
-        $eq: 'kpg5YGSEBn',
-      },
-    })
-    .once()
-    .pipe(
-      map(({ docs }) => docs && docs[0]),
-      map((sale) => sale?.total ?? 0),
-      tap((total) => {
-        this.total = total;
-        this.totalNext = total;
-      }),
-      tap(() => this.cdr.markForCheck())
-    );
 
   signUpForm = new FormGroup({
     name: new FormControl(''),
@@ -153,49 +170,93 @@ export class AppComponent {
     password: new FormControl(''),
   });
 
-  session: Session | undefined = undefined;
-
   signInError: any;
   signUpError: any;
 
+  session: Session | undefined = LocalStorage.get('session');
+
+  users: User[] = [];
+
+  counter: Counter = {
+    total: 0,
+    name: 'elegante',
+  } as Counter;
+  counterTotalNext = 0;
+
   constructor(private cdr: ChangeDetectorRef) {
-    client.ping().then(() => console.timeEnd('startup'));
+    ping().then(() => console.timeEnd('startup'));
   }
 
   ngOnDestroy() {}
 
-  ngOnInit() {
+  async ngOnInit() {
+    /**
+     * check if default record of counter exists
+     * if not we create it, all on server side
+     */
+    this.counter = await runFunction<Counter>('getCounter');
+    this.counterTotalNext = this.counter.total;
+
+    /**
+     * subscribe to realtime updates
+     */
     this.subscribe();
-    runFunction('getLatestUsers')
-      .then((users) => console.log('getLatestUsers', users))
-      .catch((err) => console.log(err));
+
+    /**
+     * load a protected function
+     * by default all functions requires a valid user session token
+     */
+    if (this.session) {
+      this.loadLatestUsers();
+    }
+
+    this.cdr.markForCheck();
   }
 
-  subscribe() {
+  async subscribe() {
+    /**
+     * force unsubscribe all subscriptions
+     */
     this.unsubscribe();
-    this.subscription$['update'] = query<Sale>('Sale')
+
+    /**
+     * subscribe to realtime updates
+     */
+    this.subscription$['counterUpdate'] = query<Counter>('Counter')
       .filter({
-        objectId: {
-          $eq: 'kpg5YGSEBn',
+        name: {
+          $eq: 'elegante',
         },
       })
       .on('update')
-      .subscribe(({ doc }) => {
-        const newTotal = doc?.total ?? 0;
-        console.log('doc update', doc);
-        if (newTotal > 0 && this.total !== newTotal) {
-          this.total = doc?.total ?? 0;
+      .subscribe(
+        ({ doc }) => {
+          console.log('counter update', doc);
+          this.counter = doc;
           this.cdr.markForCheck();
-        }
+        },
+        (err) => console.error(err)
+      );
+
+    this.subscription$['userDelete'] = query<User>('PublicUser')
+      .on('delete')
+      .subscribe(({ doc, ...rest }) => {
+        console.log('user deleted', doc, rest);
+        this.users = this.users.filter(
+          (user) => user.objectId !== doc.objectId
+        );
+        this.cdr.markForCheck();
       });
 
-    this.subscription$['insert'] = query('Sale')
+    this.subscription$['userInsert'] = query<User>('PublicUser')
+      .sort({
+        createdAt: -1,
+      })
       .on('insert')
-      .subscribe(({ doc }) => console.log('inserted new doc', doc));
-
-    this.subscription$['delete'] = query('Sale')
-      .on('delete')
-      .subscribe(({ doc, ...rest }) => console.log('deleted doc', doc, rest));
+      .subscribe(({ doc }) => {
+        console.log('user inserted', doc);
+        this.users.unshift(doc);
+      });
   }
 
   unsubscribe() {
@@ -205,20 +266,12 @@ export class AppComponent {
   }
 
   increase() {
-    this.totalNext = this.totalNext + 1;
+    this.counterTotalNext = this.counterTotalNext + 1;
     this.cdr.markForCheck();
-    query<{
-      objectId: string;
-      total: number;
-    }>('Sale')
-      .filter({
-        objectId: {
-          $eq: 'kpg5YGSEBn',
-        },
-      })
-      .update({
-        total: this.totalNext,
-      });
+    runFunction('increaseCounter', {
+      objectId: this.counter.objectId,
+      total: this.counterTotalNext,
+    });
   }
 
   reload() {
@@ -231,37 +284,32 @@ export class AppComponent {
       const response = await Auth.signUp(
         name as string,
         email as string,
-        password as string,
-        {
-          projection: {
-            name: 1,
-            email: 1,
-          },
-        }
+        password as string
       );
 
-      const { user, sessionToken, ...rest } = response;
+      const { user, token, ...rest } = response;
 
-      // stores the session object the way you need if you want
-      // but it's not needed if you just want to grab
-      // the current user in session, you can just
+      // stores the session object the way you need
+      // to just grab the active session
       //
       // import { Auth } from '@elegante/sdk';
-      // Auth.current().then(({user, sessionToken, ...rest}) => {
-      //   console.log(user, sessionToken, ...rest);
+      // Auth.current().then(({user, token, ...rest}) => {
+      //   console.log(user, token, ...rest);
       // });
       //
       // the session is automatically loaded once the client is configured
       // but if you ever need to switch user sessions you can
       //
       // import { Auth } from '@elegante/sdk';
-      // Auth.become('session-token').then(({user, sessionToken, ...rest}) => {
-      //   console.log(user, sessionToken, ...rest);
+      // Auth.become('session-token').then(({user, token, ...rest}) => {
+      //   console.log(user, token, ...rest);
       // });
 
       this.session = response;
-      this.signUpError = {};
+      this.signUpError = null;
       this.cdr.markForCheck();
+
+      LocalStorage.set('session', response);
     } catch (err) {
       console.error(err);
       this.signUpError = err;
@@ -279,28 +327,36 @@ export class AppComponent {
         },
       });
 
-      const { user, sessionToken, ...rest } = response;
+      const { user, token, ...rest } = response;
 
       // stores the session object the way you need if you want
       // but it's not needed if you just want to grab
       // the current user in session, you can just
       //
       // import { Auth } from '@elegante/sdk';
-      // Auth.current().then(({user, sessionToken, ...rest}) => {
-      //   console.log(user, sessionToken, ...rest);
+      // Auth.current().then(({user, token, ...rest}) => {
+      //   console.log(user, token, ...rest);
       // });
       //
       // the session is automatically loaded once the client is configured
       // but if you ever need to switch user sessions you can
       //
       // import { Auth } from '@elegante/sdk';
-      // Auth.become('session-token').then(({user, sessionToken, ...rest}) => {
-      //   console.log(user, sessionToken, ...rest);
+      // Auth.become('session-token').then(({user, token, ...rest}) => {
+      //   console.log(user, token, ...rest);
       // });
 
       this.session = response;
       this.signInError = undefined;
       this.cdr.markForCheck();
+
+      LocalStorage.set('session', response);
+
+      /**
+       * load a protected function
+       * by default all functions requires a valid user session token
+       */
+      this.loadLatestUsers();
     } catch (err) {
       console.error(err);
       this.signInError = err;
@@ -308,7 +364,29 @@ export class AppComponent {
     }
   }
 
-  signBecome() {
-    // Auth.become(token);
+  async signOut() {
+    await Auth.signOut();
+    LocalStorage.unset('session');
+    this.session = undefined;
+    this.cdr.markForCheck();
+  }
+
+  deleteUser(objectId: string) {
+    query<User>('PublicUser')
+      .filter({
+        objectId: {
+          $eq: objectId,
+        },
+      })
+      .delete();
+  }
+
+  loadLatestUsers() {
+    runFunction<User[]>('getLatestUsers')
+      .then((users) => {
+        this.users = users ?? [];
+        this.cdr.markForCheck();
+      })
+      .catch((err) => console.error(err));
   }
 }

@@ -1,6 +1,9 @@
+import { Auth } from './Auth';
 import { EleganteClient } from './EleganteClient';
 import { EleganteError, ErrorCode } from './EleganteError';
-import { log, isServer } from './utils';
+import { InternalHeaders } from './internal';
+import { log } from './log';
+import { isServer, LocalStorage } from './utils';
 import { Version } from './Version';
 
 export interface EleganteClientParams {
@@ -24,20 +27,29 @@ const EleganteClientDefaultParams: Partial<EleganteClientParams> = {
  * @param {EleganteClientParams} options
  * @returns {*}
  */
-export function createClient(options: EleganteClientParams) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function createClient(options: EleganteClientParams) {
+  log(`Elegante SDK v${Version}`);
+
   const params = (EleganteClient.params = {
     ...EleganteClientDefaultParams,
     ...options,
   });
 
-  if (!isServer() && params.apiSecret) {
-    throw new EleganteError(
-      ErrorCode.SERVER_SECRET_EXPOSED,
-      'Server secret exposed in client'
-    );
-  }
+  if (!isServer()) {
+    if (params.apiSecret) {
+      throw new EleganteError(
+        ErrorCode.SERVER_SECRET_EXPOSED,
+        'Server secret exposed in client'
+      );
+    }
 
-  log(`Elegante SDK v${Version}`);
-  return EleganteClient;
+    const token = LocalStorage.get(
+      `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+    );
+
+    if (token) {
+      return Auth.become(token);
+    }
+    return Promise.resolve();
+  }
 }

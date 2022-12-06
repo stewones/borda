@@ -11,9 +11,6 @@ import { EleganteServer, ServerParams } from './EleganteServer';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
 
-/**
- * @todo
- */
 export function restGet({
   params,
 }: {
@@ -44,7 +41,9 @@ export function restGet({
           .json(
             new EleganteError(
               ErrorCode.COLLECTION_NOT_ALLOWED,
-              `You can't get on collection ${collectionName} because it's reserved`
+              `You can't execute the operation 'get' on '${
+                ExternalCollectionName[collectionName] ?? collectionName
+              }' because it's a reserved collection`
             )
           );
       }

@@ -2,6 +2,7 @@
 import { stringify } from './utils';
 
 export enum ErrorCode {
+  AUTH_SIGN_OUT_ERROR = -8,
   AUTH_NAME_REQUIRED = -7,
   AUTH_EMAIL_NOT_FOUND = -6,
   AUTH_EMAIL_ALREADY_EXISTS = -5,

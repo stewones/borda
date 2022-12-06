@@ -31,7 +31,7 @@ export function restPut({
       );
 
       const payload = {
-        ...req.body,
+        ...req.body.doc,
         _updated_at: new Date(),
       };
 
@@ -52,7 +52,9 @@ export function restPut({
           .json(
             new EleganteError(
               ErrorCode.COLLECTION_NOT_ALLOWED,
-              `You can't put on collection ${collectionName} because it's reserved`
+              `You can't execute the operation 'put' on '${
+                ExternalCollectionName[collectionName] ?? collectionName
+              }' because it's a reserved collection`
             )
           );
       }

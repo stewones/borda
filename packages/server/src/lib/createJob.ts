@@ -1,7 +1,6 @@
 import { Request } from 'express';
 import { EleganteServer } from './EleganteServer';
 export interface CloudJobOptions {
-  path?: string;
   name: string;
 }
 
@@ -24,7 +23,7 @@ export interface CloudJobOptions {
  *
  * POST
  *
- * curl --location --request POST 'http://localhost:1337/server/jobs/some/inner/task' \
+ * curl --location --request POST 'http://localhost:1337/server/jobs/someHeavyJob' \
  *   --header 'X-Elegante-Api-Key: ELEGANTE_SERVER' \
  *   --header 'X-Elegante-Secret-Key: ELEGANTE_SECRET'
  *
@@ -38,7 +37,7 @@ export function createJob(
   fn: (req: Request) => Promise<string | void>
 ): void {
   const { app } = EleganteServer;
-  app.post(`/jobs/${options?.path ?? options.name}`, async (req, res) => {
+  app.post(`/jobs/${options.name}`, async (req, res) => {
     console.time(`job duration: ${options.name}`);
     try {
       res.status(200).send('🚀');

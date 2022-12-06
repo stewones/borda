@@ -1,11 +1,20 @@
-import { InternalHeaders } from '@elegante/sdk';
-import express, { Application, NextFunction, Request, Response } from 'express';
+import express, { Application } from 'express';
 
 import { ServerParams } from './EleganteServer';
+
 import { restDelete } from './restDelete';
+import { restDeleteMe } from './restDeleteMe';
 import { restGet } from './restGet';
+import { restGetMe } from './restGetMe';
 import { restPost } from './restPost';
 import { restPut } from './restPut';
+
+import {
+  routeEnsureApiKey,
+  routeUnlock,
+  routeEnsureApiSecret,
+  routeEnsureAuth,
+} from './route';
 
 export function rest({
   app,
@@ -30,14 +39,6 @@ export function rest({
     routeUnlock({
       params,
     })
-    /**
-     * @todo
-     * only logged users can access the API via REST
-     * we need to also implement beforeFind, beforeInsert, beforeUpdate, beforeDelete
-     * also we need to implement afterFind, afterInsert, afterUpdate, afterDelete
-     * attaching the user in session to the request plus the query being made
-     * this way users can easily implement their permission system
-     */
   );
 
   app.all(
@@ -55,6 +56,9 @@ export function rest({
 
   app.post(
     '/:collectionName',
+    routeEnsureAuth({
+      params,
+    }),
     restPost({
       params,
     })
@@ -62,6 +66,9 @@ export function rest({
 
   app.put(
     '/:collectionName/:objectId',
+    routeEnsureAuth({
+      params,
+    }),
     restPut({
       params,
     })
@@ -69,69 +76,41 @@ export function rest({
 
   app.delete(
     '/:collectionName/:objectId',
+    routeEnsureAuth({
+      params,
+    }),
     restDelete({
       params,
     })
   );
 
-  /**
-   * @todo
-   * define api
-   */
   app.get(
     '/:collectionName/:objectId',
+    routeEnsureAuth({
+      params,
+    }),
     restGet({
       params,
     })
   );
+
+  app.get(
+    '/me',
+    routeEnsureAuth({
+      params,
+    }),
+    restGetMe({
+      params,
+    })
+  );
+
+  app.delete(
+    '/me',
+    routeEnsureAuth({
+      params,
+    }),
+    restDeleteMe({
+      params,
+    })
+  );
 }
-
-const routeEnsureApiKey =
-  ({ params }: { params: ServerParams }) =>
-  (req: Request, res: Response, next: NextFunction) => {
-    res.removeHeader('X-Powered-By'); // because why not :)
-
-    const apiKeyHeaderKey = `${params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`;
-
-    if (!req.header(apiKeyHeaderKey?.toLowerCase())) {
-      return res.status(400).send('API key required');
-    }
-
-    const apiKey = req.header(apiKeyHeaderKey);
-
-    if (apiKey !== params.apiKey) {
-      return res.status(401).send('Unauthorized key');
-    }
-
-    return next();
-  };
-
-const routeEnsureApiSecret =
-  ({ params }: { params: ServerParams }) =>
-  (req: Request, res: Response, next: NextFunction) => {
-    const apiKeyHeaderKey = `${params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`;
-
-    if (!req.header(apiKeyHeaderKey?.toLowerCase())) {
-      return res.status(400).send('Secret key required');
-    }
-
-    const apiSecret = req.header(apiKeyHeaderKey);
-
-    if (apiSecret !== params.apiSecret) {
-      return res.status(401).send('Unauthorized secret');
-    }
-    return next();
-  };
-
-const routeUnlock =
-  ({ params }: { params: ServerParams }) =>
-  (req: Request, res: Response, next: NextFunction) => {
-    const apiSecret = req.header(
-      `${params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
-    );
-
-    if (apiSecret === params.apiSecret) {
-      res.locals['unlocked'] = true;
-    }
-    return next();
-  };

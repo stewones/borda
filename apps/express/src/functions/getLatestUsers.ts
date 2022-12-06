@@ -1,19 +1,22 @@
 import { query } from '@elegante/sdk';
-import { createFunction } from '@elegante/server';
+import { Cloud } from '@elegante/server';
 
-createFunction(
+Cloud.addFunction(
   'getLatestUsers',
   {
     isPublic: true,
   },
-  async (req, res) => {
+  async ({ req, res }) => {
+    const { session } = res.locals;
+    //console.log(session);
     try {
       res.status(200).send(
-        await query('User')
+        await query('PublicUser')
           .unlock(true)
           .projection({
             name: 1,
             email: 1,
+            createdAt: 1,
           })
           .sort({ updatedAt: -1 })
           .limit(5)

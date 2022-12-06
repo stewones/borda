@@ -15,14 +15,21 @@ export interface ServerParams {
   serverHeaderPrefix?: string;
   serverWatchCollections?: string; // ?? @todo see if this is necessary
   includeCacheTTL: number;
+  sessionCacheTTL: number;
 }
 export interface ServerEvents {
   onDatabaseConnect: (db: Db) => void;
 }
 
-export const EleganteServerDefaultParams: Partial<EleganteServerDefault> = {
-  serverHeaderPrefix: 'X-Elegante',
-  includeCacheTTL: 1337,
+export const ServerDefaultParams: {
+  params: Partial<ServerParams>;
+  events: Partial<ServerEvents>;
+} = {
+  params: {
+    serverHeaderPrefix: 'X-Elegante',
+    includeCacheTTL: 1337,
+    sessionCacheTTL: 1337 * 10,
+  },
   events: {
     // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
     onDatabaseConnect: (db: Db) => {},
@@ -30,12 +37,7 @@ export const EleganteServerDefaultParams: Partial<EleganteServerDefault> = {
 };
 
 export const EleganteServer: EleganteServerProtocol = {
-  params: {} as ServerParams,
   app: {} as Application,
   db: {} as Db,
-  ...EleganteServerDefaultParams,
-};
-
-export interface EleganteServerDefault extends ServerParams {
-  events: ServerEvents;
-}
+  ...ServerDefaultParams,
+} as EleganteServerProtocol;

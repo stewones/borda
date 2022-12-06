@@ -35,28 +35,31 @@ liveQuery.listen(httpServer);
  */
 import { query } from '@elegante/sdk';
 
-const users = await query<User>({
-  collection: 'User',
-})
-  .projection({
-    _id: 0,
-    _created_at: 1,
-    name: 1,
-  })
-  .sort({
-    _created_at: -1,
-  })
-  .filter({
-    name: {
-      $in: ['Raul', 'Elis'],
-    },
-  })
-  .limit(2)
-  .skip(0)
-  .find({
-    allowDiskUse: true,
-    readPreference: 'PRIMARY',
-  });
+const users =
+  (await query) <
+  User >
+  {
+    collection: 'User',
+  }
+    .projection({
+      _id: 0,
+      _created_at: 1,
+      name: 1,
+    })
+    .sort({
+      _created_at: -1,
+    })
+    .filter({
+      name: {
+        $in: ['Raul', 'Elis'],
+      },
+    })
+    .limit(2)
+    .skip(0)
+    .find({
+      allowDiskUse: true,
+      readPreference: 'PRIMARY',
+    });
 
 console.log(users);
 

@@ -2,7 +2,7 @@ export const InternalHeaders = {
   apiSecret: 'Api-Secret',
   apiKey: 'Api-Key',
   apiMethod: 'Api-Method',
-  apiSession: 'Api-Session',
+  apiToken: 'Api-Token',
 };
 
 export const InternalCollectionName: {
@@ -21,7 +21,7 @@ export const InternalFieldName: {
   createdAt: '_created_at',
   updatedAt: '_updated_at',
   expiresAt: '_expires_at',
-  sessionToken: '_session_token',
+  token: '_session_token',
   password: '_hashed_password',
 };
 
@@ -36,7 +36,6 @@ export const InternalSensitiveFields = [
    * elegante fields
    */
   'password',
-  'sessionToken',
   '_expires_at',
   '_session_token',
   '_hashed_password',

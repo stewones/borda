@@ -9,16 +9,15 @@ import { EleganteServer } from './EleganteServer';
 
 export interface DocQRL extends DocumentQuery {
   collection$: Collection<Document>;
-  doc?: Document;
+  doc?: Document | null | undefined;
 }
 
-export type DocQRLFrom = DocumentQuery | DocumentLiveQuery;
+export type DocQRLFrom = DocumentQuery | DocumentLiveQuery | Document;
 
 export function parseQuery(from: DocQRLFrom): DocQRL {
   const collectionName = from.collection ?? '';
-  const query = {
+  const docQuery = {
     projection: {},
-    method: null, // <-- required otherwise it should throw an error
     options: {},
     ...from,
   } as DocumentQuery;
@@ -30,7 +29,7 @@ export function parseQuery(from: DocQRLFrom): DocQRL {
   );
 
   return {
-    ...query,
+    ...docQuery,
     collection$,
   };
 }

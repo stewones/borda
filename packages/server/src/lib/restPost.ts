@@ -9,8 +9,6 @@ import {
   validateEmail,
   User,
   isEmpty,
-  Session,
-  pointer,
   InternalCollectionName,
   ExternalCollectionName,
   InternalFieldName,
@@ -18,16 +16,18 @@ import {
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
+import { getCloudTrigger } from './Cloud';
 import { createFindCursor } from './createFindCursor';
 import { createPipeline } from './createPipeline';
+import { createSession } from './createSession';
 import { ServerParams } from './EleganteServer';
 import { parseDoc, parseDocForInsertion, parseDocs } from './parseDoc';
 import { parseFilter } from './parseFilter';
-import { DocQRL, parseQuery } from './parseQuery';
+import { DocQRL, DocQRLFrom, parseQuery } from './parseQuery';
 import { parseResponse } from './parseResponse';
-import { newObjectId, newToken } from './utils/crypto';
+import { newObjectId } from './utils/crypto';
 import { isUnlocked } from './utils/isUnlocked';
-import { compare } from './utils/password';
+import { compare, hash } from './utils/password';
 
 export function restPost({
   params,
@@ -36,7 +36,9 @@ export function restPost({
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
-      const collectionName = req.params['collectionName'];
+      const collectionName =
+        InternalCollectionName[req.params['collectionName']] ??
+        req.params['collectionName'];
 
       const method = req.header(
         `${params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`
@@ -56,6 +58,7 @@ export function restPost({
         ...Object.keys(InternalCollectionName),
         ...Object.keys(ExternalCollectionName),
       ];
+
       if (
         !['signIn', 'signUp'].includes(method) &&
         !isUnlocked(res.locals) &&
@@ -66,15 +69,34 @@ export function restPost({
           .json(
             new EleganteError(
               ErrorCode.COLLECTION_NOT_ALLOWED,
-              `You can't ${method} the collection ${collectionName} because it's reserved`
+              `You can't execute the operation '${method}' on '${
+                ExternalCollectionName[collectionName] ?? collectionName
+              }' because it's a reserved collection`
             )
           );
       }
 
-      const docQRL = parseQuery({
+      // let body = req.body;
+      // if (collectionName === '_User' && ['signIn', 'signUp'].includes(method)) {
+      //   body = {
+      //     ...body,
+      //     doc: {
+      //       name: req.body.name,
+      //       email: req.body.email,
+      //       password: req.body.password,
+      //     },
+      //   };
+      //   delete body.name;
+      //   delete body.email;
+      //   delete body.password;
+      // }
+
+      const docQRLFrom: DocQRLFrom = {
         ...req.body,
         collection: collectionName,
-      });
+      };
+
+      const docQRL = parseQuery(docQRLFrom);
 
       const { filter, collection$ } = docQRL;
 
@@ -94,30 +116,48 @@ export function restPost({
       } else if (method === 'update') {
         /**
          * update
-         * @todo run beforeUpdate and afterUpdate hooks
          */
-        const { cursor, before } = await postUpdate(docQRL, res);
-        if (cursor.ok) {
-          const after = cursor.value;
-          const afterSaveTrigger = parseResponse(
-            {
-              before,
-              after,
-            },
-            {
-              removeSensitiveFields: !isUnlocked(res.locals),
-            }
-          );
-          //
-          // more values to be added
-          //   query,
-          //  params,
-          //  locals: res.locals,
-          // console.log(afterSaveTrigger);
-          // @todo run afterSaveTrigger
-          return res.status(200).send();
+        let shouldRun: boolean | void = true;
+        const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
+        if (beforeSave) {
+          const { doc } = docQRLFrom;
+          shouldRun = await beforeSave.fn({
+            req,
+            res,
+            docQRL,
+            before: doc ?? null,
+            after: null,
+          });
         }
 
+        if (shouldRun) {
+          const { cursor, before } = await postUpdate(docQRL, res);
+          if (cursor.ok) {
+            const after = cursor.value;
+            const afterSavePayload = parseResponse(
+              {
+                before,
+                after,
+              },
+              {
+                removeSensitiveFields: !isUnlocked(res.locals),
+              }
+            );
+
+            const afterSave = getCloudTrigger(collectionName, 'afterSave');
+            if (afterSave) {
+              afterSave.fn({
+                req,
+                res,
+                ...afterSavePayload,
+                docQRL,
+              });
+            }
+
+            // @todo run afterSaveTrigger
+            return res.status(200).send();
+          }
+        }
         return Promise.reject(
           new EleganteError(
             ErrorCode.REST_DOCUMENT_NOT_UPDATED,
@@ -158,7 +198,7 @@ export function restPost({
          */
         const total = await collection$.countDocuments(parseFilter(filter));
         return res.status(200).json(total);
-      } else if (method && method === 'aggregate') {
+      } else if (method === 'aggregate') {
         /**
          * aggregate
          * @todo run beforeAggregate and afterAggregate triggers
@@ -170,25 +210,50 @@ export function restPost({
       } else if (method === 'insert') {
         /**
          * insert new documents
-         * @todo run beforeInsert and afterInsert triggers
          */
-        const doc = {
-          ...parseDocForInsertion(req.body),
+        const doc: Document = {
+          ...parseDocForInsertion(req.body.doc),
           _id: newObjectId(),
           _created_at: new Date(),
           _updated_at: new Date(),
         };
-        const cursor = await collection$.insertOne(doc);
 
-        if (cursor.acknowledged) {
-          const afterSaveTrigger = parseResponse(
-            { before: null, after: doc },
-            {
-              removeSensitiveFields: !isUnlocked(res.locals),
+        let shouldRun: boolean | void = true;
+        const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
+        if (beforeSave) {
+          const { doc } = docQRLFrom;
+          shouldRun = await beforeSave.fn({
+            req,
+            res,
+            docQRL,
+            before: null,
+            after: doc,
+          });
+        }
+
+        if (shouldRun) {
+          const cursor = await collection$.insertOne(doc);
+
+          if (cursor.acknowledged) {
+            const afterSavePayload = parseResponse(
+              { before: null, after: doc },
+              {
+                removeSensitiveFields: !isUnlocked(res.locals),
+              }
+            );
+
+            const afterSave = getCloudTrigger(collectionName, 'afterSave');
+            if (afterSave) {
+              afterSave.fn({
+                req,
+                res,
+                ...afterSavePayload,
+                docQRL,
+              });
             }
-          );
-          // @todo run afterSaveTrigger
-          return res.status(201).send(doc);
+
+            return res.status(201).send(doc);
+          }
         }
 
         return Promise.reject(
@@ -197,24 +262,17 @@ export function restPost({
             'could not create document'
           )
         );
-      } else if (collectionName === 'User' && method === 'signUp') {
+      } else if (collectionName === '_User' && method === 'signUp') {
         /**
          * user sign up
          */
-        return postSignUp(
-          docQRL as DocQRL & { name: string; email: string; password: string },
-          res
-        );
-      } else if (collectionName === 'User' && method === 'signIn') {
+        return postSignUp(docQRL, res);
+      } else if (collectionName === '_User' && method === 'signIn') {
         /**
          * user sign in
          */
-        return postSignIn(
-          docQRL as DocQRL & { email: string; password: string },
-          res
-        );
+        return postSignIn(docQRL, res);
       } else {
-        // console.log(collectionName, method);
         throw new EleganteError(
           ErrorCode.REST_METHOD_NOT_FOUND,
           'Method not found'
@@ -252,7 +310,6 @@ async function postUpdate(docQRL: DocQRL, res: Response) {
     ...(doc ?? {}),
     _updated_at: new Date(),
   };
-
   /**
    * ensure each internal/external field is deleted from the user payload
    * if session is not unlocked
@@ -332,22 +389,19 @@ async function postAggregate(query: DocQRL) {
   return docs;
 }
 
-async function postSignIn(
-  docQRL: DocQRL & { email: string; password: string },
-  res: Response
-) {
-  const { projection, include, exclude } = docQRL;
-
+async function postSignIn(docQRL: DocQRL, res: Response) {
+  const { projection, include, exclude, doc } = docQRL;
+  const { email, password } = doc ?? {};
   /**
    * validation chain
    */
-  if (!validateEmail(docQRL.email)) {
+  if (!validateEmail(email)) {
     return res
       .status(400)
       .json(
         new EleganteError(ErrorCode.AUTH_INVALID_EMAIL, 'Invalid email address')
       );
-  } else if (!docQRL.password) {
+  } else if (!password) {
     return res
       .status(400)
       .json(
@@ -372,7 +426,7 @@ async function postSignIn(
     .exclude(exclude ?? [])
     .filter({
       email: {
-        $eq: docQRL.email,
+        $eq: email,
       },
     })
     .findOne();
@@ -385,7 +439,7 @@ async function postSignIn(
       );
   }
 
-  if (!(await compare(docQRL.password, user.password ?? ''))) {
+  if (!(await compare(password, user.password ?? ''))) {
     return res
       .status(400)
       .json(
@@ -396,42 +450,14 @@ async function postSignIn(
       );
   }
 
-  /**
-   * because we don't want to expose the user password
-   */
-  delete user.password;
+  const session = await createSession(user);
 
-  /**
-   * expires in 1 year
-   * @todo make this an option ?
-   */
-  const expiresAt = new Date();
-  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-
-  /**
-   * generate a new session token
-   */
-  const sessionToken = `e:${newToken()}`;
-  const session = await query<Partial<Session>>('Session')
-    .unlock(true)
-    .insert({
-      user: pointer('User', user.objectId),
-      sessionToken,
-      expiresAt: expiresAt.toISOString(),
-    });
-
-  delete session.updatedAt;
-  delete session.objectId;
-
-  return res.status(201).json({ ...session, user });
+  return res.status(201).json(session);
 }
 
-async function postSignUp(
-  docQRL: DocQRL & { name: string; email: string; password: string },
-  res: Response
-) {
-  const { name, email, password, projection, include, exclude } = docQRL;
-
+async function postSignUp(docQRL: DocQRL, res: Response) {
+  const { doc } = docQRL;
+  const { name, email, password } = doc ?? {};
   /**
    * validation chain
    */
@@ -439,13 +465,13 @@ async function postSignUp(
     return res
       .status(400)
       .json(new EleganteError(ErrorCode.AUTH_NAME_REQUIRED, 'Name required'));
-  } else if (!validateEmail(docQRL.email)) {
+  } else if (!validateEmail(email)) {
     return res
       .status(400)
       .json(
         new EleganteError(ErrorCode.AUTH_INVALID_EMAIL, 'Invalid email address')
       );
-  } else if (!docQRL.password) {
+  } else if (!password) {
     return res
       .status(400)
       .json(
@@ -461,7 +487,7 @@ async function postSignUp(
     .projection({ email: 1 })
     .filter({
       email: {
-        $eq: docQRL.email,
+        $eq: email,
       },
     })
     .findOne();
@@ -477,34 +503,15 @@ async function postSignUp(
       );
   }
 
-  // @todo create new user + session and return session
+  const newUser = await query<User>('User')
+    .unlock(true)
+    .insert({
+      name,
+      email,
+      password: await hash(password),
+    });
 
-  /**
-   * because we don't want to expose the user password
-   */
-  // delete user.password;
+  const session = await createSession(newUser);
 
-  // /**
-  //  * expires in 1 year
-  //  * @todo make this an option ?
-  //  */
-  // const expiresAt = new Date();
-  // expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-
-  // /**
-  //  * generate a new session token
-  //  */
-  // const sessionToken = `e:${newToken()}`;
-  // const session = await query<Session>('Session')
-  //   .unlock(true)
-  //   .insert({
-  //     user: pointer('User', user.objectId),
-  //     sessionToken,
-  //     expiresAt: expiresAt.toISOString(),
-  //   });
-
-  // delete session.updatedAt;
-  // delete session.objectId;
-
-  // return res.status(201).json({ ...session, user });
+  return res.status(201).json(session);
 }

@@ -1,17 +1,17 @@
 import { print, query } from '@elegante/sdk';
-import { createFunction } from '@elegante/server';
+import { Cloud } from '@elegante/server';
 
-createFunction(
+Cloud.addFunction(
   'deleteUser',
   {
     isPublic: true,
   },
-  async (req, res) => {
+  async ({ req, res }) => {
     print('executing', `deleteUser`);
     try {
       res
         .status(200)
-        .send(await query('User').unlock(true).delete(req.body?.objectId));
+        .send(await query('User').unlock(true).delete(req.body.objectId));
     } catch (err) {
       return res.status(400).send(err);
     }

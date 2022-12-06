@@ -14,7 +14,7 @@ export function webSocketServer(socketURL: string) {
 
     const ws = new WebSocket(socketURL, [
       `${EleganteClient.params.apiKey}`,
-      `sessionToken`, // @todo send sessionToken over the wire to also validade the ws connection
+      `token`, // @todo send token over the wire to also validade the ws connection
     ]);
 
     ws.onopen = (ev) => onOpen(ws, ev);

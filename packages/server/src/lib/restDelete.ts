@@ -8,7 +8,9 @@ import {
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
+import { getCloudTrigger } from './Cloud';
 import { EleganteServer, ServerParams } from './EleganteServer';
+import { DocQRL } from './parseQuery';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
 
@@ -42,20 +44,25 @@ export function restDelete({
           .json(
             new EleganteError(
               ErrorCode.COLLECTION_NOT_ALLOWED,
-              `You can't delete on collection ${collectionName} because it's reserved`
+              `You can't execute the operation 'delete' on '${
+                ExternalCollectionName[collectionName] ?? collectionName
+              }' because it's a reserved collection`
             )
           );
       }
 
       /**
-       * @todo run beforeDelete and afterDelete hooks
+       * @todo run beforeDelete
        */
-      const cursor = await collection.findOneAndUpdate(
-        {
+      const docQRL: Partial<DocQRL> = {
+        filter: {
           _id: {
             $eq: objectId,
           },
         },
+      };
+      const cursor = await collection.findOneAndUpdate(
+        { ...docQRL.filter },
         { $set: { _expires_at: new Date() } },
         {
           returnDocument: 'after',
@@ -64,14 +71,23 @@ export function restDelete({
       );
 
       if (cursor.ok && cursor.value) {
-        const afterDeleteTrigger = parseResponse(
-          { doc: cursor.value },
+        const afterDeletePayload = parseResponse(
+          { before: cursor.value, after: null },
           {
             removeSensitiveFields: !isUnlocked(res.locals),
           }
         );
-        // console.log(afterDeleteTrigger);
-        // @todo trigger afterDeleteTrigger
+
+        const afterSave = getCloudTrigger(collectionName, 'afterDelete');
+        if (afterSave) {
+          afterSave.fn({
+            req,
+            res,
+            ...afterDeletePayload,
+            docQRL,
+          });
+        }
+
         return res.status(200).send();
       } else {
         res

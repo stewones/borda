@@ -106,12 +106,12 @@ export function createLiveQueryServer(
     //   cookie: 'g_state={"i_l":0}; inl={"token":"r:3d57eeade3e43d13476cc1fbbb932040","avatar":""}',
     //   'sec-websocket-key': 'qkd6T8tGnbu8ZRKfvr7dsg==',
     //   'sec-websocket-extensions': 'permessage-deflate; client_max_window_bits',
-    //   'sec-websocket-protocol': 'ELEGANTE_SERVER, sessionToken'
+    //   'sec-websocket-protocol': '🔑, token'
     // }
 
     // extract websocket protocols from headers
     const protocols = headers['sec-websocket-protocol'];
-    // 'apiKey, sessionToken'
+    // 'apiKey, token'
 
     // extract session token from protocols
     const protocolsArray = protocols ? protocols.split(',') : [];
@@ -262,6 +262,11 @@ function handleOn(
     }
   );
 
+  ws.on('close', () => {
+    stream.close();
+    stream.removeAllListeners();
+  });
+
   stream.on('error', (err) => {
     log('stream error', err); // @todo doc this
     // close websocket connection with stream error
@@ -302,6 +307,7 @@ function handleOn(
     if (isDeleted) {
       message = {
         doc: await parseDoc(fullDocument)(rawQuery, EleganteServer.params, {}),
+        docs: [],
       };
     } else if (
       operationType === requestedEvent &&
@@ -309,6 +315,7 @@ function handleOn(
     ) {
       message = {
         doc: await parseDoc(fullDocument)(rawQuery, EleganteServer.params, {}),
+        docs: [],
         updatedFields,
         removedFields,
         truncatedArrays,
@@ -388,6 +395,7 @@ async function handleOnce(
    */
   const message: LiveQueryMessage = {
     docs: await parseDocs(docs)(query, EleganteServer.params, {}),
+    doc: null,
   };
 
   ws.send(JSON.stringify(message));

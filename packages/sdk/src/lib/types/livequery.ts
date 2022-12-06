@@ -4,8 +4,8 @@ import { Document, DocumentEvent, DocumentQuery } from './query';
 export type LiveQueryMethod = 'on' | 'once';
 
 export interface LiveQueryMessage<T = any> extends Document {
-  doc?: T | undefined;
-  docs?: T[] | undefined;
+  doc: T;
+  docs: T[];
   updatedFields?: Partial<T> | undefined;
   removedFields?: string[] | undefined;
   truncatedArrays?:

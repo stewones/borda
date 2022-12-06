@@ -1,4 +1,4 @@
-import { EleganteClient } from '../EleganteClient';
+import { EleganteClient } from './EleganteClient';
 
 export const log = (...args: unknown[]) =>
   EleganteClient.params.debug ? print(...args) : undefined;

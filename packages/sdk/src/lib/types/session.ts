@@ -3,5 +3,5 @@ import { User } from './user';
 
 export interface Session extends Record {
   user: User;
-  sessionToken: string;
+  token: string;
 }

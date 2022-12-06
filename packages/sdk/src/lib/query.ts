@@ -4,11 +4,11 @@
 import { finalize, Observable } from 'rxjs';
 import { EleganteClient } from './EleganteClient';
 import { EleganteError, ErrorCode } from './EleganteError';
-import { isEmpty, isServer, log } from './utils';
+import { isEmpty, isServer, LocalStorage } from './utils';
 import { fetch, HttpMethod } from './fetch';
 import { InternalFieldName, InternalHeaders } from './internal';
 import { webSocketServer, getUrl, WebSocketCallback } from './websocket';
-import { DocumentLiveQuery } from './types/livequery';
+import { DocumentLiveQuery, LiveQueryMessage } from './types/livequery';
 
 import {
   Query,
@@ -17,6 +17,7 @@ import {
   DocumentResponse,
   ChangeStreamOptions,
 } from './types/query';
+import { log } from './log';
 
 export function query<TSchema extends Document>(collection: string) {
   const bridge: Query<TSchema> = {
@@ -224,28 +225,32 @@ export function query<TSchema extends Document>(collection: string) {
         ] = EleganteClient.params.apiSecret ?? '👀';
       }
 
-      let docQuery: Document | DocumentQuery<TSchema>;
+      if (!isServer()) {
+        const token = LocalStorage.get(
+          `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+        );
+
+        if (token) {
+          headers[
+            `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+          ] = token;
+        }
+      }
 
       log(method, bridge.params, options ?? '', doc ?? '');
 
-      if (method === 'insert') {
-        docQuery = {
-          ...doc,
-        };
-      } else {
-        docQuery = {
-          options,
-          filter,
-          projection,
-          sort,
-          limit,
-          skip,
-          include,
-          exclude,
-          pipeline,
-          doc,
-        };
-      }
+      const docQuery: Document | DocumentQuery<TSchema> = {
+        options,
+        filter,
+        projection,
+        sort,
+        limit,
+        skip,
+        include,
+        exclude,
+        pipeline,
+        doc,
+      };
 
       const docs = await fetch<DocumentResponse<TSchema>>(
         `${EleganteClient.params.serverURL}/${bridge.params['collection']}${
@@ -256,11 +261,7 @@ export function query<TSchema extends Document>(collection: string) {
             ? (method.toUpperCase() as HttpMethod)
             : 'POST',
           headers,
-          body: ['put', 'delete'].includes(method)
-            ? doc
-            : method === 'get'
-            ? null
-            : docQuery,
+          body: method === 'get' ? null : docQuery,
         }
       );
 
@@ -276,7 +277,7 @@ export function query<TSchema extends Document>(collection: string) {
       let wssFinished = false;
       let wssConnected = false;
 
-      return new Observable<TSchema>((observer) => {
+      return new Observable<LiveQueryMessage<TSchema>>((observer) => {
         if (!EleganteClient.params.serverURL) {
           throw new EleganteError(
             ErrorCode.SERVER_URL_UNDEFINED,
@@ -393,7 +394,7 @@ export function query<TSchema extends Document>(collection: string) {
     once: () => {
       let wss: WebSocket;
 
-      return new Observable<TSchema>((observer) => {
+      return new Observable<LiveQueryMessage<TSchema>>((observer) => {
         if (!EleganteClient.params.serverURL) {
           throw new EleganteError(
             ErrorCode.SERVER_URL_UNDEFINED,

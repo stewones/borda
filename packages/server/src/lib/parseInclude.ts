@@ -6,6 +6,7 @@ import {
   log,
   query,
 } from '@elegante/sdk';
+
 import { ServerParams } from './EleganteServer';
 
 /**
@@ -26,19 +27,19 @@ export const memo: Memo = new Map();
  */
 setInterval(() => {
   const now = Date.now();
-  for (const key in memo) {
-    const value = memo.get(key);
+  memo.forEach((value, key) => {
     if (value && now > value.expires) {
       log('removing memo', key);
       memo.delete(key);
     }
-  }
+  });
 }, 1000 * 1);
 
 export function parseInclude<T extends Document>(
   obj: any
 ): (docQuery: DocumentQuery, params: ServerParams, locals: any) => Promise<T> {
   return async (docQuery, params, locals) => {
+    if (!obj) return {};
     const { include } = docQuery;
     /**
      * create a tree structure out of include
@@ -100,12 +101,7 @@ export function parseInclude<T extends Document>(
         const doc = await query<T>(collection)
           .include(join)
           .unlock(true) // here we force unlock because `parseInclude` run in the server anyways 💁‍♂️
-          .filter({
-            objectId: {
-              $eq: objectId,
-            },
-          } as any)
-          .findOne();
+          .findOne(objectId);
 
         if (!doc) continue;
 
