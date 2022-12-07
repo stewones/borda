@@ -3,24 +3,27 @@ import {
   query,
   EleganteError,
   ErrorCode,
-  Document,
+  ExternalFieldName,
+  ExternalCollectionName,
+  InternalCollectionName,
+  InternalFieldName,
   InternalHeaders,
+  isEmpty,
+  Document,
   QueryMethod,
   validateEmail,
   User,
-  isEmpty,
-  InternalCollectionName,
-  ExternalCollectionName,
-  InternalFieldName,
-  ExternalFieldName,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
 import { getCloudTrigger } from './Cloud';
-import { createFindCursor } from './createFindCursor';
-import { createPipeline } from './createPipeline';
-import { createSession } from './createSession';
-import { ServerParams } from './EleganteServer';
+import {
+  ServerParams,
+  createFindCursor,
+  createPipeline,
+  createSession,
+} from './EleganteServer';
+import { invalidateCache } from './Cache';
 import { parseDoc, parseDocForInsertion, parseDocs } from './parseDoc';
 import { parseFilter } from './parseFilter';
 import { DocQRL, DocQRLFrom, parseQuery } from './parseQuery';
@@ -133,7 +136,7 @@ export function restPost({
         if (shouldRun) {
           const { cursor, before } = await postUpdate(docQRL, res);
           if (cursor.ok) {
-            const after = cursor.value;
+            const after = cursor.value ?? ({} as Document);
             const afterSavePayload = parseResponse(
               {
                 before,
@@ -155,9 +158,12 @@ export function restPost({
             }
 
             // @todo run afterSaveTrigger
+
+            invalidateCache(collectionName, after);
             return res.status(200).send();
           }
         }
+
         return Promise.reject(
           new EleganteError(
             ErrorCode.REST_DOCUMENT_NOT_UPDATED,
@@ -172,14 +178,17 @@ export function restPost({
         const { cursor } = await postDelete(docQRL);
 
         if (cursor.ok && cursor.value) {
+          const doc = cursor.value ?? ({} as Document);
           const afterDeleteTrigger = parseResponse(
-            { doc: cursor.value },
+            { doc },
             {
               removeSensitiveFields: !isUnlocked(res.locals),
             }
           );
           // console.log(afterDeleteTrigger);
           // @todo trigger afterDeleteTrigger
+
+          invalidateCache(collectionName, doc);
           return res.status(200).send();
         } else {
           res
@@ -187,7 +196,7 @@ export function restPost({
             .json(
               new EleganteError(
                 ErrorCode.REST_DOCUMENT_NOT_FOUND,
-                'document not found'
+                'could not remove document'
               )
             );
         }

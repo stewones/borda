@@ -237,7 +237,7 @@ export function query<TSchema extends Document>(collection: string) {
         }
       }
 
-      log(method, bridge.params, options ?? '', doc ?? '');
+      log(method, JSON.stringify(bridge.params), options ?? '', doc ?? '');
 
       const docQuery: Document | DocumentQuery<TSchema> = {
         options,

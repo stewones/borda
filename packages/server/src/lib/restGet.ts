@@ -63,7 +63,7 @@ export function restGet({
     } catch (err) {
       return res
         .status(500)
-        .send(new EleganteError(ErrorCode.REST_GET_ERROR, err as object));
+        .json(new EleganteError(ErrorCode.REST_GET_ERROR, err as object));
     }
   };
 }

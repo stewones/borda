@@ -13,6 +13,7 @@ import {
 
 import { Request, Response } from 'express';
 import { EleganteServer, ServerParams } from './EleganteServer';
+import { invalidateCache } from './Cache';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
 
@@ -24,11 +25,12 @@ export function restPut({
   return async (req: Request, res: Response) => {
     try {
       const { db } = EleganteServer;
-      const { collectionName, objectId } = req.params;
+      const { objectId } = req.params;
+      let { collectionName } = req.params;
 
-      const collection = db.collection<Document>(
-        InternalCollectionName[collectionName] ?? collectionName
-      );
+      collectionName = InternalCollectionName[collectionName] ?? collectionName;
+
+      const collection = db.collection<Document>(collectionName);
 
       const payload = {
         ...req.body.doc,
@@ -101,7 +103,7 @@ export function restPut({
       );
 
       if (cursor.ok) {
-        const after = cursor.value;
+        const after = cursor.value ?? ({} as Document);
         const afterSaveTrigger = parseResponse(
           {
             before,
@@ -113,20 +115,32 @@ export function restPut({
             removeSensitiveFields: !isUnlocked(res.locals),
           }
         );
-        // console.log(afterSaveTrigger);
-        return res.status(200).send();
+
+        if (cursor.value) {
+          invalidateCache(collectionName, after);
+          return res.status(200).send();
+        } else {
+          return res
+            .status(404)
+            .json(
+              new EleganteError(
+                ErrorCode.REST_DOCUMENT_NOT_UPDATED,
+                'document not found'
+              )
+            );
+        }
       }
 
       return Promise.reject(
         new EleganteError(
           ErrorCode.REST_DOCUMENT_NOT_UPDATED,
-          cursor.lastErrorObject ?? 'coud not update document'
+          'could not update document'
         )
       );
     } catch (err) {
       return res
         .status(500)
-        .send(new EleganteError(ErrorCode.REST_PUT_ERROR, err as object));
+        .json(new EleganteError(ErrorCode.REST_PUT_ERROR, err as object));
     }
   };
 }

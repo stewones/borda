@@ -8,32 +8,7 @@ import {
 } from '@elegante/sdk';
 
 import { ServerParams } from './EleganteServer';
-
-/**
- * memoize pointers
- */
-const useMemo = true;
-type Memo = Map<
-  string,
-  {
-    data: any;
-    expires: number;
-  }
->;
-export const memo: Memo = new Map();
-
-/**
- * scheduler for cleaning up memo
- */
-setInterval(() => {
-  const now = Date.now();
-  memo.forEach((value, key) => {
-    if (value && now > value.expires) {
-      log('removing memo', key);
-      memo.delete(key);
-    }
-  });
-}, 1000 * 1);
+import { Cache } from './Cache';
 
 export function parseInclude<T extends Document>(
   obj: any
@@ -94,10 +69,17 @@ export function parseInclude<T extends Document>(
       }
 
       const join = tree[pointerField];
+      const { collection, objectId } = getPointer(pointerValue);
 
-      if (!memo.get(pointerValue) || !useMemo) {
-        const { collection, objectId } = getPointer(pointerValue);
+      const memo = Cache.get(collection, objectId);
 
+      if (memo) {
+        // reuse pointer value
+        obj[pointerField] = memo;
+
+        // remove raw _p_ entry
+        delete obj[`_p_${pointerField}`];
+      } else {
         const doc = await query<T>(collection)
           .include(join)
           .unlock(true) // here we force unlock because `parseInclude` run in the server anyways 💁‍♂️
@@ -111,34 +93,8 @@ export function parseInclude<T extends Document>(
         // add pointer value
         obj[pointerField] = doc;
 
-        // memoize pointer value
-        const timeout = params.includeCacheTTL;
-
-        if (timeout > 0) {
-          memo.set(pointerValue, {
-            data: obj[pointerField],
-            expires: Date.now() + timeout,
-          });
-          log(
-            'pointerValue',
-            'no memo',
-            memo.get(pointerValue)?.data['objectId']
-          );
-        }
-      }
-
-      if (memo.get(pointerValue) && useMemo) {
-        // reuse pointer value
-        obj[pointerField] = memo.get(pointerValue)?.data;
-
-        // remove raw _p_ entry
-        delete obj[`_p_${pointerField}`];
-
-        log(
-          'pointerValue',
-          'memoized',
-          memo.get(pointerValue)?.data['objectId']
-        );
+        // memoize
+        Cache.set(collection, objectId, obj[pointerField]);
       }
     }
     return Promise.resolve(obj);

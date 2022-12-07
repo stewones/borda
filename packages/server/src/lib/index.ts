@@ -1,4 +1,4 @@
-export * from './Version';
-export * from './createServer';
-export * from './createLiveQueryServer';
 export * from './Cloud';
+export * from './EleganteServer';
+export * from './LiveQueryServer';
+export * from './Version';

@@ -3,17 +3,23 @@ import express from 'express';
 import cors from 'cors';
 
 import { createClient, log, ping } from '@elegante/sdk';
-import { createLiveQueryServer, createServer, Version } from '@elegante/server';
+import {
+  createLiveQueryServer,
+  createServer,
+  Version,
+  ServerEvents,
+} from '@elegante/server';
 
 /**
  * server setup
  */
-const debug = false;
+
 console.time('startup');
 
-/**
- * configure sdk
- */
+const debug = true;
+const documentCacheTTL =
+  parseFloat(process.env.ELEGANTE_DB_CACHE_TTL ?? '0') || 1 * 1000 * 60 * 60;
+
 const databaseURI =
   process.env.ELEGANTE_DATABASE_URI ||
   'mongodb://localhost:27017/elegante-dev?directConnection=true&serverSelectionTimeoutMS=2000&appName=elegante';
@@ -30,6 +36,10 @@ const serverURL = `${
 const serverHeaderPrefix =
   process.env.ELEGANTE_SERVER_HEADER_PREFIX || 'X-Elegante';
 
+/**
+ * configure sdk
+ */
+
 createClient({
   apiKey,
   apiSecret,
@@ -40,71 +50,24 @@ createClient({
 /**
  * spin up an Elegante server instance
  */
-const elegante = createServer(
-  {
-    /**
-     * mongo connection URI
-     */
-    databaseURI,
-    /**
-     * server definitions
-     */
-    apiKey,
-    apiSecret,
-    serverURL,
-    serverHeaderPrefix,
-    /**
-     * server operations
-     */
-    includeCacheTTL: 1 * 1000 * 10,
-  },
-  {
-    onDatabaseConnect: async (db) => {
-      log('Database connected 🚀');
-      const stats = await db.stats();
-      delete stats['$clusterTime'];
-      delete stats['operationTime'];
 
-      console.table(stats);
-      console.timeEnd('startup');
-
-      console.time('ping');
-      ping().then(() => console.timeEnd('ping'));
-
-      // const taskCollection = db.collection('Sale');
-
-      // taskCollection.aggregate([{ $match: { _id: 'kpg5YGSEBn' } }]);
-
-      // const changeStream = taskCollection.watch([], {
-      //   fullDocument: 'updateLookup',
-      // });
-
-      // changeStream.on('change', (change) => {
-      //   console.log('change', change);
-      //   /**
-      //    *
-      //    * // listen to all changes
-      //    * query.on().subscribe(({ docs, doc, change, before, after }))
-      //    *
-      //    * // listen to enter changes
-      //    * query.on('enter').subscribe(({ docs }))
-      //    *
-      //    * // listen to insert changes
-      //    * query.on('insert').subscribe(({ doc, change}))
-      //    *
-      //    * // listen to update changes
-      //    * query.on('update').subscribe(({ before, after, change}))
-      //    *
-      //    * // listen to delete changes
-      //    * // doc here has only "objectId", so we need to figure out how to deliver the last object
-      //    * query.on('delete').subscribe(({ doc, change}))
-      //    *
-      //    *
-      //    */
-      // });
-    },
-  }
-);
+const elegante = createServer({
+  /**
+   * mongo connection URI
+   */
+  databaseURI,
+  /**
+   * server definitions
+   */
+  apiKey,
+  apiSecret,
+  serverURL,
+  serverHeaderPrefix,
+  /**
+   * server operations
+   */
+  documentCacheTTL,
+});
 
 /**
  * create the main express app
@@ -123,34 +86,29 @@ server.options('*', cors());
 server.use(serverMount, elegante);
 
 /**
- * Elegante Server plays nicely with any of existing routes
+ * Elegante Server plays nicely with any of your existing routes
  */
 server.get('/', (req, res) => {
   res.status(200).send(`Elegante Server v${Version}`);
 });
 
 /**
- * add jobs
- */
-import './jobs/someHeavyTask';
-
-/**
- *
  * add cloud functions
  */
-import './functions/somePublicTask';
-import './functions/getLatestUsers';
-import './functions/getCounter';
-import './functions/increaseCounter';
+import './functions';
 
 /**
  * add triggers
  */
-import './triggers/afterSaveUser';
-import './triggers/afterDeletePublicUser';
+import './triggers';
 
 /**
- * start the server
+ * add jobs
+ */
+import './jobs';
+
+/**
+ * start the node server
  */
 const httpPort = 1337;
 const httpServer = http.createServer(server);
@@ -160,15 +118,34 @@ httpServer.listen(httpPort, () => log(`Server running on port ${httpPort}`));
  * start the live query server
  */
 const liveQueryPort = 1338;
-createLiveQueryServer(
-  {
-    collections: ['PublicUser', 'Counter'],
-    port: liveQueryPort,
-    debug: false,
-  },
-  {
-    onLiveQueryConnect: (ws, socket) => {
-      // do whatever you want with websockets here
-    },
-  }
-);
+createLiveQueryServer({
+  collections: ['PublicUser', 'Counter'],
+  port: liveQueryPort,
+  debug: false,
+});
+
+/**
+ * Listen to LiveQuery connection from server events
+ * and do whatever you need after server is ready
+ */
+ServerEvents.onLiveQueryConnect.subscribe(({ ws, incoming }) => {
+  // do whatever you want with websockets here
+  // console.log(ws, incoming);
+});
+
+/**
+ * Listen to database connection from server events
+ * and do whatever you need after server is ready
+ */
+ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
+  log('Database connected 🚀');
+  const stats = await db.stats();
+  delete stats['$clusterTime'];
+  delete stats['operationTime'];
+
+  console.table(stats);
+  console.timeEnd('startup');
+
+  console.time('ping');
+  ping().then(() => console.timeEnd('ping'));
+});

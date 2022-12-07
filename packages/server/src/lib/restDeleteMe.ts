@@ -17,7 +17,7 @@ export function restDeleteMe({
     } catch (err) {
       return res
         .status(500)
-        .send(new EleganteError(ErrorCode.AUTH_SIGN_OUT_ERROR, err as object));
+        .json(new EleganteError(ErrorCode.AUTH_SIGN_OUT_ERROR, err as object));
     }
   };
 }

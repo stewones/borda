@@ -1,6 +1,6 @@
 // Tools for encrypting and decrypting passwords.
 // Basically promise-friendly wrappers for bcrypt.
-import bcrypt from '@node-rs/bcrypt';
+import * as bcrypt from 'bcryptjs';
 
 // Returns a promise for a hashed password string.
 export function hash(password: string) {

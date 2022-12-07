@@ -10,6 +10,7 @@ import {
 import { Request, Response } from 'express';
 import { getCloudTrigger } from './Cloud';
 import { EleganteServer, ServerParams } from './EleganteServer';
+import { invalidateCache } from './Cache';
 import { DocQRL } from './parseQuery';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
@@ -88,9 +89,10 @@ export function restDelete({
           });
         }
 
+        invalidateCache(collectionName, cursor.value);
         return res.status(200).send();
       } else {
-        res
+        return res
           .status(404)
           .json(
             new EleganteError(
@@ -102,7 +104,7 @@ export function restDelete({
     } catch (err) {
       return res
         .status(500)
-        .send(new EleganteError(ErrorCode.REST_DELETE_ERROR, err as object));
+        .json(new EleganteError(ErrorCode.REST_DELETE_ERROR, err as object));
     }
   };
 }

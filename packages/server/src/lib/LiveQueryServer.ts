@@ -16,47 +16,23 @@ import {
   InternalCollectionName,
 } from '@elegante/sdk';
 
-import { EleganteServer } from './EleganteServer';
-import { createPipeline } from './createPipeline';
+import { EleganteServer, ServerEvents, createPipeline } from './EleganteServer';
 import { parseQuery } from './parseQuery';
 import { parseDoc, parseDocs } from './parseDoc';
+import { invalidateCache } from './Cache';
 
-export interface LiveQueryServerParams extends ServerOptions {
+interface LiveQueryServerParams extends ServerOptions {
   collections: string[]; // allowed collections
   port: number;
   debug?: boolean;
 }
 
-export interface LiveQueryServerEvents {
-  onLiveQueryConnect: (
-    ws: WebSocket,
-    incoming: IncomingMessage
-    // connections?: Map<WebSocket, any> // not sure yet
-  ) => void;
-}
-
 /**
  * spin up a new elegante live query server instance
- *
- * @export
- * @param {LiveQueryServerParams} options
- * @param {LiveQueryServerEvents} [events={
- *     // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-function
- *     onLiveQueryConnect: () => {},
- *   }]
  */
-export function createLiveQueryServer(
-  options: LiveQueryServerParams,
-  events: LiveQueryServerEvents = {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-function
-    onLiveQueryConnect: () => {},
-  }
-) {
-  const { debug } = options;
-
+export function createLiveQueryServer(options: LiveQueryServerParams) {
+  const { debug, collections } = options;
   const connections = new Map();
-
-  const { onLiveQueryConnect } = events;
 
   const wss = new WebSocket.Server(options, () => {
     if (debug) {
@@ -138,7 +114,10 @@ export function createLiveQueryServer(
      */
 
     // callback to the consumer
-    onLiveQueryConnect(ws, incoming /*, connections*/);
+    ServerEvents.onLiveQueryConnect.next({
+      ws: ws as any,
+      incoming /*, connections*/,
+    });
 
     /**
      * handle incoming query messages
@@ -163,7 +142,7 @@ export function createLiveQueryServer(
       /**
        * throw exception if the requested collection is not allowed
        */
-      if (!options.collections.includes(collection)) {
+      if (!collections.includes(collection)) {
         print(
           new EleganteError(
             ErrorCode.COLLECTION_NOT_ALLOWED,
@@ -197,6 +176,52 @@ export function createLiveQueryServer(
         print('LiveQuery connections', connections.values());
       }
     });
+  });
+
+  /**
+   * listen to database changes to have a second layer of cache invalidation
+   */
+  ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
+    if (!EleganteServer.params.documentCacheTTL) return;
+    const collections = db.listCollections();
+    const collectionsArray = await collections.toArray();
+    for (const collectionInfo of collectionsArray) {
+      if (
+        collectionInfo.type === 'collection' &&
+        !collectionInfo.name.startsWith('system.')
+      ) {
+        /**
+         * listen to collection changes to invalidate the server cache (memoized queries)
+         */
+        const collection = EleganteServer.db.collection(collectionInfo.name);
+        collection
+          .watch(
+            [
+              {
+                $match: {
+                  operationType: {
+                    $in: ['update'],
+                  },
+                },
+              },
+            ],
+            collectionInfo.name === '_Session'
+              ? {
+                  fullDocument: 'updateLookup',
+                }
+              : {}
+          )
+          .on('change', (change) => {
+            const { documentKey, fullDocument }: any = change;
+            const { _id } = documentKey;
+            if (collectionInfo.name === '_Session') {
+              invalidateCache(collectionInfo.name, fullDocument);
+            } else {
+              invalidateCache(collectionInfo.name, { _id });
+            }
+          });
+      }
+    }
   });
 }
 

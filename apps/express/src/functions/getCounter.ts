@@ -31,3 +31,7 @@ Cloud.addFunction(
     }
   }
 );
+
+export function getCounter() {
+  //
+}

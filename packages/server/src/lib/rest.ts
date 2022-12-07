@@ -1,7 +1,5 @@
 import express, { Application } from 'express';
-
 import { ServerParams } from './EleganteServer';
-
 import { restDelete } from './restDelete';
 import { restDeleteMe } from './restDeleteMe';
 import { restGet } from './restGet';
@@ -48,7 +46,7 @@ export function rest({
     })
   );
 
-  app.get('/ping', (req, res) => res.send('pong')); // for ping
+  app.get('/ping', (req, res) => res.send('🏓')); // for external ping services or whatever
 
   /**
    * setup rest routes
