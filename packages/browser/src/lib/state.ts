@@ -19,16 +19,16 @@ export interface SetStateOptions {
  *     - They are memoized and are updated only when the query is executed via `query(...).run(name)`
  *       where "name" applies for `get`, `find`, `findOne`, `aggregate` and `count`. Basically all the methods that retrieve data. (no support for realtime)
  *     - The state key is auto generated based on the query parameters
- *       but you can specify a custom key by the query chain being provided to `fast`.
+ *       but you can specify a custom key alongside the query chain being provided to `fast`.
  *       ie:
  *           fast(
- *               query('PublicUser')
- *               .key('latest-10')
+ *             query('PublicUser')
  *               .limit(10)
  *               .filter()
  *               .sort()
- *               .run('find')
- *           ).subscribe(results);
+ *               .run('find'),
+ *             { key: 'latest-10' }
+ *          ).subscribe(results);
  *
  * 2 - The state of the application.
  *     They are stored in the root of the state tree and are controlled by the reducers you create in a redux-style way.

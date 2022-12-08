@@ -16,18 +16,18 @@ import {
   DocumentQuery,
   DocumentResponse,
   ChangeStreamOptions,
-  QRLParams,
 } from './types/query';
 import { log } from './log';
 
 export function query<TSchema extends Document>(collection: string) {
   const bridge: Query<TSchema> = {
-    keyrl: '',
     params: {
       collection: '',
       projection: {},
       filter: {},
     },
+
+    qrl: () => JSON.stringify(bridge.params),
 
     /**
      * modifiers
@@ -481,19 +481,6 @@ export function query<TSchema extends Document>(collection: string) {
           wss.close();
         })
       );
-    },
-
-    /**
-     * extended methods
-     */
-    key: (id: string) => {
-      bridge.params['keyrl'] = id;
-      return bridge;
-    },
-    qrl: () => {
-      return bridge.params['keyrl']
-        ? bridge.params['keyrl']
-        : JSON.stringify(bridge.params);
     },
   };
 

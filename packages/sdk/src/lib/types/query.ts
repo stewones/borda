@@ -79,7 +79,6 @@ export interface QRLParams extends Document {
 }
 export declare interface Query<TSchema = Document> {
   params: QRLParams;
-  keyrl: string;
 
   /**
    * project 1st level fields for this query
@@ -197,9 +196,8 @@ export declare interface Query<TSchema = Document> {
   once(): Observable<LiveQueryMessage<TSchema>>;
 
   /**
-   * extendable api
+   * returns the query as a qrl string
    */
-  key(id: string): Query<TSchema>;
   qrl(): string;
 }
 
