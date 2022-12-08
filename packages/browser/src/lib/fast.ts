@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { query, Query } from '@elegante/sdk';
+import { Observable, of } from 'rxjs';
+
 /**
  * The `fast` decorator is a wrapper used around any source of data
  * leveraging memory and disk cache to make it react "fast" to network changes
@@ -20,7 +24,7 @@
  *               .limit(10)
  *               .filter()
  *               .sort()
- *               .run('find', {...}) // <-- notice the run method, this is the only difference to make it work `fast`
+ *               .method('find', {...}) // <-- notice the method, this is the only difference to make it work fast in an elegant way ;)
  *
  * fast(q).subscribe(results)
  *
@@ -55,4 +59,57 @@
  *
  * @export
  */
-export function fast() {}
+export function fast<T = any>(
+  source: Observable<T> | Promise<T> | Query<T>,
+  options: { key: string } = {
+    key: '',
+  }
+): Observable<T> {
+  // eslint-disable-next-line no-prototype-builtins
+  if (typeof source === 'object' && source.hasOwnProperty('qrl')) {
+    const q: Query<T> = source as Query<T>;
+
+    console.log('oh wow, this is an elegante query', source);
+    return of(q.qrl() as T);
+    // return source.pipe(
+    //   tap((data) => {
+    //     if (data instanceof Query) {
+    //       data.cache();
+    //     }
+    //   })
+    // );
+  }
+
+  if (!options.key) {
+    throw new Error(
+      'fast decorator requires a key to cache the data coming from Promises or Observables'
+    );
+  }
+
+  if (source instanceof Observable) {
+    console.log('oh wow, this is an observable', source);
+    // return of()
+    // return source.pipe(
+    //   tap((data) => {
+
+    //         // data.cache();
+
+    //   })
+    // );
+  }
+
+  if (source instanceof Promise) {
+    console.log('oh wow, this is a promise', source);
+    return of();
+    // return from(source).pipe(
+    //   tap((data) => {
+    //      // data.cache();
+    //      console.log('oh wow, this is a promise', data)
+    //   })
+    // );
+  }
+
+  throw new Error(
+    'fast decorator only accepts Observable, Promise or Elegante Query'
+  );
+}

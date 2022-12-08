@@ -27,6 +27,14 @@ export function query<TSchema extends Document>(collection: string) {
       filter: {},
     },
 
+    options: {},
+
+    method: (method, options) => {
+      bridge.params['method'] = method;
+      bridge.params['options'] = options;
+      return bridge;
+    },
+
     qrl: () => JSON.stringify(bridge.params),
 
     /**
@@ -181,6 +189,11 @@ export function query<TSchema extends Document>(collection: string) {
      */
 
     run: async (method, options, doc?, objectId?) => {
+      options = {
+        ...bridge.options,
+        ...options,
+      };
+
       if (!EleganteClient.params.serverURL) {
         throw new EleganteError(
           ErrorCode.SERVER_URL_UNDEFINED,

@@ -1,3 +1,5 @@
+import { fast } from '@elegante/browser';
+
 import { CommonModule } from '@angular/common';
 
 import {
@@ -185,6 +187,45 @@ export class AppComponent {
 
   constructor(private cdr: ChangeDetectorRef) {
     ping().then(() => console.timeEnd('startup'));
+
+    fast(
+      query('PublicUser')
+        .pipeline([
+          {
+            $sort: { createdAt: -1 },
+            // join with counter
+            $lookup: {
+              from: 'Counter',
+              localField: 'counterId',
+              foreignField: 'objectId',
+              as: 'counter',
+
+              // join with user
+              $lookup: {
+                from: '_User',
+                localField: 'userId',
+                foreignField: 'objectId',
+                as: 'user',
+
+                // join with user
+                $lookup: {
+                  from: 'PrivateUser',
+                  localField: 'privateUserId',
+                  foreignField: 'objectId',
+                  as: 'privateUser',
+
+                  // join with user
+                },
+              },
+            },
+          },
+        ])
+        .limit(10)
+        .method('find', { allowDiskUse: true }),
+      {
+        key: 'latest-10',
+      }
+    ).subscribe(console.log);
   }
 
   ngOnDestroy() {}

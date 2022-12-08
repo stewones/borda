@@ -79,6 +79,18 @@ export interface QRLParams extends Document {
 }
 export declare interface Query<TSchema = Document> {
   params: QRLParams;
+  options: FindOptions;
+
+  /**
+   * set the method to run
+   * this is trivial but required for external tools like `fast`
+   */
+  method(name: QueryMethod, options?: FindOptions): Query<TSchema>;
+
+  /**
+   * returns the query as a qrl string
+   */
+  qrl(): string;
 
   /**
    * project 1st level fields for this query
@@ -194,11 +206,6 @@ export declare interface Query<TSchema = Document> {
    * similiar to find but run on websockets
    */
   once(): Observable<LiveQueryMessage<TSchema>>;
-
-  /**
-   * returns the query as a qrl string
-   */
-  qrl(): string;
 }
 
 export declare type ResumeToken = unknown;
