@@ -16,7 +16,6 @@ export type DocumentEvent =
   | 'insert'
   | 'update'
   | 'delete'
-  // not tested
   | 'replace'
   | 'invalidate'
   | 'create'
@@ -30,9 +29,9 @@ export type DocumentEvent =
 
 export interface DocumentQuery<T = Document> {
   filter: FilterOperations<T>;
-  limit: number;
-  skip: number;
-  sort: Record<string, SortDirection>;
+  limit: number | undefined;
+  skip: number | undefined;
+  sort: Sort | undefined;
   projection?: T;
   options?: FindOptions | undefined;
   pipeline?: Document[];
@@ -43,26 +42,44 @@ export interface DocumentQuery<T = Document> {
 }
 
 export declare type QueryMethod =
-  | 'insert' // 🙆‍♀️
-  | 'find' // 🙆‍♀️
-  | 'findOne' // 🙆‍♀️ can be queryable or straight up to the point with rest get
-  | 'get' // 🙆‍♀️
-  | 'update' // 🙆‍♀️ can be queryable or straight up to the point with rest put
-  | 'put' // 🙆‍♀️
-  | 'remove' // 🙆‍♀️ queryable similiar to find but deletes documents
-  | 'delete' // 🙆‍♀️ rest delete
-  | 'count' // 🙆‍♀️
+  /**
+   * data retrieval
+   */
+  | 'find'
+  | 'findOne'
+  | 'get'
   | 'aggregate'
+  | 'count'
 
-  // user related
+  /**
+   * data mutation
+   */
+  | 'insert'
+  | 'update'
+  | 'put'
+  | 'remove'
+  | 'delete'
+
+  /**
+   * user specifics related
+   */
   | 'signUp'
-  | 'signIn' // 🙆‍♀️
+  | 'signIn';
 
-  // @todo ??
-  | 'findOneAndReplace';
-
+export interface QRLParams extends Document {
+  collection: string;
+  filter: FilterOperations<Document>;
+  pipeline?: Document[] | undefined;
+  projection: Partial<{
+    [key in keyof Document]: number;
+  }>;
+  sort?: Sort;
+  limit?: number;
+  skip?: number;
+}
 export declare interface Query<TSchema = Document> {
-  params: { [key: string]: any };
+  params: QRLParams;
+  keyrl: string;
 
   /**
    * project 1st level fields for this query
@@ -178,11 +195,16 @@ export declare interface Query<TSchema = Document> {
    * similiar to find but run on websockets
    */
   once(): Observable<LiveQueryMessage<TSchema>>;
+
+  /**
+   * extendable api
+   */
+  key(id: string): Query<TSchema>;
+  qrl(): string;
 }
 
 export declare type ResumeToken = unknown;
 export declare type OperationTime = Timestamp;
-
 export declare class Long {
   _bsontype: 'Long';
   /** An indicator used to reliably determine if an object is a Long or not. */

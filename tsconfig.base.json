@@ -16,6 +16,7 @@
     "baseUrl": ".",
     "resolveJsonModule": true,
     "paths": {
+      "@elegante/browser": ["packages/browser/src/index.ts"],
       "@elegante/sdk": ["packages/sdk/src/index.ts"],
       "@elegante/server": ["packages/server/src/index.ts"]
     }

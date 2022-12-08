@@ -16,15 +16,17 @@ import {
   DocumentQuery,
   DocumentResponse,
   ChangeStreamOptions,
+  QRLParams,
 } from './types/query';
 import { log } from './log';
 
 export function query<TSchema extends Document>(collection: string) {
   const bridge: Query<TSchema> = {
+    keyrl: '',
     params: {
-      include: [],
-      exclude: [],
-      unlock: false,
+      collection: '',
+      projection: {},
+      filter: {},
     },
 
     /**
@@ -112,7 +114,9 @@ export function query<TSchema extends Document>(collection: string) {
        */
       if (typeof optionsOrObjectId === 'string' && hasDocModifier) {
         bridge['params']['filter'] = {
-          _id: optionsOrObjectId,
+          _id: {
+            $eq: optionsOrObjectId,
+          },
         };
       }
 
@@ -173,10 +177,10 @@ export function query<TSchema extends Document>(collection: string) {
     },
 
     /**
-     * final methods
+     * retrieval methods
      */
 
-    run: async (method, options, doc, objectId) => {
+    run: async (method, options, doc?, objectId?) => {
       if (!EleganteClient.params.serverURL) {
         throw new EleganteError(
           ErrorCode.SERVER_URL_UNDEFINED,
@@ -477,6 +481,19 @@ export function query<TSchema extends Document>(collection: string) {
           wss.close();
         })
       );
+    },
+
+    /**
+     * extended methods
+     */
+    key: (id: string) => {
+      bridge.params['keyrl'] = id;
+      return bridge;
+    },
+    qrl: () => {
+      return bridge.params['keyrl']
+        ? bridge.params['keyrl']
+        : JSON.stringify(bridge.params);
     },
   };
 

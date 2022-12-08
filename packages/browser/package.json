@@ -1,0 +1,12 @@
+{
+  "name": "@elegante/browser",
+  "version": "0.0.1",
+  "type": "commonjs",
+  "dependencies": {
+    "@elegante/sdk": "latest",
+    "immer": "^9.0.16",
+    "redux": "^4.2.0",
+    "redux-thunk": "^2.4.2",
+    "redux-watch": "^1.2.0"
+  }
+}
