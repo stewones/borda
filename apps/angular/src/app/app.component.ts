@@ -367,7 +367,11 @@ export class AppComponent {
   }
 
   async signOut() {
-    await Auth.signOut();
+    try {
+      await Auth.signOut();
+    } catch (err) {
+      console.error(err);
+    }
     LocalStorage.unset('session');
     this.session = undefined;
     this.cdr.markForCheck();

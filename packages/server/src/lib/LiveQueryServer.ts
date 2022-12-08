@@ -263,6 +263,9 @@ function handleOn(
 ) {
   const { filter, pipeline, projection, collection } = rawQuery;
 
+  if (!EleganteServer.db)
+    throw new EleganteError(ErrorCode.DATABASE_NOT_FOUND, 'Database not found');
+
   const task = EleganteServer.db.collection(collection);
 
   const stream = task.watch(
