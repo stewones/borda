@@ -154,16 +154,19 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
   /**
    * decode sort
    */
-  for (const fieldName in sort) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sortAny: any = sort;
+  for (const fieldName in sortAny) {
     if (InternalFieldName[fieldName]) {
-      sort[InternalFieldName[fieldName]] = sort[fieldName];
-      delete sort[fieldName];
+      sortAny[InternalFieldName[fieldName]] = sortAny[fieldName];
+      delete sortAny[fieldName];
     }
   }
 
   const cursor = collection$.find<T>(parseFilter(filter), {
-    sort,
     projection,
+    sort: sortAny,
+
     ...options,
   });
 
