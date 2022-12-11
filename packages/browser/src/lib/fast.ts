@@ -199,7 +199,7 @@ function memorize<T>(source: Observable<T>, options: FastOptions) {
     );
   }
 
-  return new Observable((observer) => {
+  return new Observable<T>((observer) => {
     const state = getDocState(key);
     const cache = LocalStorage.get(key);
 
@@ -243,15 +243,15 @@ function memorize<T>(source: Observable<T>, options: FastOptions) {
 
         if (!isEqual(cache, current)) {
           LocalStorage.set(key, current);
-          log('cache.set', key, current);
+          log('cache.set', key, cache, current);
         }
 
         if (!isEqual(state, current)) {
           setDocState(key, current, { saveCache: false });
-          log('state.set', key, current);
+          log('state.set', key, state, current);
         }
       },
       error: (error) => observer.error(error),
     });
-  }) as Observable<T>;
+  });
 }

@@ -141,13 +141,13 @@ export declare interface Query<TSchema = Document> {
    * update a document using mongo-like queries
    * or direclty by passing its objectId
    */
-  update(doc: Document): Promise<void>;
-  update(objectId: string, doc?: Document): Promise<void>;
+  update(doc: TSchema): Promise<void>;
+  update(objectId: string, doc?: TSchema): Promise<void>;
 
   /**
    * insert a document
    */
-  insert(doc: Document): Promise<TSchema>;
+  insert(doc: Partial<TSchema>): Promise<TSchema>;
 
   /**
    * delete a document using mongo-like queries
@@ -164,7 +164,7 @@ export declare interface Query<TSchema = Document> {
   /**
    * aggregate documents using mongo-like queries
    */
-  aggregate(options?: AggregateOptions): Promise<Document[]>;
+  aggregate(options?: AggregateOptions): Promise<TSchema[]>;
 
   /**
    * run mongo query methods
@@ -172,9 +172,9 @@ export declare interface Query<TSchema = Document> {
   run(
     method: QueryMethod,
     options?: FindOptions,
-    doc?: Document,
+    doc?: Partial<TSchema>,
     objectId?: string
-  ): Promise<number | TSchema | TSchema[] | Document[] | void>;
+  ): Promise<number | TSchema | TSchema[] | void>;
 
   /**
    * the unlock method is meant to make operations without restrictions.

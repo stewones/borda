@@ -86,16 +86,20 @@ export abstract class Auth {
       );
     }
 
-    if (!token) {
+    if (isServer() && !token) {
       throw new Error('token is required on server');
     }
 
     const headers = {
       [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         EleganteClient.params.apiKey,
-      [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`]:
-        token,
     };
+
+    if (token) {
+      headers[
+        `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+      ] = token;
+    }
 
     return fetch(`${EleganteClient.params.serverURL}/me`, {
       method: 'DELETE',

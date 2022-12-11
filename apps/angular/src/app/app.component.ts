@@ -38,26 +38,9 @@ import {
   ping,
   LocalStorage,
   Record,
-  isEqual,
 } from '@elegante/sdk';
 
-import {
-  distinctUntilChanged,
-  distinctUntilKeyChanged,
-  finalize,
-  forkJoin,
-  map,
-  mapTo,
-  mergeMap,
-  of,
-  share,
-  shareReplay,
-  Subject,
-  Subscription,
-  switchMap,
-  takeUntil,
-  tap,
-} from 'rxjs';
+import { of, Subscription } from 'rxjs';
 
 console.time('startup');
 
@@ -96,6 +79,11 @@ load({
 const sessionSet = createAction<Session>('sessionSet');
 const sessionUnset = createAction('sessionUnset');
 
+const session = LocalStorage.get('session');
+if (session) {
+  dispatch(sessionSet(session));
+}
+
 interface Counter extends Record {
   total: number;
   name: string;
@@ -109,19 +97,6 @@ function somePromise() {
     return resolve(randomNumber);
   });
 }
-
-// function createPublicUserListener(this: any) {
-//   return listener<User[]>('publicUsers', { $docs: true }).pipe(
-//     distinctUntilChanged((a, b) => !isEqual(a, b)),
-//     takeUntil(this.publicUsersReset$),
-//     finalize(() => {
-//       this.publicUsers$ = createPublicUserListener.bind(this)();
-//     }),
-//     mergeMap(() =>
-//       fast('publicUsers', from(runFunction<User[]>('getPublicUsers')))
-//     )
-//   );
-// }
 
 @Component({
   standalone: true,
@@ -234,7 +209,9 @@ function somePromise() {
             <th>createdAt</th>
             <th>actions</th>
           </tr>
-          <tr *ngFor="let user of publicUsers$ | async">
+          <tr
+            *ngFor="let user of publicUsers$ | async; trackBy: trackByUserEmail"
+          >
             <td>{{ user.name }}</td>
             <td>{{ user.email }}</td>
             <td align="center">{{ user.createdAt }}</td>
@@ -251,7 +228,7 @@ function somePromise() {
 
         <h4>@Fast Query</h4>
         <code>
-          <pre>Latest users: {{ fromQuery$ | async | json }}</pre>
+          <pre>Latest users: {{ latestUsers$ | async | json }}</pre>
         </code>
       </ng-container>
     </ng-container>
@@ -281,37 +258,33 @@ export class AppComponent {
   signUpError: any;
 
   session$ = listener.bind(this)<Session>('session');
-  publicUsersReset$ = new Subject<void>();
-  // publicUsers$ = createPublicUserListener.bind(this)();
-  publicUsers$ = listener<User[]>('publicUsers', { $docs: true });
+  publicUsers$ = listener.bind(this)<User[]>('publicUsers', { $docs: true });
 
   @Fast('myOwnPromise')
   fromPromise$ = from(somePromise());
 
-  @Fast()
-  fromQuery$ = from(
-    query<User>('PublicUser')
-      // .filter({
-      //   name: {
-      //     $eq: 'elegante',
-      //   },
-      // })
-      .pipeline([
-        {
-          $sort: { createdAt: -1 },
-        },
-      ])
-      // .sort({ createdAt: -1 })
-      .limit(10)
-      .aggregate({ allowDiskUse: true })
-  );
+  @Fast('latestUsers')
+  latestUsers$ = getState('session.token')
+    ? from(
+        query<User>('PublicUser')
+          // uncoment to test empty results
+          // .filter({
+          //   name: {
+          //     $eq: 'elegante',
+          //   },
+          // })
+          .pipeline([
+            {
+              $sort: { createdAt: -1 },
+            },
+          ])
+          .limit(10)
+          .aggregate({ allowDiskUse: true })
+      )
+    : of([]);
 
   constructor(private cdr: ChangeDetectorRef) {
     ping().then(() => console.timeEnd('startup'));
-    const session = LocalStorage.get('session');
-    if (session) {
-      dispatch(sessionSet(session));
-    }
   }
 
   ngOnDestroy() {}
@@ -342,8 +315,6 @@ export class AppComponent {
     if (getState('session')) {
       this.loadPublicUsers();
     }
-
-    this.cdr.markForCheck();
   }
 
   async subscribe() {
@@ -427,22 +398,6 @@ export class AppComponent {
 
       const { user, token, ...rest } = response;
 
-      // stores the session object the way you need
-      // to just grab the active session
-      //
-      // import { Auth } from '@elegante/sdk';
-      // Auth.current().then(({user, token, ...rest}) => {
-      //   console.log(user, token, ...rest);
-      // });
-      //
-      // the session is automatically loaded once the client is configured
-      // but if you ever need to switch user sessions you can
-      //
-      // import { Auth } from '@elegante/sdk';
-      // Auth.become('session-token').then(({user, token, ...rest}) => {
-      //   console.log(user, token, ...rest);
-      // });
-
       this.signUpError = null;
       this.cdr.markForCheck();
 
@@ -466,25 +421,9 @@ export class AppComponent {
 
       const { user, token, ...rest } = response;
 
-      // stores the session object the way you need if you want
-      // but it's not needed if you just want to grab
-      // the current user in session, you can just
-      //
-      // import { Auth } from '@elegante/sdk';
-      // Auth.current().then(({user, token, ...rest}) => {
-      //   console.log(user, token, ...rest);
-      // });
-      //
-      // the session is automatically loaded once the client is configured
-      // but if you ever need to switch user sessions you can
-      //
-      // import { Auth } from '@elegante/sdk';
-      // Auth.become('session-token').then(({user, token, ...rest}) => {
-      //   console.log(user, token, ...rest);
-      // });
-
       this.signInError = undefined;
       this.cdr.markForCheck();
+
       dispatch(sessionSet(response));
 
       /**
@@ -501,11 +440,11 @@ export class AppComponent {
 
   async signOut() {
     try {
+      dispatch(sessionUnset());
       await Auth.signOut();
     } catch (err) {
       console.error(err);
     }
-    dispatch(sessionUnset());
   }
 
   deleteUser(objectId: string) {
@@ -527,5 +466,9 @@ export class AppComponent {
     runFunction<User[]>('getPublicUsers').then((users) =>
       setDocState('publicUsers', users)
     );
+  }
+
+  trackByUserEmail(index: number, user: User) {
+    return user.email;
   }
 }

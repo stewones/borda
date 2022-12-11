@@ -131,7 +131,7 @@ export function query<TSchema extends Document>(collection: string) {
       ) as Promise<TSchema | void>;
     },
 
-    update: (objectIdOrDoc, doc?: Document) => {
+    update: (objectIdOrDoc, doc?: TSchema) => {
       return bridge.run(
         typeof objectIdOrDoc === 'string' ? 'put' : 'update', // method
         {}, // options
@@ -158,7 +158,7 @@ export function query<TSchema extends Document>(collection: string) {
     },
 
     aggregate: (options) => {
-      return bridge.run('aggregate', options) as Promise<Document[]>;
+      return bridge.run('aggregate', options) as Promise<TSchema[]>;
     },
 
     unlock: (isUnlocked) => {

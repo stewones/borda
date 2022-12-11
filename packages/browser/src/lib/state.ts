@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import watch from 'redux-watch';
-import { Observable, tap } from 'rxjs';
-import { get, cloneDeep, LocalStorage, print } from '@elegante/sdk';
+import { Observable } from 'rxjs';
+import { get, cloneDeep, LocalStorage } from '@elegante/sdk';
 import { EleganteBrowser } from './Browser';
 import { log } from './log';
 import { $docsReset, $docsSet, $docsUnset, dispatch } from './redux';
@@ -162,9 +162,8 @@ export function listener<T = any>(
 
   if (EleganteBrowser.debug && that && that.constructor) {
     if (!that.cdr) {
-      print('Unable to find ChangeDetectorRef in your component');
-      console.trace(
-        'If you want to make sure that your component reflects state changes automatically, make sure to import { ChangeDetectorRef } from @angular/core and instantiate it in your constructor as `private cdr: ChangeDetectorRef`'
+      throw new Error(
+        'Unable to find ChangeDetectorRef in your component. If you want to make sure that your component reflects state changes automatically, make sure to import { ChangeDetectorRef } from @angular/core and instantiate it in your constructor as `private cdr: ChangeDetectorRef`'
       );
     }
   }
@@ -175,7 +174,14 @@ export function listener<T = any>(
       ? cloneDeep(get(storeInstance.getState(), path))
       : get(storeInstance.getState(), path);
 
+    /**
+     * created the watcher
+     */
     const w = watch(storeInstance.getState, path);
+
+    /**
+     * initial dispatch
+     */
     if (options.context) {
       observer.next({
         path,
@@ -186,6 +192,9 @@ export function listener<T = any>(
       observer.next(storeValue);
     }
 
+    /**
+     * subscribe to changes
+     */
     storeInstance.subscribe(
       w((next, prev, path) => {
         const nextValue = options.copy ? cloneDeep(next) : next;
@@ -196,6 +205,7 @@ export function listener<T = any>(
         //   JSON.stringify(nextValue),
         //   new Date().toLocaleTimeString()
         // );
+
         if (options.context) {
           observer.next({
             path,
@@ -205,9 +215,13 @@ export function listener<T = any>(
         } else {
           observer.next(nextValue);
         }
+
+        if (that && that.cdr && that.cdr.detectChanges) {
+          that.cdr.detectChanges();
+        }
       })
     );
-  }).pipe(tap(() => that && that.cdr && that.cdr.detectChanges()));
+  });
 
   return o;
 }

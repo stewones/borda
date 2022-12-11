@@ -158,8 +158,10 @@ export function createStore<S = any>(params: {
   enhancers?: StoreEnhancer[] | ConfigureEnhancersCallback;
 }): EnhancedStore {
   const { reducers, preloadedState, enhancers, debug } = params;
+  const d = debug ?? EleganteBrowser.debug;
+
   return configureStore({
-    devTools: debug,
+    devTools: d,
     reducer: combineReducers(reducers),
     enhancers,
     preloadedState,
