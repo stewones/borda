@@ -50,7 +50,6 @@
     "mongodb": "^4.12.1",
     "nx": "15.2.1",
     "prettier": "^2.6.2",
-    "redux-thunk": "^2.4.2",
     "redux-watch": "^1.2.0",
     "rxjs": "^7.5.7",
     "ts-jest": "28.0.5",

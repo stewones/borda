@@ -160,12 +160,16 @@ export function createStore<S = any>(params: {
   const { reducers, preloadedState, enhancers, debug } = params;
   const d = debug ?? EleganteBrowser.debug;
 
-  return configureStore({
+  EleganteBrowser.reducers = combineReducers(reducers);
+
+  const store = configureStore({
     devTools: d,
-    reducer: combineReducers(reducers),
+    reducer: EleganteBrowser.reducers,
     enhancers,
     preloadedState,
   });
+
+  return store;
 }
 
 interface QueryPayload {
@@ -174,13 +178,13 @@ interface QueryPayload {
 }
 
 /**
- * The $docs reducer + actions
- * also used internally to store query results
+ * The $doc reducer + actions
+ * also used internally to store queried results
  */
-export const $docsSet = createAction<QueryPayload>('$docsSet');
-export const $docsUnset = createAction<QueryPayload>('$docsUnset');
-export const $docsReset = createAction('$docsReset');
-export function $docs() {
+export const $docSet = createAction<QueryPayload>('$docSet');
+export const $docUnset = createAction<QueryPayload>('$docUnset');
+export const $docReset = createAction('$docReset');
+export function $doc() {
   return createReducer<{
     [key: string]: any;
   }>(
@@ -188,13 +192,13 @@ export function $docs() {
     {},
     // actions
     {
-      $docsSet: (state: any, action: Action<QueryPayload>) => {
+      $docSet: (state: any, action: Action<QueryPayload>) => {
         state[action.payload.key] = action.payload.value;
       },
-      $docsUnset: (state: any, action: Action<QueryPayload>) => {
+      $docUnset: (state: any, action: Action<QueryPayload>) => {
         delete state[action.payload.key];
       },
-      $docsReset: (state: any) => {
+      $docReset: (state: any) => {
         for (const key in state) {
           delete state[key];
         }

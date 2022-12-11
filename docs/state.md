@@ -1,7 +1,7 @@
 - The state is diveded into two groups:
 -
 - 1 - The state of a query result.
--     - They have its own reducer and are stored in the state tree under the `$docs` key.
+-     - They have its own reducer and are stored in the state tree under the `$doc` key.
 -     - You can use the arbitrary function `setDocState(key, value)` to set/update the state of a query result.
 -       Please be aware of this approach as it may lead to unmaintainable code as the app grows. Try to always default to the redux way which is
 -       creating your own reducers + actions. Refer to the app example where it creates a custom Session reducer.

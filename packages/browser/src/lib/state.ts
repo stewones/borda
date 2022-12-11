@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { get, cloneDeep, LocalStorage } from '@elegante/sdk';
 import { EleganteBrowser } from './Browser';
 import { log } from './log';
-import { $docsReset, $docsSet, $docsUnset, dispatch } from './redux';
+import { $docReset, $docSet, $docUnset, createStore, dispatch } from './redux';
 
 export interface SetStateOptions {
   saveCache?: boolean;
@@ -19,7 +19,7 @@ export interface ResetStateOptions {
 
 export interface ListenerOptions {
   context: boolean;
-  $docs: boolean;
+  $doc: boolean;
   copy: boolean;
 }
 
@@ -52,8 +52,8 @@ export function getState<T = any>(path?: string): T {
 }
 
 /**
- * Synchronously grab a piece of data from $docs state.
- * The key is a string, if not provided the whole $docs state is returned.
+ * Synchronously grab a piece of data from $doc state.
+ * The key is a string, if not provided the whole $doc state is returned.
  *
  * @export
  * @template T
@@ -70,9 +70,9 @@ export function getDocState<T = any>(key?: string): T {
   const currentState = EleganteBrowser.store.getState();
 
   if (key) {
-    return get(currentState, `$docs.${key}`);
+    return get(currentState, `$doc.${key}`);
   }
-  return get(currentState, `$docs`);
+  return get(currentState, `$doc`);
 }
 
 export function setDocState(
@@ -81,7 +81,7 @@ export function setDocState(
   options: SetStateOptions = { saveCache: true }
 ) {
   dispatch(
-    $docsSet({
+    $docSet({
       key,
       value,
     })
@@ -98,7 +98,7 @@ export function unsetDocState(
   options: UnsetStateOptions = { removeCache: true }
 ) {
   dispatch(
-    $docsUnset({
+    $docUnset({
       key,
     })
   );
@@ -107,21 +107,19 @@ export function unsetDocState(
   }
 }
 
-export function resetDocsState() {
-  dispatch($docsReset());
-}
-
-export function resetState(options: ResetStateOptions = { eraseCache: true }) {
-  resetDocsState();
+export function resetDocState(
+  options: ResetStateOptions = { eraseCache: true }
+) {
   if (options.eraseCache) {
     LocalStorage.clear();
   }
+  dispatch($docReset());
 }
 
 /**
- * Provides reactive data access to both $docs and custom reducers.
+ * Provides reactive data access to both $doc and custom reducers.
  * The path is a string with dot notation in case of custom reducers.
- * To use $docs, set the $docs option to true.
+ * To use $doc, set the $doc option to true.
  *
  * The context option provides the previous and next value of the state.
  * This is useful if you want to know what changed in the state.
@@ -133,7 +131,7 @@ export function resetState(options: ResetStateOptions = { eraseCache: true }) {
  * @param {string} path
  * @param {Partial<ListenerOptions>} [options={
  *     context: false,
- *     $docs: false,
+ *     $doc: false,
  *     copy: false,
  *   }]
  * @returns {*}  {Observable<T>}
@@ -142,7 +140,7 @@ export function listener<T = any>(
   this: any,
   path: string,
   options: Partial<ListenerOptions> = {
-    $docs: false,
+    $doc: false,
     context: false,
     copy: false,
   }
@@ -153,8 +151,8 @@ export function listener<T = any>(
     );
   }
 
-  if (options.$docs) {
-    path = `$docs.${path}`;
+  if (options.$doc) {
+    path = `$doc.${path}`;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-this-alias

@@ -10,6 +10,7 @@ import {
   getState,
   listener,
   load,
+  resetDocState,
   setDocState,
   unsetDocState,
 } from '@elegante/browser';
@@ -73,16 +74,46 @@ load({
         },
       }
     ),
+    whatever: createReducer<any>(
+      // initial state
+      {},
+      // actions
+      {
+        whateverSet: (state: any, action: Action<any>) => {
+          for (const key in action.payload) {
+            state[key] = action.payload[key];
+          }
+          LocalStorage.set('whatever', state);
+        },
+        whateverReset: (state: any) => {
+          for (const key in state) {
+            delete state[key];
+          }
+          for (const key in whatverInitialState) {
+            state[key] = whatverInitialState[key];
+          }
+          LocalStorage.set('whatever', state);
+        },
+      }
+    ),
   },
 });
 
+const whateverSet = createAction<any>('whateverSet');
+const whateverReset = createAction('whateverReset');
 const sessionSet = createAction<Session>('sessionSet');
 const sessionUnset = createAction('sessionUnset');
 
 const session = LocalStorage.get('session');
+const whatverInitialState: any = {
+  hey: 'dude',
+  this: 'is',
+  cool: '🤓',
+};
 if (session) {
   dispatch(sessionSet(session));
 }
+dispatch(whateverSet(whatverInitialState));
 
 interface Counter extends Record {
   total: number;
@@ -195,42 +226,43 @@ function somePromise() {
     <ng-container *ngIf="session$ | async as session">
       Session: {{ session | json }}
       <hr />
-      <ng-container *ngIf="session?.token">
-        <br />
-        <h2>
-          Public Users
-          <button (click)="resetPublicUsers()">Reload</button>
-        </h2>
-        <br />
-        <table cellPadding="5" cellSpacing="10">
-          <tr>
-            <th align="left">name</th>
-            <th align="left">email</th>
-            <th>createdAt</th>
-            <th>actions</th>
-          </tr>
-          <tr
-            *ngFor="let user of publicUsers$ | async; trackBy: trackByUserEmail"
-          >
-            <td>{{ user.name }}</td>
-            <td>{{ user.email }}</td>
-            <td align="center">{{ user.createdAt }}</td>
-            <td align="center">
-              <button (click)="deleteUser(user.objectId)">Delete</button>
-            </td>
-          </tr>
-        </table>
+    </ng-container>
 
-        <h4>@Fast Promise</h4>
-        <code>
-          <pre>Random number: {{ fromPromise$ | async }}</pre>
-        </code>
+    <ng-container>
+      <br />
+      <h2>
+        Public Users
+        <button (click)="resetPublicUsers()">Reload</button>
+      </h2>
+      <br />
+      <table cellPadding="5" cellSpacing="10">
+        <tr>
+          <th align="left">name</th>
+          <th align="left">email</th>
+          <th>createdAt</th>
+          <th *ngIf="(session$ | async)?.token">actions</th>
+        </tr>
+        <tr
+          *ngFor="let user of publicUsers$ | async; trackBy: trackByUserEmail"
+        >
+          <td>{{ user.name }}</td>
+          <td>{{ user.email }}</td>
+          <td align="center">{{ user.createdAt }}</td>
+          <td align="center" *ngIf="(session$ | async)?.token">
+            <button (click)="deleteUser(user.objectId)">Delete</button>
+          </td>
+        </tr>
+      </table>
 
-        <h4>@Fast Query</h4>
-        <code>
-          <pre>Latest users: {{ latestUsers$ | async | json }}</pre>
-        </code>
-      </ng-container>
+      <h4>@Fast Promise</h4>
+      <code>
+        <pre>Random number: {{ fromPromise$ | async }}</pre>
+      </code>
+
+      <h4>@Fast Query (needs login)</h4>
+      <code>
+        <pre>Oldest users: {{ oldestUsers$ | async | json }}</pre>
+      </code>
     </ng-container>
   `,
 })
@@ -258,13 +290,13 @@ export class AppComponent {
   signUpError: any;
 
   session$ = listener.bind(this)<Session>('session');
-  publicUsers$ = listener.bind(this)<User[]>('publicUsers', { $docs: true });
+  publicUsers$ = listener.bind(this)<User[]>('publicUsers', { $doc: true });
 
   @Fast('myOwnPromise')
   fromPromise$ = from(somePromise());
 
-  @Fast('latestUsers')
-  latestUsers$ = getState('session.token')
+  @Fast('oldestUsers')
+  oldestUsers$ = getState('session.token')
     ? from(
         query<User>('PublicUser')
           // uncoment to test empty results
@@ -275,7 +307,7 @@ export class AppComponent {
           // })
           .pipeline([
             {
-              $sort: { createdAt: -1 },
+              $sort: { createdAt: 1 },
             },
           ])
           .limit(10)
@@ -431,6 +463,14 @@ export class AppComponent {
        * by default all functions requires a valid user session token
        */
       this.loadPublicUsers();
+
+      dispatch(
+        whateverSet({
+          hey: 'dude',
+          this: 'is',
+          logged: '🔐',
+        })
+      );
     } catch (err) {
       console.error(err);
       this.signInError = err;
@@ -439,11 +479,17 @@ export class AppComponent {
   }
 
   async signOut() {
-    try {
+    const resetState = () => {
+      resetDocState(); // reset $doc state
       dispatch(sessionUnset());
+      dispatch(whateverReset());
+    };
+    try {
       await Auth.signOut();
+      resetState();
     } catch (err) {
       console.error(err);
+      resetState();
     }
   }
 

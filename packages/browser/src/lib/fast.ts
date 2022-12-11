@@ -136,10 +136,15 @@ export function fast<T = Document>(
  * // unless you want to customize it with your own
  *
  * class User {
- *    @Fast() myUsersList$ = from(getUsersPromise());
+ *    @Fast()
+ *    latestUsers$ = from(
+ *      query<User>('PublicUser')
+ *        .pipeline([{
+ *            $sort: { createdAt: -1 },
+ *       }])
+ *     .limit(10)
+ *     .aggregate({ allowDiskUse: true }));
  * }
- *
- *
  */
 export function Fast(key?: string): (target: any, propertyKey: string) => void;
 export function Fast(

@@ -10,9 +10,11 @@ export interface BrowserParams {
 export interface BrowserProtocol {
   debug: boolean;
   store: EnhancedStore;
+  reducers: any;
 }
 
 export const EleganteBrowser: BrowserProtocol = {
   debug: true,
+  reducers: {},
   store: null as any,
 };
