@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { get, cloneDeep, LocalStorage } from '@elegante/sdk';
 import { EleganteBrowser } from './Browser';
 import { log } from './log';
-import { $docReset, $docSet, $docUnset, createStore, dispatch } from './redux';
+import { $docReset, $docSet, $docUnset, dispatch } from './redux';
 
 export interface SetStateOptions {
   saveCache?: boolean;
@@ -14,7 +14,7 @@ export interface UnsetStateOptions {
   removeCache?: boolean;
 }
 export interface ResetStateOptions {
-  eraseCache?: boolean;
+  clearLocalStorage?: boolean;
 }
 
 export interface ListenerOptions {
@@ -108,12 +108,12 @@ export function unsetDocState(
 }
 
 export function resetDocState(
-  options: ResetStateOptions = { eraseCache: true }
+  options: ResetStateOptions = { clearLocalStorage: true }
 ) {
-  if (options.eraseCache) {
+  dispatch($docReset());
+  if (options.clearLocalStorage) {
     LocalStorage.clear();
   }
-  dispatch($docReset());
 }
 
 /**

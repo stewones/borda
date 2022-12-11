@@ -463,14 +463,6 @@ export class AppComponent {
        * by default all functions requires a valid user session token
        */
       this.loadPublicUsers();
-
-      dispatch(
-        whateverSet({
-          hey: 'dude',
-          this: 'is',
-          logged: '🔐',
-        })
-      );
     } catch (err) {
       console.error(err);
       this.signInError = err;
@@ -511,6 +503,14 @@ export class AppComponent {
   loadPublicUsers() {
     runFunction<User[]>('getPublicUsers').then((users) =>
       setDocState('publicUsers', users)
+    );
+
+    dispatch(
+      whateverSet({
+        hey: 'dude',
+        this: 'is',
+        logged: '🔐',
+      })
     );
   }
 

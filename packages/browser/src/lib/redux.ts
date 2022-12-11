@@ -160,11 +160,14 @@ export function createStore<S = any>(params: {
   const { reducers, preloadedState, enhancers, debug } = params;
   const d = debug ?? EleganteBrowser.debug;
 
-  EleganteBrowser.reducers = combineReducers(reducers);
-
   const store = configureStore({
-    devTools: d,
-    reducer: EleganteBrowser.reducers,
+    devTools: d
+      ? {
+          trace: true,
+          traceLimit: 100,
+        }
+      : false,
+    reducer: combineReducers(reducers),
     enhancers,
     preloadedState,
   });
