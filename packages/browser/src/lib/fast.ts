@@ -122,7 +122,7 @@ export function fast<T = Document>(
  * @example
  *
  * ## Angular pipe async example with promise
- *
+ *```
  * import { Fast, from } from '@elegante/browser';
  *
  * @Component(
@@ -131,13 +131,15 @@ export function fast<T = Document>(
  * class User {
  *    @Fast('latest-users') myUsersList$ = from(getUsersPromise());
  * }
+ *```
+ 
+ * Angular pipe async example.
+ * Elegante queries have no need of a key.
+ * Unless you want to customize it with your own.
  *
- * // Angular pipe async example with elegante queries has no need of a key
- * // unless you want to customize it with your own
- *
+ * ```
  * class User {
- *    @Fast()
- *    latestUsers$ = from(
+ *    @Fast() latestUsers$ = from(
  *      query<User>('PublicUser')
  *        .pipeline([{
  *            $sort: { createdAt: -1 },
@@ -145,6 +147,7 @@ export function fast<T = Document>(
  *     .limit(10)
  *     .aggregate({ allowDiskUse: true }));
  * }
+ * ```
  */
 export function Fast(key?: string): (target: any, propertyKey: string) => void;
 export function Fast(
