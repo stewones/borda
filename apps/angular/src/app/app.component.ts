@@ -476,13 +476,9 @@ export class AppComponent {
       dispatch(sessionUnset());
       dispatch(whateverReset());
     };
-    try {
-      await Auth.signOut();
-      resetState();
-    } catch (err) {
-      console.error(err);
-      resetState();
-    }
+
+    Auth.signOut().catch((err) => {});
+    resetState();
   }
 
   deleteUser(objectId: string) {
