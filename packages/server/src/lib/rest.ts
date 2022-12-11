@@ -1,5 +1,6 @@
 import express, { Application } from 'express';
-import { ServerParams } from './EleganteServer';
+
+import { ServerParams } from './Server';
 import { restDelete } from './restDelete';
 import { restDeleteMe } from './restDeleteMe';
 import { restGet } from './restGet';

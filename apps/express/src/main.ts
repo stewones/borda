@@ -2,7 +2,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 
-import { createClient, log, ping } from '@elegante/sdk';
+import { init, log, ping } from '@elegante/sdk';
 import {
   createLiveQueryServer,
   createServer,
@@ -16,7 +16,7 @@ import {
 
 console.time('startup');
 
-const debug = true;
+const debug = false;
 const documentCacheTTL =
   parseFloat(process.env.ELEGANTE_DB_CACHE_TTL ?? '0') || 1 * 1000 * 60 * 60;
 
@@ -38,18 +38,18 @@ const serverHeaderPrefix =
   process.env.ELEGANTE_SERVER_HEADER_PREFIX || 'X-Elegante';
 
 /**
- * configure sdk
+ * init elegante sdk
  */
 
-createClient({
+init({
   apiKey,
-  apiSecret,
+  apiSecret, // <-- this is optional. only allowed in server.
   serverURL,
   debug,
 });
 
 /**
- * spin up an Elegante server instance
+ * spin up an elegante server instance
  */
 
 const elegante = createServer({
@@ -67,6 +67,7 @@ const elegante = createServer({
   /**
    * server operations
    */
+  debug,
   documentCacheTTL,
 });
 
@@ -82,12 +83,13 @@ server.use(cors());
 server.options('*', cors());
 
 /**
- * tell express to mount Elegante Server instance on the `/server` path
+ * tell express to mount elegante server on the `/server` path.
+ * you can use any path you want.
  */
 server.use(serverMount, elegante);
 
 /**
- * Elegante Server plays nicely with any of your existing routes
+ * elegante server plays 🎮 nicely with any of your existing routes and middlewares
  */
 server.get('/', (req, res) => {
   res.status(200).send(`Elegante Server v${Version}`);
@@ -99,14 +101,14 @@ server.get('/', (req, res) => {
 import './functions';
 
 /**
- * add triggers
- */
-import './triggers';
-
-/**
- * add jobs
+ * add cloud jobs
  */
 import './jobs';
+
+/**
+ * add database triggers
+ */
+import './triggers';
 
 /**
  * start the node server

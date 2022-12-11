@@ -7,7 +7,7 @@ import {
   query,
 } from '@elegante/sdk';
 
-import { ServerParams } from './EleganteServer';
+import { ServerParams } from './Server';
 import { Cache } from './Cache';
 
 export function parseInclude<T extends Document>(

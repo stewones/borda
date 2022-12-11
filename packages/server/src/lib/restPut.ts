@@ -12,7 +12,7 @@ import {
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { EleganteServer, ServerParams } from './EleganteServer';
+import { EleganteServer, ServerParams } from './Server';
 import { invalidateCache } from './Cache';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';

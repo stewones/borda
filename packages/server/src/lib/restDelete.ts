@@ -9,7 +9,7 @@ import {
 
 import { Request, Response } from 'express';
 import { getCloudTrigger } from './Cloud';
-import { EleganteServer, ServerParams } from './EleganteServer';
+import { EleganteServer, ServerParams } from './Server';
 import { invalidateCache } from './Cache';
 import { DocQRL } from './parseQuery';
 import { parseResponse } from './parseResponse';

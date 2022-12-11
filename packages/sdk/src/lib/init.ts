@@ -1,44 +1,31 @@
 import { Auth } from './Auth';
-import { EleganteError, ErrorCode } from './EleganteError';
+import { EleganteError, ErrorCode } from './Error';
 import { InternalHeaders } from './internal';
 import { log } from './log';
 import { isServer, LocalStorage } from './utils';
 import { Version } from './Version';
 
-export interface EleganteClientProtocol {
-  params: EleganteClientParams;
-}
-
-export const EleganteClient: EleganteClientProtocol = {
-  params: {} as EleganteClientParams,
-};
-
-export interface EleganteClientParams {
-  apiKey: string;
-  apiSecret?: string;
-  serverURL: string;
-  serverHeaderPrefix?: string;
-  liveQueryServerURL?: string;
-  debug?: boolean;
-}
-
-const EleganteClientDefaultParams: Partial<EleganteClientParams> = {
-  serverHeaderPrefix: 'X-Elegante',
-  debug: true,
-};
+import { EleganteClient, ClientDefaultParams, ClientParams } from './Client';
 
 /**
  * configure a new elegante client
  *
  * @export
- * @param {EleganteClientParams} options
+ * @param {ClientParams} options
  * @returns {*}
  */
-export async function createClient(options: EleganteClientParams) {
+export async function init(options: ClientParams) {
   log(`Elegante SDK v${Version}`);
 
+  LocalStorage.estimate().then(({ percentageAvailable, remainingMB }) =>
+    log(
+      'storage',
+      `${percentageAvailable}% available (${remainingMB.toFixed(0)} MB)`
+    )
+  );
+
   const params = (EleganteClient.params = {
-    ...EleganteClientDefaultParams,
+    ...ClientDefaultParams,
     ...options,
   });
 
@@ -57,6 +44,7 @@ export async function createClient(options: EleganteClientParams) {
     if (token) {
       return Auth.become(token);
     }
+
     return Promise.resolve();
   }
 }

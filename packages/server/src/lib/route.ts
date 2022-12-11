@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { NextFunction, Request, Response } from 'express';
+
 import {
   query,
   InternalHeaders,
@@ -6,9 +8,9 @@ import {
   EleganteError,
   ErrorCode,
 } from '@elegante/sdk';
-import { NextFunction, Request, Response } from 'express';
+
 import { getCloudFunction } from './Cloud';
-import { ServerParams } from './EleganteServer';
+import { ServerParams } from './Server';
 import { Cache } from './Cache';
 import { isUnlocked } from './utils/isUnlocked';
 

@@ -1,79 +1,213 @@
-// import { Document, get, isEmpty } from '@elegante/sdk';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import watch from 'redux-watch';
+import { Observable, tap } from 'rxjs';
+import { get, cloneDeep, LocalStorage, print } from '@elegante/sdk';
+import { EleganteBrowser } from './Browser';
+import { log } from './log';
+import { $docsReset, $docsSet, $docsUnset, dispatch } from './redux';
 
-// import { store } from '../store';
+export interface SetStateOptions {
+  saveCache?: boolean;
+}
 
-// export interface SetStateOptions {
-//   saveCache?: boolean;
-// }
+export interface UnsetStateOptions {
+  removeCache?: boolean;
+}
+export interface ResetStateOptions {
+  eraseCache?: boolean;
+}
 
-// /**
-//  * Synchronously grab a piece of data from state
-//  * If path isn't specified, the whole state is returned.
-//  *
-//  * The state is diveded into two groups:
-//  *
-//  * 1 - The state of a query result.
-//  *     - They have its own reducer and are stored in the state tree under the `_Docs` key.
-//  *     - You can use the arbitrary function `setDocState(key, value)` to set/update the state of a query result.
-//  *       Please be aware of this approach as it may lead to unmaintainable code as the app grows. Try to always default to the redux way.
-//  *     - They are memoized and are updated only when the query is executed via `query(...).run(name)`
-//  *       where "name" applies for `get`, `find`, `findOne`, `aggregate` and `count`. Basically all the methods that retrieve data. (no support for realtime)
-//  *     - The state key is auto generated based on the query parameters
-//  *       but you can specify a custom key alongside the query chain being provided to `fast`.
-//  *       ie:
-//  *           fast(
-//  *             query('PublicUser')
-//  *               .limit(10)
-//  *               .filter({ active: true })
-//  *               .sort({ createdAt: -1 })
-//  *               .method('find', { allowDiskUse: true }),
-//  *             { key: 'latest-10' }
-//  *          ).subscribe(results);
-//  *
-//  * 2 - The state of the application.
-//  *     They are stored in the root of the state tree and are controlled by the reducers you create in a redux-style way.
-//  *     For more information on how to work with reducers and actions, please refer to the Redux documentation.
-//  *     Elegante also provide helpers for you to create and benefit from all of that in a simpler way. Check out the example app.
-//  *
-//  * @export
-//  * @template T
-//  * @param {string} [path]
-//  * @returns {*}  {T}
-//  */
-// export function getState<T = Document>(path?: string): T {
-//   const currentState = store().getState();
-//   if (path) {
-//     // attempt to get current data from user reducer
-//     let doc = get(currentState, path);
-//     // otherwise attempt to get from memoized docs
-//     if (isEmpty(doc)) {
-//       doc = get(currentState, `_Docs.${path}`);
-//     }
-//     return doc;
-//   }
-//   return currentState;
-// }
+export interface ListenerOptions {
+  context: boolean;
+  $docs: boolean;
+  copy: boolean;
+}
 
-// export function setState(
-//   key: string,
-//   value: Document,
-//   options: SetStateOptions = { cache: true }
-// ) {
-//   dispatch({
-//     type: 'networkStateUpdate',
-//     key: key,
-//     value: value,
-//   });
+export interface StateContext<T = any> {
+  path: string;
+  prev: T;
+  next: T;
+}
 
-//   if (workspace.storage && options.cache) {
-//     try {
-//       workspace.storage.set(key, value);
-//     } catch (err) {}
-//   }
-// }
+/**
+ * Synchronously grab a piece of data from state controlled by custom reducers.
+ * The path is a string with dot notation. If path isn't specified, the whole state is returned.
+ *
+ * @export
+ * @template T
+ * @param {string} [path]
+ * @returns {*}  {T}
+ */
+export function getState<T = any>(path?: string): T {
+  if (!EleganteBrowser.store) {
+    throw new Error(
+      'unable to find any store. to use getState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+    );
+  }
+  const currentState = EleganteBrowser.store.getState();
+  if (path) {
+    return get(currentState, path);
+  }
+  return currentState;
+}
 
-// export function resetState() {
-//   dispatch({
-//     type: '_Docs_Reset',
-//   });
-// }
+/**
+ * Synchronously grab a piece of data from $docs state.
+ * The key is a string, if not provided the whole $docs state is returned.
+ *
+ * @export
+ * @template T
+ * @param {string} [key]
+ * @returns {*}  {T}
+ */
+export function getDocState<T = any>(key?: string): T {
+  if (!EleganteBrowser.store) {
+    throw new Error(
+      'unable to find any store. to use getDocState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+    );
+  }
+
+  const currentState = EleganteBrowser.store.getState();
+
+  if (key) {
+    return get(currentState, `$docs.${key}`);
+  }
+  return get(currentState, `$docs`);
+}
+
+export function setDocState(
+  key: string,
+  value: any,
+  options: SetStateOptions = { saveCache: true }
+) {
+  dispatch(
+    $docsSet({
+      key,
+      value,
+    })
+  );
+
+  if (options.saveCache) {
+    log('setDocState.cache', key, value);
+    LocalStorage.set(key, value);
+  }
+}
+
+export function unsetDocState(
+  key: string,
+  options: UnsetStateOptions = { removeCache: true }
+) {
+  dispatch(
+    $docsUnset({
+      key,
+    })
+  );
+  if (options.removeCache) {
+    LocalStorage.unset(key);
+  }
+}
+
+export function resetDocsState() {
+  dispatch($docsReset());
+}
+
+export function resetState(options: ResetStateOptions = { eraseCache: true }) {
+  resetDocsState();
+  if (options.eraseCache) {
+    LocalStorage.clear();
+  }
+}
+
+/**
+ * Provides reactive data access to both $docs and custom reducers.
+ * The path is a string with dot notation in case of custom reducers.
+ * To use $docs, set the $docs option to true.
+ *
+ * The context option provides the previous and next value of the state.
+ * This is useful if you want to know what changed in the state.
+ *
+ * The copy option makes a copy of the state. Default to false.
+ *
+ * @export
+ * @template T
+ * @param {string} path
+ * @param {Partial<ListenerOptions>} [options={
+ *     context: false,
+ *     $docs: false,
+ *     copy: false,
+ *   }]
+ * @returns {*}  {Observable<T>}
+ */
+export function listener<T = any>(
+  this: any,
+  path: string,
+  options: Partial<ListenerOptions> = {
+    $docs: false,
+    context: false,
+    copy: false,
+  }
+) {
+  if (!EleganteBrowser.store) {
+    throw new Error(
+      'unable to find any store. to use listener make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+    );
+  }
+
+  if (options.$docs) {
+    path = `$docs.${path}`;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-this-alias
+  const that = this;
+
+  if (EleganteBrowser.debug && that && that.constructor) {
+    if (!that.cdr) {
+      print('Unable to find ChangeDetectorRef in your component');
+      console.trace(
+        'If you want to make sure that your component reflects state changes automatically, make sure to import { ChangeDetectorRef } from @angular/core and instantiate it in your constructor as `private cdr: ChangeDetectorRef`'
+      );
+    }
+  }
+
+  const o = new Observable<T>((observer) => {
+    const storeInstance = EleganteBrowser.store;
+    const storeValue = options.copy
+      ? cloneDeep(get(storeInstance.getState(), path))
+      : get(storeInstance.getState(), path);
+
+    const w = watch(storeInstance.getState, path);
+    if (options.context) {
+      observer.next({
+        path,
+        prev: storeValue,
+        next: storeValue,
+      } as any);
+    } else {
+      observer.next(storeValue);
+    }
+
+    storeInstance.subscribe(
+      w((next, prev, path) => {
+        const nextValue = options.copy ? cloneDeep(next) : next;
+        // console.log(
+        //   '%s changed from %s to %s at %s',
+        //   path,
+        //   JSON.stringify(prev),
+        //   JSON.stringify(nextValue),
+        //   new Date().toLocaleTimeString()
+        // );
+        if (options.context) {
+          observer.next({
+            path,
+            prev,
+            next: nextValue,
+          } as any);
+        } else {
+          observer.next(nextValue);
+        }
+      })
+    );
+  }).pipe(tap(() => that && that.cdr && that.cdr.detectChanges()));
+
+  return o;
+}

@@ -1,5 +1,5 @@
-import { Document, InternalCollectionName, log, query } from '@elegante/sdk';
-import { EleganteServer } from './EleganteServer';
+import { Document, InternalCollectionName, log } from '@elegante/sdk';
+import { EleganteServer } from './Server';
 
 interface Metadata {
   doc: Document;
@@ -12,33 +12,6 @@ const memo: Map<string, Metadata> = new Map();
  * global flags
  */
 let cache = true;
-
-/**
- * pure functions
- */
-export async function invalidateCache(collection: string, data: Document) {
-  collection = InternalCollectionName[collection] ?? collection;
-
-  if (collection === '_Session') {
-    return Cache.invalidate(collection, data['_session_token']);
-  }
-
-  if (collection === '_User') {
-    /**
-     * we need to invalidate cache of all
-     * sessions that belong to this user
-     */
-    const ref$ = Cache.get('Session$token', data['_id']);
-    if (ref$) {
-      const { token } = ref$;
-      Cache.invalidate('_Session', token);
-      Cache.invalidate('Session$token', data['_id']);
-      return;
-    }
-  }
-
-  return Cache.invalidate(collection, data['_id']);
-}
 
 /**
  * Memo abstract class which provides access to the memoized data
@@ -115,7 +88,8 @@ export abstract class Cache {
    */
   public static set(collection: string, objectId: string, doc: Document) {
     if (!Cache.enabled) return;
-    const documentCacheTTL = EleganteServer.params.documentCacheTTL;
+    const documentCacheTTL =
+      EleganteServer.params.documentCacheTTL ?? 1000 * 60 * 60;
 
     collection = InternalCollectionName[collection] ?? collection;
 
@@ -164,4 +138,31 @@ export abstract class Cache {
   ): void {
     return memo.forEach(callbackfn, thisArg);
   }
+}
+
+/**
+ * pure functions
+ */
+export async function invalidateCache(collection: string, data: Document) {
+  collection = InternalCollectionName[collection] ?? collection;
+
+  if (collection === '_Session') {
+    return Cache.invalidate(collection, data['_session_token']);
+  }
+
+  if (collection === '_User') {
+    /**
+     * we need to invalidate cache of all
+     * sessions that belong to this user
+     */
+    const ref$ = Cache.get('Session$token', data['_id']);
+    if (ref$) {
+      const { token } = ref$;
+      Cache.invalidate('_Session', token);
+      Cache.invalidate('Session$token', data['_id']);
+      return;
+    }
+  }
+
+  return Cache.invalidate(collection, data['_id']);
 }

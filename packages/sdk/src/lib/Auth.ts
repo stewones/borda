@@ -1,9 +1,8 @@
 import { Session } from './types';
 import { fetch } from './fetch';
-import { EleganteClient } from './EleganteClient';
+import { EleganteClient } from './Client';
 import { InternalHeaders } from './internal';
 import { isServer, LocalStorage } from './utils';
-
 export abstract class Auth {
   public static signIn(
     email: string,

@@ -1,1 +1,1 @@
-export * from './lib/fast';
+export * from './lib';

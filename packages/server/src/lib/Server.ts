@@ -1,33 +1,30 @@
-import express, { Application } from 'express';
+import { Application } from 'express';
 import { Db, MongoClient } from 'mongodb';
+
 import {
   EleganteError,
   ErrorCode,
-  log,
   print,
   isEmpty,
   FilterOperations,
   Sort,
   Document,
 } from '@elegante/sdk';
-import { rest } from './rest';
-import { Version } from './Version';
-import { Cache } from './Cache';
-import { Subject } from 'rxjs';
-import { IncomingMessage } from 'http';
+
 import { InternalFieldName } from '@elegante/sdk';
 import { parseFilter } from './parseFilter';
 import { DocQRL } from './parseQuery';
 import { pointer, query, Session, User } from '@elegante/sdk';
 import { newToken } from './utils/crypto';
 
-interface EleganteServerProtocol {
+interface ServerProtocol {
   params: ServerParams;
   app: Application;
   db: Db;
 }
 
 export interface ServerParams {
+  debug?: boolean;
   databaseURI: string;
   apiKey: string;
   apiSecret: string;
@@ -40,31 +37,23 @@ export interface ServerParams {
    * *unless* related docs are updated/deleted in the database, then its cache is invalidated immediately.
    * this is so we don't need to be accessing database every time we need to get a document.
    */
-  documentCacheTTL: number;
+  documentCacheTTL?: number;
 }
 
-export abstract class ServerEvents {
-  public static onDatabaseConnect = new Subject<{ db: Db }>();
-  public static onLiveQueryConnect = new Subject<{
-    ws: WebSocket;
-    incoming: IncomingMessage;
-  }>();
-}
-
-const ServerDefaultParams: Partial<ServerParams> = {
+export const ServerDefaultParams: Partial<ServerParams> = {
   serverHeaderPrefix: 'X-Elegante',
   documentCacheTTL: 1000 * 60 * 60,
 };
 
-export const EleganteServer: EleganteServerProtocol = {
+export const EleganteServer: ServerProtocol = {
   app: {} as Application,
   db: {} as Db,
   params: {
     ...ServerDefaultParams,
   },
-} as EleganteServerProtocol;
+} as ServerProtocol;
 
-async function mongoConnect({ params }: { params: ServerParams }) {
+export async function mongoConnect({ params }: { params: ServerParams }) {
   try {
     const client = new MongoClient(params.databaseURI);
     await client.connect();
@@ -76,7 +65,13 @@ async function mongoConnect({ params }: { params: ServerParams }) {
   }
 }
 
-async function createIndexes({ db, params }: { db: Db; params: ServerParams }) {
+export async function createIndexes({
+  db,
+  params,
+}: {
+  db: Db;
+  params: ServerParams;
+}) {
   try {
     const collections = db.listCollections();
     const collectionsArray = await collections.toArray();
@@ -103,46 +98,6 @@ async function createIndexes({ db, params }: { db: Db; params: ServerParams }) {
       new EleganteError(ErrorCode.INDEX_CREATION_FAILED, err as any)
     );
   }
-}
-
-/**
- * spin up a new elegante server instance
- */
-export function createServer(options: Partial<ServerParams>): Application {
-  const app = (EleganteServer.app = express());
-
-  EleganteServer.params = { ...EleganteServer.params, ...options };
-
-  const params = EleganteServer.params;
-
-  rest({
-    app,
-    params,
-  });
-
-  mongoConnect({ params })
-    .then((db) => {
-      try {
-        EleganteServer.db = db;
-        createIndexes({ db, params });
-        ServerEvents.onDatabaseConnect.next({ db });
-      } catch (err) {
-        print(err);
-      }
-    })
-    .catch((err) => log(err));
-
-  print(`Elegante Server v${Version}`);
-
-  if (params.documentCacheTTL <= 0) {
-    Cache.disable();
-    print('❗ Document cache has been disabled.');
-    print(
-      '❗ Be sure to set documentCacheTTL to a positive number in production to boost queries performance.'
-    );
-  }
-
-  return app;
 }
 
 export function createFindCursor<T extends Document>(docQRL: DocQRL) {

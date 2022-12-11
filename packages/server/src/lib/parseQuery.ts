@@ -5,7 +5,7 @@ import {
   DocumentQuery,
   InternalCollectionName,
 } from '@elegante/sdk';
-import { EleganteServer } from './EleganteServer';
+import { EleganteServer } from './Server';
 
 export interface DocQRL extends DocumentQuery {
   collection$: Collection<Document>;

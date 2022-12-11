@@ -1,5 +1,5 @@
-import { EleganteClient } from './EleganteClient';
-import { EleganteError, ErrorCode } from './EleganteError';
+import { EleganteClient } from './Client';
+import { EleganteError, ErrorCode } from './Error';
 import { InternalHeaders } from './internal';
 import { fetch } from './fetch';
 import { Document } from './types/query';

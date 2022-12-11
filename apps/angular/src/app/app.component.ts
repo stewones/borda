@@ -1,5 +1,18 @@
-import { fast } from '@elegante/browser';
-
+import {
+  Action,
+  createAction,
+  createReducer,
+  dispatch,
+  fast,
+  Fast,
+  from,
+  getDocState,
+  getState,
+  listener,
+  load,
+  setDocState,
+  unsetDocState,
+} from '@elegante/browser';
 import { CommonModule } from '@angular/common';
 
 import {
@@ -16,7 +29,7 @@ import {
 } from '@angular/forms';
 
 import {
-  createClient,
+  init,
   query,
   Auth,
   Session,
@@ -25,21 +38,90 @@ import {
   ping,
   LocalStorage,
   Record,
+  isEqual,
 } from '@elegante/sdk';
-import { Subject, Subscription } from 'rxjs';
+
+import {
+  distinctUntilChanged,
+  distinctUntilKeyChanged,
+  finalize,
+  forkJoin,
+  map,
+  mapTo,
+  mergeMap,
+  of,
+  share,
+  shareReplay,
+  Subject,
+  Subscription,
+  switchMap,
+  takeUntil,
+  tap,
+} from 'rxjs';
 
 console.time('startup');
 
-createClient({
+init({
   apiKey: '**elegante**',
   serverURL: 'http://localhost:1337/server',
-  debug: false,
-}).catch((err) => console.error(err));
+  debug: true,
+});
+
+load({
+  debug: true,
+  reducers: {
+    session: createReducer<Partial<Session>>(
+      // initial state
+      {
+        user: {} as User,
+        token: '',
+      },
+      // actions
+      {
+        sessionSet: (state: Session, action: Action<Session>) => {
+          state.user = action.payload.user;
+          state.token = action.payload.token;
+          LocalStorage.set('session', state);
+        },
+        sessionUnset: (state: any) => {
+          state.user = {} as User;
+          state.token = '';
+          LocalStorage.unset('session');
+        },
+      }
+    ),
+  },
+});
+
+const sessionSet = createAction<Session>('sessionSet');
+const sessionUnset = createAction('sessionUnset');
 
 interface Counter extends Record {
   total: number;
   name: string;
 }
+
+function somePromise() {
+  return new Promise<number>((resolve, reject) => {
+    const randomNumber = Math.floor(Math.random() * 1000);
+    console.debug('resolving random number from promise', randomNumber);
+    // resolve a random number to test cache invalidation
+    return resolve(randomNumber);
+  });
+}
+
+// function createPublicUserListener(this: any) {
+//   return listener<User[]>('publicUsers', { $docs: true }).pipe(
+//     distinctUntilChanged((a, b) => !isEqual(a, b)),
+//     takeUntil(this.publicUsersReset$),
+//     finalize(() => {
+//       this.publicUsers$ = createPublicUserListener.bind(this)();
+//     }),
+//     mergeMap(() =>
+//       fast('publicUsers', from(runFunction<User[]>('getPublicUsers')))
+//     )
+//   );
+// }
 
 @Component({
   standalone: true,
@@ -90,6 +172,7 @@ interface Counter extends Record {
     >
       Re-subscribe Realtime
     </button>
+
     <br />
 
     <h2>Sign Up</h2>
@@ -110,55 +193,77 @@ interface Counter extends Record {
     <hr />
     <br />
 
-    <ng-container *ngIf="!session?.token">
-      <h2>Sign In</h2>
-      <form [formGroup]="signInForm" (ngSubmit)="signIn()">
-        <label for="email">email </label>
-        <input id="email" type="text" formControlName="email" />
-        <label for="password">password: </label>
-        <input id="password" type="text" formControlName="password" />
-        <button type="submit" [disabled]="signInForm.invalid">
-          Login Account
-        </button>
-      </form>
-    </ng-container>
+    <ng-container *ngIf="session$ | async as session">
+      <ng-container *ngIf="!session?.token">
+        <h2>Sign In</h2>
+        <form [formGroup]="signInForm" (ngSubmit)="signIn()">
+          <label for="email">email </label>
+          <input id="email" type="text" formControlName="email" />
+          <label for="password">password: </label>
+          <input id="password" type="text" formControlName="password" />
+          <button type="submit" [disabled]="signInForm.invalid">
+            Login Account
+          </button>
+        </form>
+      </ng-container>
 
-    <button *ngIf="session" (click)="signOut()">
-      Logout from {{ session.user.name }} ({{ session.user.email }})
-    </button>
+      <button *ngIf="session?.token" (click)="signOut()">
+        Logout from {{ session.user.name }} ({{ session.user.email }})
+      </button>
+    </ng-container>
 
     <hr />
 
     Error: {{ (signInError | json) ?? '' }}
     <hr />
-    Session: {{ (session | json) ?? '' }}
-    <hr />
 
-    <ng-container *ngIf="session?.token">
-      <br />
-      <h2>Public Users</h2>
-      <br />
-      <table cellPadding="5" cellSpacing="10">
-        <tr>
-          <th align="left">name</th>
-          <th align="left">email</th>
-          <th>createdAt</th>
-          <th>actions</th>
-        </tr>
-        <tr *ngFor="let user of users">
-          <td>{{ user.name }}</td>
-          <td>{{ user.email }}</td>
-          <td align="center">{{ user.createdAt }}</td>
-          <td align="center">
-            <button (click)="deleteUser(user.objectId)">Delete</button>
-          </td>
-        </tr>
-      </table>
+    <ng-container *ngIf="session$ | async as session">
+      Session: {{ session | json }}
+      <hr />
+      <ng-container *ngIf="session?.token">
+        <br />
+        <h2>
+          Public Users
+          <button (click)="resetPublicUsers()">Reload</button>
+        </h2>
+        <br />
+        <table cellPadding="5" cellSpacing="10">
+          <tr>
+            <th align="left">name</th>
+            <th align="left">email</th>
+            <th>createdAt</th>
+            <th>actions</th>
+          </tr>
+          <tr *ngFor="let user of publicUsers$ | async">
+            <td>{{ user.name }}</td>
+            <td>{{ user.email }}</td>
+            <td align="center">{{ user.createdAt }}</td>
+            <td align="center">
+              <button (click)="deleteUser(user.objectId)">Delete</button>
+            </td>
+          </tr>
+        </table>
+
+        <h4>@Fast Promise</h4>
+        <code>
+          <pre>Random number: {{ fromPromise$ | async }}</pre>
+        </code>
+
+        <h4>@Fast Query</h4>
+        <code>
+          <pre>Latest users: {{ fromQuery$ | async | json }}</pre>
+        </code>
+      </ng-container>
     </ng-container>
   `,
 })
 export class AppComponent {
-  unsubscribe$ = new Subject<void>();
+  counter: Counter = {
+    total: 0,
+    name: 'elegante',
+  } as Counter;
+
+  counterTotalNext = 0;
   subscription$: { [key: string]: Subscription } = {};
 
   signUpForm = new FormGroup({
@@ -175,65 +280,52 @@ export class AppComponent {
   signInError: any;
   signUpError: any;
 
-  session: Session | undefined = LocalStorage.get('session');
+  session$ = listener.bind(this)<Session>('session');
+  publicUsersReset$ = new Subject<void>();
+  // publicUsers$ = createPublicUserListener.bind(this)();
+  publicUsers$ = listener<User[]>('publicUsers', { $docs: true });
 
-  users: User[] = [];
+  @Fast('myOwnPromise')
+  fromPromise$ = from(somePromise());
 
-  counter: Counter = {
-    total: 0,
-    name: 'elegante',
-  } as Counter;
-  counterTotalNext = 0;
+  @Fast()
+  fromQuery$ = from(
+    query<User>('PublicUser')
+      // .filter({
+      //   name: {
+      //     $eq: 'elegante',
+      //   },
+      // })
+      .pipeline([
+        {
+          $sort: { createdAt: -1 },
+        },
+      ])
+      // .sort({ createdAt: -1 })
+      .limit(10)
+      .aggregate({ allowDiskUse: true })
+  );
 
   constructor(private cdr: ChangeDetectorRef) {
     ping().then(() => console.timeEnd('startup'));
-
-    fast(
-      query('PublicUser')
-        .pipeline([
-          {
-            $sort: { createdAt: -1 },
-            // join with counter
-            $lookup: {
-              from: 'Counter',
-              localField: 'counterId',
-              foreignField: 'objectId',
-              as: 'counter',
-
-              // join with user
-              $lookup: {
-                from: '_User',
-                localField: 'userId',
-                foreignField: 'objectId',
-                as: 'user',
-
-                // join with user
-                $lookup: {
-                  from: 'PrivateUser',
-                  localField: 'privateUserId',
-                  foreignField: 'objectId',
-                  as: 'privateUser',
-
-                  // join with user
-                },
-              },
-            },
-          },
-        ])
-        .limit(10)
-        .method('find', { allowDiskUse: true }),
-      {
-        key: 'latest-10',
-      }
-    ).subscribe(console.log);
+    const session = LocalStorage.get('session');
+    if (session) {
+      dispatch(sessionSet(session));
+    }
   }
 
   ngOnDestroy() {}
 
   async ngOnInit() {
     /**
+     * example of programmatic fast promise (rather than @decorator)
+     */
+    fast('myOwnPromise-programmatic', from(somePromise())).subscribe((r) =>
+      console.log('programmatic fast promise', r)
+    );
+    /**
      * check if default record of counter exists
-     * if not we create it, all on server side
+     * if not we create it, all in server side
      */
     this.counter = await runFunction<Counter>('getCounter');
     this.counterTotalNext = this.counter.total;
@@ -247,8 +339,8 @@ export class AppComponent {
      * load a protected function
      * by default all functions requires a valid user session token
      */
-    if (this.session) {
-      this.loadLatestUsers();
+    if (getState('session')) {
+      this.loadPublicUsers();
     }
 
     this.cdr.markForCheck();
@@ -270,25 +362,25 @@ export class AppComponent {
         },
       })
       .on('update')
-      .subscribe(
-        ({ doc }) => {
+      .subscribe({
+        next: ({ doc }) => {
           console.log('counter update', doc);
           this.counter = doc;
           this.cdr.markForCheck();
         },
-        (err) => console.error(err)
-      );
+        error: (err) => console.error(err),
+      });
 
     this.subscription$['userDelete'] = query<User>('PublicUser')
       .on('delete')
       .subscribe(({ doc, ...rest }) => {
         console.log('user deleted', doc, rest);
-        this.users = this.users.filter(
-          (user) => user.objectId !== doc.objectId
+        setDocState(
+          'publicUsers',
+          getDocState<User[]>('publicUsers').filter(
+            (user) => user.objectId !== doc.objectId
+          )
         );
-        this.cdr.markForCheck();
-
-        this.loadLatestUsers();
       });
 
     this.subscription$['userInsert'] = query<User>('PublicUser')
@@ -298,7 +390,10 @@ export class AppComponent {
       .on('insert')
       .subscribe(({ doc }) => {
         console.log('user inserted', doc);
-        this.users.unshift(doc);
+        setDocState('publicUsers', [
+          doc,
+          ...getDocState<User[]>('publicUsers'),
+        ]);
       });
   }
 
@@ -348,11 +443,10 @@ export class AppComponent {
       //   console.log(user, token, ...rest);
       // });
 
-      this.session = response;
       this.signUpError = null;
       this.cdr.markForCheck();
 
-      LocalStorage.set('session', response);
+      dispatch(sessionSet(response));
     } catch (err) {
       console.error(err);
       this.signUpError = err;
@@ -389,17 +483,15 @@ export class AppComponent {
       //   console.log(user, token, ...rest);
       // });
 
-      this.session = response;
       this.signInError = undefined;
       this.cdr.markForCheck();
-
-      LocalStorage.set('session', response);
+      dispatch(sessionSet(response));
 
       /**
        * load a protected function
        * by default all functions requires a valid user session token
        */
-      this.loadLatestUsers();
+      this.loadPublicUsers();
     } catch (err) {
       console.error(err);
       this.signInError = err;
@@ -413,9 +505,7 @@ export class AppComponent {
     } catch (err) {
       console.error(err);
     }
-    LocalStorage.unset('session');
-    this.session = undefined;
-    this.cdr.markForCheck();
+    dispatch(sessionUnset());
   }
 
   deleteUser(objectId: string) {
@@ -428,17 +518,14 @@ export class AppComponent {
       .delete();
   }
 
-  loadLatestUsers() {
-    runFunction<User[]>('getLatestUsers')
-      .then((users) => {
-        users.map((user) => {
-          if (!this.users.find((u) => u.objectId === user.objectId)) {
-            this.users.push(user);
-          }
-        });
+  resetPublicUsers() {
+    unsetDocState('publicUsers');
+    this.loadPublicUsers();
+  }
 
-        this.cdr.markForCheck();
-      })
-      .catch((err) => console.error(err));
+  loadPublicUsers() {
+    runFunction<User[]>('getPublicUsers').then((users) =>
+      setDocState('publicUsers', users)
+    );
   }
 }

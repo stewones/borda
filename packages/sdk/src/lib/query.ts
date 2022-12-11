@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import 'reflect-metadata';
 
 import { finalize, Observable } from 'rxjs';
-import { EleganteClient } from './EleganteClient';
-import { EleganteError, ErrorCode } from './EleganteError';
-import { isEmpty, isServer, LocalStorage } from './utils';
+import { EleganteClient } from './Client';
+import { EleganteError, ErrorCode } from './Error';
+import { cleanKey, isEmpty, isServer, LocalStorage } from './utils';
 import { fetch, HttpMethod } from './fetch';
 import { InternalFieldName, InternalHeaders } from './internal';
 import { webSocketServer, getUrl, WebSocketCallback } from './websocket';
@@ -29,25 +30,17 @@ export function query<TSchema extends Document>(collection: string) {
 
     options: {},
 
-    method: (method, options) => {
-      bridge.params['method'] = method;
-      bridge.params['options'] = options;
-      return bridge;
-    },
-
-    qrl: () => JSON.stringify(bridge.params),
-
     /**
      * modifiers
      */
 
     projection: (project) => {
+      const newProject: Document = { ...project };
+
       /**
        * applies a little hack to make sure the projection
        * also work with pointers. ie: _p_fieldName
        */
-      const newProject: any = { ...project };
-
       for (const fieldName in project) {
         newProject['_p_' + fieldName] = project[fieldName];
       }
@@ -188,7 +181,7 @@ export function query<TSchema extends Document>(collection: string) {
      * retrieval methods
      */
 
-    run: async (method, options, doc?, objectId?) => {
+    run: (method, options, doc?, objectId?) => {
       options = {
         ...bridge.options,
         ...options,
@@ -269,7 +262,7 @@ export function query<TSchema extends Document>(collection: string) {
         doc,
       };
 
-      const docs = await fetch<DocumentResponse<TSchema>>(
+      const promise = fetch<DocumentResponse<TSchema>>(
         `${EleganteClient.params.serverURL}/${bridge.params['collection']}${
           ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
         }`,
@@ -282,11 +275,19 @@ export function query<TSchema extends Document>(collection: string) {
         }
       );
 
-      if (isEmpty(docs)) {
-        return method === 'find' ? [] : undefined;
-      }
+      Reflect.defineMetadata(
+        'key',
+        cleanKey({ ...docQuery, collection: bridge.params['collection'] }),
+        promise
+      );
 
-      return docs;
+      return promise;
+      // .then((docs) => {
+      //   if (isEmpty(docs)) {
+      //     return method === 'find' ? [] : undefined;
+      //   }
+      //   return docs;
+      // });
     },
 
     on: (event, options?: ChangeStreamOptions) => {

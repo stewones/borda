@@ -1,4 +1,4 @@
-import { EleganteClient } from './EleganteClient';
+import { EleganteClient } from './Client';
 import { fetch } from './fetch';
 import { InternalHeaders } from './internal';
 

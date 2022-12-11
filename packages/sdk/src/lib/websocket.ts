@@ -1,4 +1,4 @@
-import { EleganteClient } from './EleganteClient';
+import { EleganteClient } from './Client';
 
 export interface WebSocketCallback {
   onConnect: (ws: WebSocket) => void;

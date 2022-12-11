@@ -2,7 +2,7 @@ import { query } from '@elegante/sdk';
 import { Cloud } from '@elegante/server';
 
 Cloud.addFunction(
-  'getLatestUsers',
+  'getPublicUsers',
   {
     isPublic: true,
   },
@@ -17,7 +17,7 @@ Cloud.addFunction(
             createdAt: 1,
           })
           .sort({ updatedAt: -1 })
-          .limit(5)
+          .limit(1000)
           .filter({
             expiresAt: {
               $exists: false,

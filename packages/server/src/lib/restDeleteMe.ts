@@ -2,7 +2,7 @@
 import { EleganteError, ErrorCode, query } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { ServerParams } from './EleganteServer';
+import { ServerParams } from './Server';
 
 export function restDeleteMe({
   params,

@@ -4,8 +4,9 @@
   "type": "commonjs",
   "dependencies": {
     "@elegante/sdk": "latest",
+    "rxjs": "^7.5.7",
     "immer": "^9.0.16",
-    "redux": "^4.2.0",
+    "@reduxjs/toolkit": "^1.9.1",
     "redux-thunk": "^2.4.2",
     "redux-watch": "^1.2.0"
   }

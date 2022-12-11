@@ -8,7 +8,7 @@ import {
   isISODate,
   log,
 } from '@elegante/sdk';
-import { ServerParams } from './EleganteServer';
+import { ServerParams } from './Server';
 import { parseExclude } from './parseExclude';
 import { parseInclude } from './parseInclude';
 import { parseResponse } from './parseResponse';

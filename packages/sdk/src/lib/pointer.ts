@@ -1,6 +1,5 @@
 import { InternalCollectionName } from './internal';
 import { ExternalCollectionName } from './external';
-
 import { Document } from './types/query';
 
 /**

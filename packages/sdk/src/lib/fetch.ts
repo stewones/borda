@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetch as fetcher } from 'cross-fetch';
-import { EleganteError, ErrorCode } from './EleganteError';
+import { EleganteError, ErrorCode } from './Error';
 import { isServer } from './utils';
 import { Version } from './Version';
 
@@ -32,7 +32,18 @@ export async function fetch<T = any>(
   }
 
   return fetcher(url, fetchOptions)
-    .then(fetchHandleError)
+    .then(async (response: Response) => {
+      const contentType = response.headers.get('content-type') || '';
+      const contentResponse = contentType.includes('json')
+        ? await response.json()
+        : await response.text();
+
+      if (!response.ok || response.status >= 400) {
+        return Promise.reject(contentResponse);
+      }
+
+      return contentResponse;
+    })
     .catch((err) => {
       /**
        * if we don't have a proper response means it's
@@ -50,17 +61,4 @@ export async function fetch<T = any>(
         throw err;
       }
     });
-}
-
-export async function fetchHandleError(response: Response) {
-  const contentType = response.headers.get('content-type') || '';
-  const contentResponse = contentType.includes('json')
-    ? await response.json()
-    : await response.text();
-
-  if (!response.ok || response.status >= 400) {
-    return Promise.reject(contentResponse);
-  }
-
-  return contentResponse;
 }

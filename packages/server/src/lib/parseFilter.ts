@@ -45,11 +45,21 @@ export function parseFilter(obj: any | any[]): any | any[] {
          */
         if (!field.startsWith('_p_')) {
           const operation = obj[field];
-          for (const op in operation) {
+          for (let op in operation) {
             const value = operation[op];
             if (isPointer(value) && !field.startsWith('$')) {
               obj['_p_' + field] = operation;
               delete obj[field];
+            }
+
+            /**
+             * format internal keys
+             * createdAt -> _created_at
+             */
+            if (InternalFieldName[op]) {
+              operation[InternalFieldName[op]] = operation[op];
+              delete operation[op];
+              op = InternalFieldName[op];
             }
           }
         }

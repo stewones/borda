@@ -82,17 +82,6 @@ export declare interface Query<TSchema = Document> {
   options: FindOptions;
 
   /**
-   * set the method to run
-   * this is trivial but required for external tools like `fast`
-   */
-  method(name: QueryMethod, options?: FindOptions): Query<TSchema>;
-
-  /**
-   * returns the query as a qrl string
-   */
-  qrl(): string;
-
-  /**
    * project 1st level fields for this query
    */
   projection(
@@ -188,14 +177,13 @@ export declare interface Query<TSchema = Document> {
   ): Promise<number | TSchema | TSchema[] | Document[] | void>;
 
   /**
-   * the unlock method appends the apiSecret to the header.
-   * if valid you can make server-wide operations without restrictions.
-   * make sure to only use this when running on server to not expose your api secret.
+   * the unlock method is meant to make operations without restrictions.
+   * make sure to only use this when running on server and *never expose your api secret*.
    */
   unlock(isUnlocked: boolean): Query<TSchema>;
 
   /**
-   * Live queries
+   * live queries
    */
   on(
     event: DocumentEvent,

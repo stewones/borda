@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { ServerParams } from './EleganteServer';
+import { ServerParams } from './Server';
 import { parseResponse } from './parseResponse';
 
 export function restGetMe({

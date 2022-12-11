@@ -22,7 +22,7 @@ import {
   createFindCursor,
   createPipeline,
   createSession,
-} from './EleganteServer';
+} from './Server';
 import { invalidateCache } from './Cache';
 import { parseDoc, parseDocForInsertion, parseDocs } from './parseDoc';
 import { parseFilter } from './parseFilter';
@@ -213,9 +213,10 @@ export function restPost({
          * @todo run beforeAggregate and afterAggregate triggers
          */
         const docs = await postAggregate(docQRL);
+
         return res
           .status(200)
-          .send(await parseDocs(docs)(docQRL, params, res.locals));
+          .json(await parseDocs(docs)(docQRL, params, res.locals));
       } else if (method === 'insert') {
         /**
          * insert new documents

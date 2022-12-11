@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { DocumentQuery, log } from '@elegante/sdk';
-import { ServerParams } from './EleganteServer';
+import { ServerParams } from './Server';
 import { createTree } from './parseInclude';
 
 export function parseExclude<T extends Document>(

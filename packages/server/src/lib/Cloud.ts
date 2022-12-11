@@ -8,11 +8,10 @@ import {
   runJob,
 } from '@elegante/sdk';
 
-import { EleganteServer } from './EleganteServer';
-import { EleganteClient } from '@elegante/sdk';
 import { routeEnsureAuth } from './route';
 
 import { DocQRL } from './parseQuery';
+import { EleganteServer } from './Server';
 
 type CloudTriggerProtocol = Map<string, CloudTriggerOptions>;
 
@@ -115,9 +114,9 @@ export abstract class Cloud {
    *
    * SDK
    *
-   * import { Cloud, createClient } from '@elegante/sdk';
+   * import { Cloud, init } from '@elegante/sdk';
    *
-   * createClient({ ... });
+   * init({ ... });
    *
    * await Cloud.runFunction('sendEmail', { to: '...', subject: '...', body: '...' });
    *
@@ -177,9 +176,9 @@ export abstract class Cloud {
    *
    * SDK (server only)
    *
-   * import { Cloud, createClient } from '@elegante/sdk';
+   * import { Cloud, init } from '@elegante/sdk';
    *
-   * createClient({ ... });
+   * init({ ... });
    *
    * await Cloud.runJob('sendEmail', { to: '...', subject: '...', body: '...' });
    *
@@ -225,19 +224,19 @@ function createFunction(options: CloudFunctionOptions): void {
     routeEnsureAuth({
       params,
     }),
-    async (req, res) => {
-      if (EleganteClient.params.debug) {
+    async (req: Request, res: Response) => {
+      if (EleganteServer.params.debug) {
         console.time(`function duration: ${name}`);
       }
       try {
         await fn({ req, res, session: res.locals['session'] });
         // @todo save statistic to db when we have Elegante Models
-        if (EleganteClient.params.debug) {
+        if (EleganteServer.params.debug) {
           console.timeEnd(`function duration: ${name}`);
         }
       } catch (err) {
         res.status(500).send(err);
-        if (EleganteClient.params.debug) {
+        if (EleganteServer.params.debug) {
           console.timeEnd(`function duration: ${name}`);
         }
         // @todo save statistic to db when we have Elegante Models
@@ -251,7 +250,7 @@ function createJob(
   fn: (callback: { req: Request }) => Promise<string | void>
 ): void {
   const { app } = EleganteServer;
-  app.post(`/jobs/${options.name}`, async (req, res) => {
+  app.post(`/jobs/${options.name}`, async (req: Request, res: Response) => {
     console.time(`job duration: ${options.name}`);
     try {
       res.status(200).send('🚀');

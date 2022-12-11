@@ -1,3 +1,5 @@
+```ts
+
 /**
  * server setup
  */
@@ -136,9 +138,9 @@ await jobStatus('makeSomeHeavyTask');
  *
  * throw ERROR if secretKey is provided in ElegantClient
  */
-import { createClient } from '@elegante/sdk';
+import { init } from '@elegante/sdk';
 
-const client = createClient({
+const client = init({
   apiKey,
   serverURL: 'http://localhost:1337/server',
   serverHeaderPrefix: 'X-Elegante',
@@ -228,3 +230,4 @@ const salesAgg = await query()
   .aggregate();
 
 // console.log(salesAgg[0].product.author);
+```
