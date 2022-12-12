@@ -3,17 +3,18 @@ import {
   createAction,
   createReducer,
   dispatch,
+  listener,
+  load,
   fast,
   Fast,
   from,
   getDocState,
   getState,
-  listener,
-  load,
   resetDocState,
   setDocState,
   unsetDocState,
 } from '@elegante/browser';
+
 import { CommonModule } from '@angular/common';
 
 import {
@@ -39,6 +40,9 @@ import {
   ping,
   LocalStorage,
   Record,
+  ActiveRecord,
+  ActiveRecordParams,
+  cleanArray,
 } from '@elegante/sdk';
 
 import { of, Subscription } from 'rxjs';
@@ -74,33 +78,33 @@ load({
         },
       }
     ),
-    whatever: createReducer<any>(
+    cool: createReducer<any>(
       // initial state
       {},
       // actions
       {
-        whateverSet: (state: any, action: Action<any>) => {
+        coolSet: (state: any, action: Action<any>) => {
           for (const key in action.payload) {
             state[key] = action.payload[key];
           }
-          LocalStorage.set('whatever', state);
+          LocalStorage.set('cool', state);
         },
-        whateverReset: (state: any) => {
+        coolReset: (state: any) => {
           for (const key in state) {
             delete state[key];
           }
           for (const key in whatverInitialState) {
             state[key] = whatverInitialState[key];
           }
-          LocalStorage.set('whatever', state);
+          LocalStorage.set('cool', state);
         },
       }
     ),
   },
 });
 
-const whateverSet = createAction<any>('whateverSet');
-const whateverReset = createAction('whateverReset');
+const coolSet = createAction<any>('coolSet');
+const coolReset = createAction('coolReset');
 const sessionSet = createAction<Session>('sessionSet');
 const sessionUnset = createAction('sessionUnset');
 
@@ -113,7 +117,6 @@ const whatverInitialState: any = {
 if (session) {
   dispatch(sessionSet(session));
 }
-dispatch(whateverSet(whatverInitialState));
 
 interface Counter extends Record {
   total: number;
@@ -127,6 +130,35 @@ function somePromise() {
     // resolve a random number to test cache invalidation
     return resolve(randomNumber);
   });
+}
+
+interface UserExtended extends User {
+  username?: string;
+}
+
+export class PublicUserModel extends ActiveRecord<UserExtended> {
+  constructor(
+    record?: Partial<UserExtended>,
+    options: ActiveRecordParams = {}
+  ) {
+    /**
+     * custom identifier query
+     */
+    if (!record?.objectId) {
+      options.filter = {
+        ...options.filter,
+        $or: cleanArray([
+          record?.email ? { email: record?.email } : {},
+          record?.username ? { username: record?.username } : {},
+        ]),
+      };
+    }
+
+    super('PublicUser', record, {
+      include: ['photo'],
+      ...options,
+    });
+  }
 }
 
 @Component({
@@ -219,10 +251,9 @@ function somePromise() {
     </ng-container>
 
     <hr />
-
     Error: {{ (signInError | json) ?? '' }}
-    <hr />
 
+    <hr />
     <ng-container *ngIf="session$ | async as session">
       Session: {{ session | json }}
       <hr />
@@ -232,7 +263,8 @@ function somePromise() {
       <br />
       <h2>
         Public Users
-        <button (click)="resetPublicUsers()">Reload</button>
+        <button (click)="resetPublicUsers()">Force Reload</button>
+        <button (click)="createRandomUser()">Add Random</button>
       </h2>
       <br />
       <table cellPadding="5" cellSpacing="10">
@@ -263,6 +295,11 @@ function somePromise() {
       <code>
         <pre>Oldest users: {{ oldestUsers$ | async | json }}</pre>
       </code>
+
+      <h4>Cool reducer</h4>
+      <code>
+        <pre>{{ cool$ | async | json }}</pre>
+      </code>
     </ng-container>
   `,
 })
@@ -291,6 +328,7 @@ export class AppComponent {
 
   session$ = listener.bind(this)<Session>('session');
   publicUsers$ = listener.bind(this)<User[]>('publicUsers', { $doc: true });
+  cool$ = listener.bind(this)<any>('cool');
 
   @Fast('myOwnPromise')
   fromPromise$ = from(somePromise());
@@ -341,12 +379,9 @@ export class AppComponent {
     this.subscribe();
 
     /**
-     * load a protected function
-     * by default all functions requires a valid user session token
+     * load a public list of users
      */
-    if (getState('session')) {
-      this.loadPublicUsers();
-    }
+    this.loadPublicUsers();
   }
 
   async subscribe() {
@@ -395,7 +430,7 @@ export class AppComponent {
         console.log('user inserted', doc);
         setDocState('publicUsers', [
           doc,
-          ...getDocState<User[]>('publicUsers'),
+          ...(getDocState<User[]>('publicUsers') || []),
         ]);
       });
   }
@@ -430,10 +465,13 @@ export class AppComponent {
 
       const { user, token, ...rest } = response;
 
-      this.signUpError = null;
+      this.signInError = undefined;
+      this.signUpError = undefined;
       this.cdr.markForCheck();
 
       dispatch(sessionSet(response));
+
+      this.loadPublicUsers();
     } catch (err) {
       console.error(err);
       this.signUpError = err;
@@ -454,6 +492,7 @@ export class AppComponent {
       const { user, token, ...rest } = response;
 
       this.signInError = undefined;
+      this.signUpError = undefined;
       this.cdr.markForCheck();
 
       dispatch(sessionSet(response));
@@ -474,7 +513,7 @@ export class AppComponent {
     const resetState = () => {
       resetDocState(); // reset $doc state
       dispatch(sessionUnset());
-      dispatch(whateverReset());
+      dispatch(coolReset());
     };
 
     Auth.signOut().catch((err) => {});
@@ -501,16 +540,29 @@ export class AppComponent {
       setDocState('publicUsers', users)
     );
 
-    dispatch(
-      whateverSet({
-        hey: 'dude',
-        this: 'is',
-        logged: '🔐',
-      })
-    );
+    if (getState('session.token')) {
+      dispatch(
+        coolSet({
+          hey: 'dude',
+          this: 'is',
+          logged: '🔐',
+        })
+      );
+    } else {
+      dispatch(coolSet(whatverInitialState));
+    }
   }
 
   trackByUserEmail(index: number, user: User) {
     return user.email;
+  }
+
+  async createRandomUser() {
+    // create a random email
+    const email = `${Math.random().toString(36).substring(2, 15)}@random.email`;
+    const name = `${Math.random().toString(36).substring(2, 15)}`;
+    const user = new PublicUserModel({ email, name });
+    await user.save();
+    console.log(user.getRawValue());
   }
 }

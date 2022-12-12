@@ -114,8 +114,8 @@ export const routeEnsureAuth =
             token: {
               $eq: token,
             },
-            deletedAt: {
-              $exists: false,
+            expiresAt: {
+              $gt: new Date().toISOString(),
             },
           })
           .findOne()

@@ -11,5 +11,4 @@ export interface Record {
    * by default Elegante will set this to 1 year after createdAt.
    */
   expiresAt?: string;
-  deletedAt?: string;
 }

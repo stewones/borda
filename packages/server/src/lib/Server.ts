@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Application } from 'express';
 import { Db, MongoClient } from 'mongodb';
 
@@ -91,7 +92,6 @@ export async function createIndexes({
           .createIndex({ _expires_at: 1 }, { expireAfterSeconds: 0 });
       }
     }
-    return;
   } catch (err) {
     print(
       `Elegante couldn't create indexes on startup`,
@@ -121,7 +121,6 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
   const cursor = collection$.find<T>(parseFilter(filter), {
     projection,
     sort: sortAny,
-
     ...options,
   });
 

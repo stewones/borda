@@ -1,6 +1,7 @@
 export * from './types';
 export * from './utils';
 export * from './Auth';
+export * from './Active';
 export * from './Cloud';
 export * from './Error';
 export * from './external';
@@ -9,6 +10,7 @@ export * from './init';
 export * from './internal';
 export * from './log';
 export * from './ping';
+export * from './Plugin';
 export * from './pointer';
 export * from './query';
 export * from './Version';

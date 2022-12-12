@@ -2,6 +2,7 @@
 import { stringify } from './utils';
 
 export enum ErrorCode {
+  DATABASE_ERROR = -10,
   DATABASE_NOT_FOUND = -9,
   AUTH_SIGN_OUT_ERROR = -8,
   AUTH_NAME_REQUIRED = -7,

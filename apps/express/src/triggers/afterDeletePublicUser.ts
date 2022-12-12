@@ -9,5 +9,6 @@ Cloud.afterDelete('PublicUser', ({ before }) => {
         $eq: before.email,
       },
     })
-    .delete();
+    .delete()
+    .catch((err) => console.log(err));
 });

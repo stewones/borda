@@ -129,16 +129,16 @@ createLiveQueryServer({
 
 /**
  * Listen to LiveQuery connection from server events
- * and do whatever you need after server is ready
+ * and do cool you need after server is ready
  */
 ServerEvents.onLiveQueryConnect.subscribe(({ ws, incoming }) => {
-  // do whatever you want with websockets here
+  // do cool you want with websockets here
   // console.log(ws, incoming);
 });
 
 /**
  * Listen to database connection from server events
- * and do whatever you need after server is ready
+ * and do cool you need after server is ready
  */
 ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
   log('Database connected 🚀');

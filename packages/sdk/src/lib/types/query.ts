@@ -134,8 +134,8 @@ export declare interface Query<TSchema = Document> {
    * find a document using mongo-like queries
    * or direclty by passing its objectId
    */
-  findOne(options?: FindOptions): Promise<TSchema | void>;
-  findOne(objectId: string): Promise<TSchema | void>;
+  findOne(options?: FindOptions): Promise<TSchema>;
+  findOne(objectId: string): Promise<TSchema>;
 
   /**
    * update a document using mongo-like queries

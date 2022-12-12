@@ -107,6 +107,10 @@ export function unsetDocState(
   }
 }
 
+/**
+ * Reset all $doc state and optionally clear all local storage (default: true)
+ * To reset custom reducers, you must implement your own reset action and `dispatch(myResetAction())`
+ */
 export function resetDocState(
   options: ResetStateOptions = { clearLocalStorage: true }
 ) {

@@ -79,9 +79,9 @@ export function restDelete({
           }
         );
 
-        const afterSave = getCloudTrigger(collectionName, 'afterDelete');
-        if (afterSave) {
-          afterSave.fn({
+        const afterDelete = getCloudTrigger(collectionName, 'afterDelete');
+        if (afterDelete) {
+          afterDelete.fn({
             req,
             res,
             ...afterDeletePayload,

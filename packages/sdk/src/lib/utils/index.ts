@@ -1,4 +1,5 @@
 export * from './cleanKey';
+export * from './cleanArray';
 export * from './cloneDeep';
 export * from './delay';
 export * from './isISODate';
@@ -15,3 +16,4 @@ export * from './objectFieldsUpdated';
 export * from './get';
 export * from './validateEmail';
 export * from './LocalStorage';
+export * from './unset';

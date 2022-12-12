@@ -167,7 +167,7 @@ export function restPost({
         return Promise.reject(
           new EleganteError(
             ErrorCode.REST_DOCUMENT_NOT_UPDATED,
-            'could not update document'
+            `could not update ${collectionName} document`
           )
         );
       } else if (method === 'remove') {
@@ -178,17 +178,23 @@ export function restPost({
         const { cursor } = await postDelete(docQRL);
 
         if (cursor.ok && cursor.value) {
-          const doc = cursor.value ?? ({} as Document);
-          const afterDeleteTrigger = parseResponse(
-            { doc },
+          const afterDeletePayload = parseResponse(
+            { before: cursor.value, after: null },
             {
               removeSensitiveFields: !isUnlocked(res.locals),
             }
           );
-          // console.log(afterDeleteTrigger);
-          // @todo trigger afterDeleteTrigger
+          const afterDelete = getCloudTrigger(collectionName, 'afterDelete');
+          if (afterDelete) {
+            afterDelete.fn({
+              req,
+              res,
+              ...afterDeletePayload,
+              docQRL,
+            });
+          }
 
-          invalidateCache(collectionName, doc);
+          invalidateCache(collectionName, afterDeletePayload.before);
           return res.status(200).send();
         } else {
           res
@@ -196,7 +202,7 @@ export function restPost({
             .json(
               new EleganteError(
                 ErrorCode.REST_DOCUMENT_NOT_FOUND,
-                'could not remove document'
+                `could not remove ${collectionName} document`
               )
             );
         }
@@ -231,7 +237,6 @@ export function restPost({
         let shouldRun: boolean | void = true;
         const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
         if (beforeSave) {
-          const { doc } = docQRLFrom;
           shouldRun = await beforeSave.fn({
             req,
             res,
@@ -262,21 +267,39 @@ export function restPost({
               });
             }
 
-            return res.status(201).send(doc);
+            return res.status(201).send(afterSavePayload.after);
           }
         }
 
         return Promise.reject(
           new EleganteError(
             ErrorCode.REST_DOCUMENT_NOT_CREATED,
-            'could not create document'
+            `could not create ${collectionName} document`
           )
         );
       } else if (collectionName === '_User' && method === 'signUp') {
         /**
          * user sign up
          */
-        return postSignUp(docQRL, res);
+        return postSignUp(docQRL, res).catch((err) => {
+          if (err && err.code === 11000) {
+            return res
+              .status(405)
+              .json(
+                new EleganteError(
+                  ErrorCode.DATABASE_ERROR,
+                  'duplicate key error E11000'
+                )
+              );
+          }
+          return res
+            .status(405)
+            .send(
+              err?.code
+                ? err
+                : new EleganteError(ErrorCode.REST_POST_ERROR, err as object)
+            );
+        });
       } else if (collectionName === '_User' && method === 'signIn') {
         /**
          * user sign in
@@ -438,6 +461,9 @@ async function postSignIn(docQRL: DocQRL, res: Response) {
       email: {
         $eq: email,
       },
+      expiresAt: {
+        $exists: false,
+      },
     })
     .findOne();
 
@@ -498,6 +524,9 @@ async function postSignUp(docQRL: DocQRL, res: Response) {
     .filter({
       email: {
         $eq: email,
+      },
+      expiresAt: {
+        $exists: false,
       },
     })
     .findOne();

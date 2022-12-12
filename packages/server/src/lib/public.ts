@@ -14,6 +14,8 @@ import {
   log,
   print,
   Version,
+  query,
+  pointer,
 } from '@elegante/sdk';
 
 import {
@@ -221,48 +223,103 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
   });
 
   /**
-   * listen to database changes to have a second layer of cache invalidation
+   * listen to database changes to execute side effect tasks such as
+   * - have a second layer of cache invalidation
+   * - delete all user sessions if the user is deleted
    */
   ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
-    if (!EleganteServer.params.documentCacheTTL) return;
-    const collections = db.listCollections();
-    const collectionsArray = await collections.toArray();
-    for (const collectionInfo of collectionsArray) {
-      if (
-        collectionInfo.type === 'collection' &&
-        !collectionInfo.name.startsWith('system.')
-      ) {
-        /**
-         * listen to collection changes to invalidate the server cache (memoized queries)
-         */
-        const collection = EleganteServer.db.collection(collectionInfo.name);
-        collection
-          .watch(
-            [
+    ensureCacheInvalidation(db);
+    ensureSessionInvalidation(db);
+  });
+}
+
+async function ensureCacheInvalidation(db: Db) {
+  if (!EleganteServer.params.documentCacheTTL) return;
+  const collections = db.listCollections();
+  const collectionsArray = await collections.toArray();
+  for (const collectionInfo of collectionsArray) {
+    if (
+      collectionInfo.type === 'collection' &&
+      !collectionInfo.name.startsWith('system.')
+    ) {
+      /**
+       * listen to collection changes to invalidate the server cache (memoized queries)
+       */
+      const collection = EleganteServer.db.collection(collectionInfo.name);
+      collection
+        .watch(
+          [
+            {
+              $match: {
+                operationType: {
+                  $in: ['update'],
+                },
+              },
+            },
+          ],
+          collectionInfo.name === '_Session'
+            ? {
+                fullDocument: 'updateLookup',
+              }
+            : {}
+        )
+        .on('change', (change) => {
+          const { documentKey, fullDocument }: any = change;
+          const { _id } = documentKey;
+          if (collectionInfo.name === '_Session') {
+            invalidateCache(collectionInfo.name, fullDocument);
+          } else {
+            invalidateCache(collectionInfo.name, { _id });
+          }
+        });
+    }
+  }
+}
+
+async function ensureSessionInvalidation(db: Db) {
+  /**
+   * listen to user deletions to invalidate all user sessions
+   */
+  const collection = EleganteServer.db.collection('_User');
+  collection
+    .watch(
+      [
+        {
+          $match: {
+            $or: [
               {
-                $match: {
-                  operationType: {
-                    $in: ['update'],
-                  },
+                operationType: {
+                  $in: ['delete'],
+                },
+              },
+              {
+                operationType: {
+                  $in: ['update'],
+                },
+                'fullDocument._expires_at': {
+                  $exists: true,
                 },
               },
             ],
-            collectionInfo.name === '_Session'
-              ? {
-                  fullDocument: 'updateLookup',
-                }
-              : {}
-          )
-          .on('change', (change) => {
-            const { documentKey, fullDocument }: any = change;
-            const { _id } = documentKey;
-            if (collectionInfo.name === '_Session') {
-              invalidateCache(collectionInfo.name, fullDocument);
-            } else {
-              invalidateCache(collectionInfo.name, { _id });
-            }
-          });
+          },
+        },
+      ],
+      {
+        fullDocument: 'updateLookup',
       }
-    }
-  });
+    )
+    .on('change', (change) => {
+      const { documentKey }: any = change;
+      const { _id } = documentKey;
+
+      query('Session')
+        .unlock(true)
+        .filter({
+          user: pointer('User', _id),
+        })
+        .delete()
+        .catch((err) => {
+          // it's fine if the session is already deleted or doesn't exist
+        });
+    });
 }

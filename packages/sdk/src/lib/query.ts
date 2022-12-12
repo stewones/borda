@@ -128,7 +128,7 @@ export function query<TSchema extends Document>(collection: string) {
         typeof optionsOrObjectId === 'string' ? {} : optionsOrObjectId,
         {},
         typeof optionsOrObjectId === 'string' ? optionsOrObjectId : undefined
-      ) as Promise<TSchema | void>;
+      ) as Promise<TSchema>;
     },
 
     update: (objectIdOrDoc, doc?: TSchema) => {
@@ -166,7 +166,7 @@ export function query<TSchema extends Document>(collection: string) {
        * unlock can only be used in server environment
        * with proper ApiKey+ApiSecret defined
        */
-      if (!isServer()) {
+      if (!isServer() && isUnlocked) {
         throw new EleganteError(
           ErrorCode.SERVER_UNLOCK_ONLY,
           `unlock can only be used in server environment`
