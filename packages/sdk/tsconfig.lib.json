@@ -7,7 +7,7 @@
     "types": ["node"],
     "esModuleInterop": true
   },
-  "files": ["package.json"],
-  "include": ["**/*.ts", "**/*.d.ts", "package.json"],
+  "files": ["./src/package.json"],
+  "include": ["**/*.ts", "**/*.d.ts", "./src/package.json"],
   "exclude": ["jest.config.ts", "**/*.spec.ts", "**/*.test.ts"]
 }

@@ -1,6 +1,6 @@
-# sdk
+# Elegante SDK
 
-This library was generated with [Nx](https://nx.dev).
+Toolkit to develop top-quality node + mongodb software.
 
 ## Building
 
@@ -9,3 +9,7 @@ Run `nx build sdk` to build the library.
 ## Running unit tests
 
 Run `nx test sdk` to execute the unit tests via [Jest](https://jestjs.io).
+
+## License
+
+MIT. Created by [@stewones](https://twitter.com/stewones)

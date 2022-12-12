@@ -5,13 +5,13 @@
   "projectType": "library",
   "targets": {
     "build": {
-      "executor": "@nrwl/esbuild:esbuild",
+      "executor": "@nrwl/rollup:rollup",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/packages/sdk",
         "main": "packages/sdk/src/index.ts",
         "tsConfig": "packages/sdk/tsconfig.lib.json",
-        "assets": ["packages/sdk/*.md"]
+        "project": "packages/sdk/src/package.json"
       }
     },
     "publish": {
