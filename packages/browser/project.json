@@ -5,13 +5,17 @@
   "projectType": "library",
   "targets": {
     "build": {
-      "executor": "@nrwl/esbuild:esbuild",
+      "executor": "@nrwl/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/packages/browser",
         "main": "packages/browser/src/index.ts",
         "tsConfig": "packages/browser/tsconfig.lib.json",
-        "assets": ["packages/browser/*.md"]
+        "packageJson": "packages/browser/package.json",
+        "updateBuildableProjectDepsInPackageJson": true,
+        "buildableProjectDepsInPackageJsonType": "dependencies",
+        "external": "all",
+        "externalBuildTargets": ["@elegante/sdk"]
       }
     },
     "publish": {

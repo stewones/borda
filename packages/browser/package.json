@@ -2,8 +2,15 @@
   "name": "@elegante/browser",
   "version": "0.0.1",
   "type": "commonjs",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "files": [
+    "src",
+    "sdk",
+    "package.json",
+    "README.md"
+  ],
   "dependencies": {
-    "@elegante/sdk": "latest",
     "rxjs": "^7.5.7",
     "immer": "^9.0.16",
     "@reduxjs/toolkit": "^1.9.1",

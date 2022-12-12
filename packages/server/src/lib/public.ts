@@ -13,7 +13,6 @@ import {
   InternalCollectionName,
   log,
   print,
-  Version,
   query,
   pointer,
 } from '@elegante/sdk';
@@ -28,6 +27,7 @@ import {
 import { handleOn, handleOnce, LiveQueryServerParams } from './LiveQueryServer';
 import { Cache, invalidateCache } from './Cache';
 import { rest } from './rest';
+import { Version } from './Version';
 
 export abstract class ServerEvents {
   public static onDatabaseConnect = new Subject<{ db: Db }>();

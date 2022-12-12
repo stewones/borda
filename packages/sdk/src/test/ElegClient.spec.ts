@@ -1,4 +1,4 @@
-import { EleganteClient } from '../lib/EleganteClient';
+import { EleganteClient } from '../lib/Client';
 
 describe('EleganteClient', () => {
   it('should be defined', () => {
