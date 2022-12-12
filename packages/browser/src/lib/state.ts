@@ -140,7 +140,7 @@ export function resetDocState(
  *   }]
  * @returns {*}  {Observable<T>}
  */
-export function listener<T = any>(
+export function connect<T = any>(
   this: any,
   path: string,
   options: Partial<ListenerOptions> = {
@@ -151,7 +151,7 @@ export function listener<T = any>(
 ) {
   if (!EleganteBrowser.store) {
     throw new Error(
-      'unable to find any store. to use listener make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+      'unable to find any store. to use connect make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
     );
   }
 

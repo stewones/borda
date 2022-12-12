@@ -3,7 +3,7 @@ import {
   createAction,
   createReducer,
   dispatch,
-  listener,
+  connect,
   load,
   fast,
   Fast,
@@ -93,8 +93,8 @@ load({
           for (const key in state) {
             delete state[key];
           }
-          for (const key in whatverInitialState) {
-            state[key] = whatverInitialState[key];
+          for (const key in coolInitialState) {
+            state[key] = coolInitialState[key];
           }
           LocalStorage.set('cool', state);
         },
@@ -108,12 +108,14 @@ const coolReset = createAction('coolReset');
 const sessionSet = createAction<Session>('sessionSet');
 const sessionUnset = createAction('sessionUnset');
 
-const session = LocalStorage.get('session');
-const whatverInitialState: any = {
+const coolInitialState: any = {
   hey: 'dude',
   this: 'is',
   cool: '🤓',
 };
+
+const session = LocalStorage.get('session');
+
 if (session) {
   dispatch(sessionSet(session));
 }
@@ -326,9 +328,9 @@ export class AppComponent {
   signInError: any;
   signUpError: any;
 
-  session$ = listener.bind(this)<Session>('session');
-  publicUsers$ = listener.bind(this)<User[]>('publicUsers', { $doc: true });
-  cool$ = listener.bind(this)<any>('cool');
+  session$ = connect.bind(this)<Session>('session');
+  cool$ = connect.bind(this)<any>('cool');
+  publicUsers$ = connect.bind(this)<User[]>('publicUsers', { $doc: true });
 
   @Fast('myOwnPromise')
   fromPromise$ = from(somePromise());
@@ -548,7 +550,7 @@ export class AppComponent {
         })
       );
     } else {
-      dispatch(coolSet(whatverInitialState));
+      dispatch(coolSet(coolInitialState));
     }
   }
 
