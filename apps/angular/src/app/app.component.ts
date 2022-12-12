@@ -337,12 +337,11 @@ export class AppComponent {
   oldestUsers$ = getState('session.token')
     ? from(
         query<User>('PublicUser')
-          // uncoment to test empty results
-          // .filter({
-          //   name: {
-          //     $eq: 'elegante',
-          //   },
-          // })
+          .filter({
+            expiresAt: {
+              $exists: false,
+            },
+          })
           .pipeline([
             {
               $sort: { createdAt: 1 },
