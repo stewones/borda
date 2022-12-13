@@ -18,6 +18,21 @@
         "externalBuildTargets": ["@elegante/sdk"]
       }
     },
+    "serve": {
+      "executor": "@nrwl/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/packages/browser",
+        "main": "packages/browser/src/index.ts",
+        "tsConfig": "packages/browser/tsconfig.lib.json",
+        "packageJson": "packages/browser/src/package.json",
+        "updateBuildableProjectDepsInPackageJson": false,
+        "buildableProjectDepsInPackageJsonType": "dependencies",
+        "external": "all",
+        "externalBuildTargets": ["@elegante/sdk"],
+        "watch": true
+      }
+    },
     "publish": {
       "executor": "nx:run-commands",
       "options": {

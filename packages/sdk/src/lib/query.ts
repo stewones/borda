@@ -210,6 +210,13 @@ export function query<TSchema extends Document>(collection: string) {
         }
       }
 
+      if (!isEmpty(bridge.params['pipeline']) && method !== 'aggregate') {
+        throw new EleganteError(
+          ErrorCode.PIPELINE_ONLY_FOR_AGGREGATE,
+          `pipeline can only be used for aggregate. you're trying to use "${method}()"`
+        );
+      }
+
       const {
         filter,
         limit,

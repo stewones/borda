@@ -14,6 +14,17 @@
         "project": "packages/sdk/src/package.json"
       }
     },
+    "serve": {
+      "executor": "@nrwl/rollup:rollup",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/packages/sdk",
+        "main": "packages/sdk/src/index.ts",
+        "tsConfig": "packages/sdk/tsconfig.lib.json",
+        "project": "packages/sdk/src/package.json",
+        "watch": true
+      }
+    },
     "publish": {
       "executor": "nx:run-commands",
       "options": {
