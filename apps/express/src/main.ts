@@ -2,12 +2,13 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 
-import { init, log, ping } from '@elegante/sdk';
+import { init, print, ping } from '@elegante/sdk';
 import {
   createLiveQueryServer,
   createServer,
   Version,
   ServerEvents,
+  memoryUsage,
 } from '@elegante/server';
 
 /**
@@ -115,7 +116,7 @@ import './triggers';
  */
 const httpPort = 1337;
 const httpServer = http.createServer(server);
-httpServer.listen(httpPort, () => log(`Server running on port ${httpPort}`));
+httpServer.listen(httpPort, () => print(`Server running on port ${httpPort}`));
 
 /**
  * start the live query server
@@ -141,14 +142,28 @@ ServerEvents.onLiveQueryConnect.subscribe(({ ws, incoming }) => {
  * and do whatever you need after server is ready
  */
 ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
-  log('Database connected 🚀');
+  print('Database connected 🚀');
   const stats = await db.stats();
   delete stats['$clusterTime'];
   delete stats['operationTime'];
 
   console.table(stats);
   console.timeEnd('startup');
-
   console.time('ping');
-  ping().then(() => console.timeEnd('ping'));
+
+  ping()
+    .then(() => {
+      console.timeEnd('ping');
+      console.log('memory', memoryUsage());
+    })
+    .catch((err) => print(err));
 });
+
+/*
+{
+  "rss": "177.54 MB -> Resident Set Size - total memory allocated for the process execution",
+  "heapTotal": "102.3 MB -> total size of the allocated heap",
+  "heapUsed": "94.3 MB -> actual memory used during the execution",
+  "external": "3.03 MB -> V8 external memory"
+}
+*/
