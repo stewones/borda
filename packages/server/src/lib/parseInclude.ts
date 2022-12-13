@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   DocumentQuery,
-  getPointer,
+  pointerObjectFrom,
   isPointer,
   log,
   query,
@@ -69,7 +69,7 @@ export function parseInclude<T extends Document>(
       }
 
       const join = tree[pointerField];
-      const { collection, objectId } = getPointer(pointerValue);
+      const { collection, objectId } = pointerObjectFrom(pointerValue);
 
       const memo = Cache.get(collection, objectId);
 

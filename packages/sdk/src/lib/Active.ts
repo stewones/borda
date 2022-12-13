@@ -11,7 +11,8 @@ import { query } from './query';
 import { pointer } from './pointer';
 import { getPluginHook } from './Plugin';
 
-export interface ActiveRecordParams<T = any> {
+export type ActiveModel<T> = Partial<T> | string;
+export interface ActiveParams<T = any> {
   filter?: FilterOperations<T>;
   projection?: Partial<{
     [key in keyof T]: number;
@@ -23,14 +24,14 @@ export interface ActiveRecordParams<T = any> {
   include?: string[];
   exclude?: string[];
 
-  identifiers?: string[];
+  by?: string[];
   context?: any;
 
   [key: string]: any;
 }
 
 export class ActiveRecord<Doc extends Record> {
-  private params: ActiveRecordParams<Doc>;
+  private params: ActiveParams<Doc>;
   private collection: string;
   private doc: Doc = {} as Doc;
   private query!: Query<Doc>;
@@ -39,11 +40,11 @@ export class ActiveRecord<Doc extends Record> {
 
   constructor(
     collection: string,
-    record?: Partial<Doc>,
-    params?: ActiveRecordParams
+    record?: ActiveModel<Doc>,
+    params?: ActiveParams
   ) {
     this.collection = collection;
-    this.params = params ?? ({} as ActiveRecordParams);
+    this.params = params ?? ({} as ActiveParams);
 
     let filter: FilterOperations<Doc> =
       this.params.filter ?? ({} as FilterOperations<Doc>);
@@ -70,8 +71,10 @@ export class ActiveRecord<Doc extends Record> {
         filter['objectId'] = {
           $eq: this.objectId,
         };
-      } else if (this.params.identifiers) {
-        for (const key of this.params.identifiers) {
+      }
+
+      if (this.params.by) {
+        for (const key of this.params.by) {
           type k = keyof typeof this.doc;
           if (this.doc[key as k]) {
             filter = {

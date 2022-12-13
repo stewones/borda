@@ -41,7 +41,7 @@ import {
   LocalStorage,
   Record,
   ActiveRecord,
-  ActiveRecordParams,
+  ActiveParams,
   cleanArray,
 } from '@elegante/sdk';
 
@@ -139,10 +139,7 @@ interface UserExtended extends User {
 }
 
 export class PublicUserModel extends ActiveRecord<UserExtended> {
-  constructor(
-    record?: Partial<UserExtended>,
-    options: ActiveRecordParams = {}
-  ) {
+  constructor(record?: Partial<UserExtended>, options: ActiveParams = {}) {
     /**
      * custom identifier query
      */

@@ -1,4 +1,4 @@
-import { ActiveRecordParams } from './Active';
+import { ActiveParams } from './Active';
 import { EleganteClient } from './Client';
 import { Document } from './types/query';
 
@@ -12,11 +12,11 @@ export interface ElegantePlugin {
 
   ActiveRecordBeforeDocumentSave?: (params: {
     doc: Document;
-    params: ActiveRecordParams<Document>;
+    params: ActiveParams<Document>;
   }) => Promise<Document>;
   ActiveRecordOnDocumentRead?: (params: {
     doc: Document;
-    params: ActiveRecordParams<Document>;
+    params: ActiveParams<Document>;
   }) => void;
 }
 
