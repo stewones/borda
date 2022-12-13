@@ -98,7 +98,7 @@ export declare interface Query<TSchema = Document> {
   /**
    * filter documents unsing mogo-like syntax
    */
-  filter(by: FilterOperations<TSchema>): Query<TSchema>;
+  filter(by: Filter<TSchema>): Query<TSchema>;
 
   /**
    * limit results for this query
@@ -198,6 +198,138 @@ export declare interface Query<TSchema = Document> {
 
 export declare type ResumeToken = unknown;
 export declare type OperationTime = Timestamp;
+export declare type Join<T extends unknown[], D extends string> = T extends []
+  ? ''
+  : T extends [string | number]
+  ? `${T[0]}`
+  : T extends [string | number, ...infer R]
+  ? `${T[0]}${D}${Join<R, D>}`
+  : string;
+export declare type NestedPaths<
+  Type,
+  Depth extends number[]
+> = Depth['length'] extends 8
+  ? []
+  : Type extends
+      | string
+      | number
+      | boolean
+      | Date
+      | RegExp
+      | Buffer
+      | Uint8Array
+      | ((...args: any[]) => any)
+      | {
+          _bsontype: string;
+        }
+  ? []
+  : Type extends ReadonlyArray<infer ArrayType>
+  ? [] | [number, ...NestedPaths<ArrayType, [...Depth, 1]>]
+  : Type extends Map<string, any>
+  ? [string]
+  : Type extends object
+  ? {
+      [Key in Extract<keyof Type, string>]: Type[Key] extends Type
+        ? [Key]
+        : Type extends Type[Key]
+        ? [Key]
+        : Type[Key] extends ReadonlyArray<infer ArrayType>
+        ? Type extends ArrayType
+          ? [Key]
+          : ArrayType extends Type
+          ? [Key]
+          : [Key, ...NestedPaths<Type[Key], [...Depth, 1]>] // child is not structured the same as the parent
+        : [Key, ...NestedPaths<Type[Key], [...Depth, 1]>] | [Key];
+    }[Extract<keyof Type, string>]
+  : [];
+export type ObjectId = any;
+export declare type EnhancedOmit<TRecordOrUnion, KeyUnion> =
+  string extends keyof TRecordOrUnion
+    ? TRecordOrUnion
+    : TRecordOrUnion extends any
+    ? Pick<TRecordOrUnion, Exclude<keyof TRecordOrUnion, KeyUnion>>
+    : never;
+export declare type InferIdType<TSchema> = TSchema extends {
+  _id: infer IdType;
+}
+  ? Record<any, never> extends IdType
+    ? never
+    : IdType
+  : TSchema extends {
+      _id?: infer IdType;
+    }
+  ? unknown extends IdType
+    ? ObjectId
+    : IdType
+  : ObjectId;
+
+export declare type WithId<TSchema> = EnhancedOmit<TSchema, '_id'> & {
+  _id: InferIdType<TSchema>;
+};
+
+export declare type RegExpOrString<T> = T extends string ? any | RegExp | T : T;
+
+/**
+ * It is possible to search using alternative types in mongodb e.g.
+ * string types can be searched using a regex in mongo
+ * array types can be searched using their element type
+ * @public
+ */
+export declare type AlternativeType<T> = T extends ReadonlyArray<infer U>
+  ? T | RegExpOrString<U>
+  : RegExpOrString<T>;
+
+/** @public */
+export declare type Condition<T> =
+  | AlternativeType<T>
+  | FilterOperators<AlternativeType<T>>;
+
+/** @public */
+export declare type PropertyType<
+  Type,
+  Property extends string
+> = string extends Property
+  ? unknown
+  : Property extends keyof Type
+  ? Type[Property]
+  : Property extends `${number}`
+  ? Type extends ReadonlyArray<infer ArrayType>
+    ? ArrayType
+    : unknown
+  : Property extends `${infer Key}.${infer Rest}`
+  ? Key extends `${number}`
+    ? Type extends ReadonlyArray<infer ArrayType>
+      ? PropertyType<ArrayType, Rest>
+      : unknown
+    : Key extends keyof Type
+    ? Type[Key] extends Map<string, infer MapType>
+      ? MapType
+      : PropertyType<Type[Key], Rest>
+    : unknown
+  : unknown;
+/** @public */
+export declare interface RootFilterOperators<TSchema> extends Document {
+  $and?: Filter<TSchema>[];
+  $nor?: Filter<TSchema>[];
+  $or?: Filter<TSchema>[];
+  $text?: {
+    $search: string;
+    $language?: string;
+    $caseSensitive?: boolean;
+    $diacriticSensitive?: boolean;
+  };
+  $where?: string | ((this: TSchema) => boolean);
+  $comment?: string | Document;
+}
+
+export declare type Filter<TSchema> =
+  | Partial<TSchema>
+  | ({
+      [Property in Join<NestedPaths<WithId<TSchema>, []>, '.'>]?: Condition<
+        PropertyType<WithId<TSchema>, Property>
+      >;
+    } & RootFilterOperators<WithId<TSchema>>);
+
 export declare class Long {
   _bsontype: 'Long';
   /** An indicator used to reliably determine if an object is a Long or not. */

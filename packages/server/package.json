@@ -1,7 +1,6 @@
 {
   "name": "@elegante/server",
   "version": "0.0.12",
-  "type": "commonjs",
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "files": [

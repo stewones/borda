@@ -6,7 +6,7 @@ import {
   EleganteError,
   ErrorCode,
   isEmpty,
-  FilterOperations,
+  Filter,
   Sort,
   Document,
   ElegantePlugin,
@@ -147,7 +147,7 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
  * @export
  * @template TSchema
  * @param {{
- *   filter: FilterOperations<TSchema>;
+ *   filter: Filter<TSchema>;
  *   pipeline: Document[];
  *   projection: Partial<{
  *     [key in keyof TSchema]: number;
@@ -159,7 +159,7 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
  * @returns {*}
  */
 export function createPipeline<TSchema>(bridge: {
-  filter: FilterOperations<TSchema>;
+  filter: Filter<TSchema>;
   pipeline?: Document[] | undefined;
   projection: Partial<{
     [key in keyof TSchema]: number;

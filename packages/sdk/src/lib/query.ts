@@ -284,17 +284,11 @@ export function query<TSchema extends Document>(collection: string) {
 
       Reflect.defineMetadata(
         'key',
-        cleanKey({ ...docQuery, collection: bridge.params['collection'] }),
+        cleanKey({ collection: bridge.params['collection'], ...docQuery }),
         promise
       );
 
       return promise;
-      // .then((docs) => {
-      //   if (isEmpty(docs)) {
-      //     return method === 'find' ? [] : undefined;
-      //   }
-      //   return docs;
-      // });
     },
 
     on: (event, options?: ChangeStreamOptions) => {

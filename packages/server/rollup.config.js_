@@ -26,8 +26,8 @@ module.exports = (config) => {
       copy({
         targets: [
           {
-            src: 'packages/browser/README.md',
-            dest: 'dist/packages/browser',
+            src: 'packages/server/README.md',
+            dest: 'dist/packages/server',
             hook: 'writeBundle',
             verbose: true,
           },

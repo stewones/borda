@@ -1,11 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  FilterOperations,
-  FindOptions,
-  Record,
-  Document,
-  Query,
-} from './types';
+import { Filter, FindOptions, Record, Document, Query } from './types';
 import { isEmpty, isServer, unset } from './utils';
 import { query } from './query';
 import { pointer } from './pointer';
@@ -13,7 +7,7 @@ import { getPluginHook } from './Plugin';
 
 export type ActiveModel<T> = Partial<T> | string;
 export interface ActiveParams<T = any> {
-  filter?: FilterOperations<T>;
+  filter?: Filter<T>;
   projection?: Partial<{
     [key in keyof T]: number;
   }>;
@@ -46,8 +40,7 @@ export class ActiveRecord<Doc extends Record> {
     this.collection = collection;
     this.params = params ?? ({} as ActiveParams);
 
-    let filter: FilterOperations<Doc> =
-      this.params.filter ?? ({} as FilterOperations<Doc>);
+    let filter: Filter<Doc> = this.params.filter ?? ({} as Filter<Doc>);
 
     filter = {
       ...filter,
