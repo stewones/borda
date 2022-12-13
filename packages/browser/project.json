@@ -11,8 +11,8 @@
         "outputPath": "dist/packages/browser",
         "main": "packages/browser/src/index.ts",
         "tsConfig": "packages/browser/tsconfig.lib.json",
-        "packageJson": "packages/browser/package.json",
-        "updateBuildableProjectDepsInPackageJson": true,
+        "packageJson": "packages/browser/src/package.json",
+        "updateBuildableProjectDepsInPackageJson": false,
         "buildableProjectDepsInPackageJsonType": "dependencies",
         "external": "all",
         "externalBuildTargets": ["@elegante/sdk"]
@@ -21,7 +21,7 @@
     "publish": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "node tools/scripts/publish.mjs browser {args.ver} {args.tag}"
+        "command": "node tools/scripts/publish.mjs browser {args.v} {args.tag}"
       },
       "dependsOn": ["build"]
     },

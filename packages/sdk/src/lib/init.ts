@@ -17,12 +17,14 @@ import { EleganteClient, ClientDefaultParams, ClientParams } from './Client';
 export async function init(options: ClientParams) {
   log(`Elegante SDK v${Version}`);
 
-  LocalStorage.estimate().then(({ percentageAvailable, remainingMB }) =>
-    log(
-      'storage',
-      `${percentageAvailable}% available (${remainingMB.toFixed(0)} MB)`
-    )
-  );
+  if (!isServer()) {
+    LocalStorage.estimate().then(({ percentageAvailable, remainingMB }) =>
+      log(
+        'LocalStorage',
+        `${percentageAvailable}% available (${remainingMB.toFixed(0)} MB)`
+      )
+    );
+  }
 
   const params = (EleganteClient.params = {
     ...ClientDefaultParams,

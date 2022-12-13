@@ -1,0 +1,6 @@
+{
+  "name": "@elegante/browser",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "version": "0.0.3"
+}

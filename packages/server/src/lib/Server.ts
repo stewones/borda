@@ -5,7 +5,6 @@ import { Db, MongoClient } from 'mongodb';
 import {
   EleganteError,
   ErrorCode,
-  print,
   isEmpty,
   FilterOperations,
   Sort,
@@ -93,9 +92,9 @@ export async function createIndexes({
       }
     }
   } catch (err) {
-    print(
-      `Elegante couldn't create indexes on startup`,
-      new EleganteError(ErrorCode.INDEX_CREATION_FAILED, err as any)
+    throw new EleganteError(
+      ErrorCode.INDEX_CREATION_FAILED,
+      `Elegante couldn't create indexes on startup`
     );
   }
 }

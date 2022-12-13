@@ -52,6 +52,7 @@
     "nx": "15.2.1",
     "prettier": "^2.6.2",
     "redux-watch": "^1.2.0",
+    "rollup-plugin-typescript2": "^0.34.1",
     "rxjs": "^7.5.7",
     "ts-jest": "28.0.5",
     "ts-node": "10.9.1",

@@ -1,12 +1,6 @@
 import { Request, Response } from 'express';
 
-import {
-  runFunction,
-  Document,
-  InternalCollectionName,
-  Session,
-  runJob,
-} from '@elegante/sdk';
+import { Document, InternalCollectionName, Session } from '@elegante/sdk';
 
 import { routeEnsureAuth } from './route';
 
@@ -114,11 +108,11 @@ export abstract class Cloud {
    *
    * SDK
    *
-   * import { Cloud, init } from '@elegante/sdk';
+   * import { init, runFunction } from '@elegante/sdk';
    *
    * init({ ... });
    *
-   * await Cloud.runFunction('sendEmail', { to: '...', subject: '...', body: '...' });
+   * await runFunction('sendEmail', { to: '...', subject: '...', body: '...' });
    *
    * POST
    *
@@ -161,10 +155,6 @@ export abstract class Cloud {
     CloudFunction.set(name, cloudFn);
   }
 
-  public static runFunction(name: string, doc: Document) {
-    return runFunction(name, doc);
-  }
-
   /**
    * Attach a new Job to Elegant Server
    *
@@ -176,11 +166,11 @@ export abstract class Cloud {
    *
    * SDK (server only)
    *
-   * import { Cloud, init } from '@elegante/sdk';
+   * import { init, runJob } from '@elegante/sdk';
    *
    * init({ ... });
    *
-   * await Cloud.runJob('sendEmail', { to: '...', subject: '...', body: '...' });
+   * await runJob('sendEmail', { to: '...', subject: '...', body: '...' });
    *
    * POST
    *
@@ -208,10 +198,6 @@ export abstract class Cloud {
     fn: (callback: { req: Request }) => Promise<string | void>
   ) {
     return createJob({ name }, fn);
-  }
-
-  public static runJob(name: string, doc: Document) {
-    return runJob(name, doc);
   }
 }
 

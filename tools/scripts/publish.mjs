@@ -19,15 +19,15 @@ function invariant(condition, message) {
   }
 }
 
-// Executing publish script: node path/to/publish.mjs {name} --version {version} --tag {tag}
+// Executing publish script: node path/to/publish.mjs {name} --v {version} --tag {tag}
 // Default "tag" to "next" so we won't publish the "latest" tag by accident.
-const [, , name, version, tag = 'next'] = process.argv;
+const [, , name, v, tag = 'next'] = process.argv;
 
 // A simple SemVer validation to validate the version
 const validVersion = /^\d+\.\d+\.\d+(-\w+\.\d+)?/;
 invariant(
-  version && validVersion.test(version),
-  `No version provided or version did not match Semantic Versioning, expected: #.#.#-tag.# or #.#.#, got ${version}.`
+  v && validVersion.test(v),
+  `No version provided or version did not match Semantic Versioning, expected: #.#.#-tag.# or #.#.#, got ${v}.`
 );
 
 const graph = readCachedProjectGraph();
@@ -49,8 +49,25 @@ process.chdir(outputPath);
 // Updating the version in "package.json" before publishing
 try {
   const json = JSON.parse(readFileSync(`package.json`).toString());
-  json.version = version;
+  json.version = v;
+
+  if (name === 'browser') {
+    json['name'] = `@elegante/${name}`;
+    json['dependencies'] = {
+      'reflect-metadata': '0.1.13',
+    };
+  }
+
+  // write to package.json
   writeFileSync(`package.json`, JSON.stringify(json, null, 2));
+
+  // update original
+  const originalPath = ['sdk', 'browser'].includes(name)
+    ? `../../../packages/${name}/src/package.json`
+    : `../../../packages/${name}/package.json`;
+  const original = JSON.parse(readFileSync(originalPath).toString());
+  original.version = v;
+  writeFileSync(originalPath, JSON.stringify(json, null, 2));
 } catch (e) {
   console.error(
     chalk.bold.red(`Error reading package.json file from library build output.`)

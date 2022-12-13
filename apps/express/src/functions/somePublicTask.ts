@@ -27,13 +27,7 @@ Cloud.addFunction(
   await delay(100);
   print('executing somePublicTask function in 5 seconds');
   await delay(5000);
-  /**
-   * there's also the `runFunction` which is a standalone function
-   * it can be imported via the elagante sdk to run cross-platform
-   * experiment removing `Cloud.` from the following call and see console output
-   * it should behave the same as it's just a wrapper around `runFunction`
-   */
-  Cloud.runFunction('somePublicTask', {
+  runFunction('somePublicTask', {
     somePayload: `Look Im A Payload`,
   }).catch(print);
 })();
