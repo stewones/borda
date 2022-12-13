@@ -15,6 +15,7 @@ import {
   print,
   query,
   pointer,
+  init,
 } from '@elegante/sdk';
 
 import {
@@ -41,9 +42,9 @@ export function createServer(options: Partial<ServerParams>): Application {
   const app = (EleganteServer.app = express());
 
   EleganteServer.params = { ...EleganteServer.params, ...options };
+  const { params } = EleganteServer;
 
-  const params = EleganteServer.params;
-
+  init(params);
   rest({
     app,
     params,

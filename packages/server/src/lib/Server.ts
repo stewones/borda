@@ -9,6 +9,7 @@ import {
   FilterOperations,
   Sort,
   Document,
+  ElegantePlugin,
 } from '@elegante/sdk';
 
 import { InternalFieldName } from '@elegante/sdk';
@@ -30,7 +31,8 @@ export interface ServerParams {
   apiSecret: string;
   serverURL: string;
   serverHeaderPrefix?: string;
-
+  plugins?: ElegantePlugin[];
+  liveQueryServerURL?: string;
   /**
    * Default to 1h for document time-to-live.
    * it means that some internal queries will hit memory and be invalidated on every hour.

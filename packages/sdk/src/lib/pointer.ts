@@ -15,9 +15,12 @@ export type Pointer = string;
 
 export function pointer<T = Document>(
   collection: string,
-  object?: T | string
+  object?: string | Document
 ): T;
-export function pointer<T = Document>(collection: string, object?: string): T {
+export function pointer<T = Document>(
+  collection: string,
+  object?: string | Document
+): T {
   if (object && typeof object === 'string' && isPointer(object)) {
     return object as T;
   }
