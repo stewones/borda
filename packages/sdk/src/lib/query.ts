@@ -8,7 +8,7 @@ import { EleganteError, ErrorCode } from './Error';
 import { cleanKey, isEmpty, isServer, LocalStorage } from './utils';
 import { fetch, HttpMethod } from './fetch';
 import { InternalFieldName, InternalHeaders } from './internal';
-import { webSocketServer, getUrl, WebSocketCallback } from './websocket';
+import { webSocketServer, getUrl, WebSocketFactory } from './websocket';
 import { DocumentLiveQuery, LiveQueryMessage } from './types/livequery';
 
 import {
@@ -307,7 +307,7 @@ export function query<TSchema extends Document>(collection: string) {
         const socketURLPathname = `/${bridge.params['collection']}`;
         const socketURL = getUrl() + socketURLPathname;
 
-        const webSocket: WebSocketCallback = {
+        const webSocket: WebSocketFactory = {
           onOpen: (ws, ev) => {
             wss = ws;
             wssConnected = true;

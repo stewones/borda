@@ -1,6 +1,6 @@
 import { EleganteClient } from './Client';
 
-export interface WebSocketCallback {
+export interface WebSocketFactory {
   onConnect: (ws: WebSocket) => void;
   onOpen: (ws: WebSocket, ev: Event) => void;
   onError: (ws: WebSocket, err: Event) => void;
@@ -9,7 +9,7 @@ export interface WebSocketCallback {
 }
 
 export function webSocketServer(socketURL: string) {
-  return (callback: WebSocketCallback) => {
+  return (callback: WebSocketFactory) => {
     const { onConnect, onOpen, onError, onClose, onMessage } = callback;
 
     const ws = new WebSocket(socketURL, [
