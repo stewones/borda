@@ -17,7 +17,7 @@ import { isUnlocked } from './utils/isUnlocked';
 export const routeEnsureApiKey =
   ({ params }: { params: ServerParams }) =>
   (req: Request, res: Response, next: NextFunction) => {
-    res.removeHeader('X-Powered-By'); // because why not :)
+    res.setHeader('X-Powered-By', 'Elegante'); // because why not :)
 
     const apiKeyHeaderKey = `${params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`;
 
