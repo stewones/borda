@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Filter, FindOptions, Record, Document, Query } from './types';
+import { Filter, FindOptions, Record, Document, Query, Sort } from './types';
 import { isEmpty, isServer, unset } from './utils';
 import { query } from './query';
 import { pointer } from './pointer';
@@ -8,6 +8,8 @@ import { getPluginHook } from './Plugin';
 export type ActiveModel<T> = Partial<T> | string;
 export interface ActiveParams<T = any> {
   filter?: Filter<T>;
+  sort?: Sort;
+
   projection?: Partial<{
     [key in keyof T]: number;
   }>;
@@ -86,6 +88,7 @@ export class ActiveRecord<Doc extends Record> {
         .exclude(this.params.exclude ?? [])
         .projection(this.params.projection ?? {})
         .pipeline(this.params.pipeline ?? [])
+        .sort(this.params.sort ?? {})
         .filter(filter);
     }
   }
