@@ -1,3 +1,5 @@
+import { EleganteClient } from './Client';
+
 export const InternalHeaders = {
   apiSecret: 'Api-Secret',
   apiKey: 'Api-Key',
@@ -49,3 +51,15 @@ export const InternalSensitiveFields = [
   '_rperm',
   '_auth_data_MagicAuth',
 ];
+
+export function prefixedInternalHeaders() {
+  const headers = [];
+  for (const k in InternalHeaders) {
+    headers.push(
+      `${EleganteClient.params.serverHeaderPrefix}-${
+        InternalHeaders[k as keyof typeof InternalHeaders]
+      }`
+    );
+  }
+  return headers;
+}
