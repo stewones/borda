@@ -135,7 +135,7 @@ export class ActiveRecord<Doc extends Record> {
       return this.query
         .insert(await this.beforeDocumentSave(this.doc))
         .then((doc) => {
-          Object.assign(this.doc, doc);
+          this.doc = doc;
           this.objectId = doc.objectId;
         });
     }

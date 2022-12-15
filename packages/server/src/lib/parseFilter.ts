@@ -43,23 +43,31 @@ export function parseFilter(obj: any | any[]): any | any[] {
          *  { _p_fieldName: { $eq: 'Collection$objectId' } }
          * )
          */
-        if (!field.startsWith('_p_')) {
-          const operation = obj[field];
-          for (let op in operation) {
-            const value = operation[op];
-            if (isPointer(value) && !field.startsWith('$')) {
-              obj['_p_' + field] = operation;
-              delete obj[field];
-            }
+        const value = obj[field];
+        if (typeof value === 'string' && !field.startsWith('_p_')) {
+          if (isPointer(value)) {
+            obj['_p_' + field] = value;
+            delete obj[field];
+          }
+        } else {
+          if (!field.startsWith('_p_')) {
+            const operation = obj[field];
+            for (let op in operation) {
+              const value = operation[op];
+              if (isPointer(value) && !field.startsWith('$')) {
+                obj['_p_' + field] = operation;
+                delete obj[field];
+              }
 
-            /**
-             * format internal keys
-             * createdAt -> _created_at
-             */
-            if (InternalFieldName[op]) {
-              operation[InternalFieldName[op]] = operation[op];
-              delete operation[op];
-              op = InternalFieldName[op];
+              /**
+               * format internal keys
+               * createdAt -> _created_at
+               */
+              if (InternalFieldName[op]) {
+                operation[InternalFieldName[op]] = operation[op];
+                delete operation[op];
+                op = InternalFieldName[op];
+              }
             }
           }
         }

@@ -119,12 +119,11 @@ export function restPost({
         let shouldRun: boolean | void = true;
         const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
         if (beforeSave) {
-          const { doc } = docQRLFrom;
           shouldRun = await beforeSave.fn({
             req,
             res,
             docQRL,
-            before: doc ?? null,
+            before: docQRL.doc ?? null,
             after: null,
           });
         }
@@ -154,7 +153,6 @@ export function restPost({
             }
 
             // @todo run afterSaveTrigger
-
             invalidateCache(collectionName, after);
             return res.status(200).send();
           }
@@ -224,7 +222,7 @@ export function restPost({
          * insert new documents
          */
         const doc: Document = {
-          ...parseDocForInsertion(req.body.doc),
+          ...parseDocForInsertion(docQRL.doc),
           _id: newObjectId(),
           _created_at: new Date(),
           _updated_at: new Date(),
@@ -329,16 +327,17 @@ async function postFind(docQRL: DocQRL) {
 }
 
 async function postUpdate(docQRL: DocQRL, res: Response) {
-  const { filter, collection$, doc } = docQRL;
+  const { filter, collection$ } = docQRL;
 
   const before = await collection$.findOne(parseFilter(filter), {
     readPreference: 'primary',
   });
 
-  const payload: any = {
-    ...(doc ?? {}),
+  const doc: Document = {
+    ...parseDocForInsertion(docQRL.doc),
     _updated_at: new Date(),
   };
+
   /**
    * ensure each internal/external field is deleted from the user payload
    * if session is not unlocked
@@ -350,14 +349,14 @@ async function postUpdate(docQRL: DocQRL, res: Response) {
 
   if (!isUnlocked(res.locals)) {
     reservedFields.forEach((field) => {
-      delete payload[field];
+      delete doc[field];
     });
   }
 
   const cursor = await collection$.findOneAndUpdate(
     parseFilter(filter),
     {
-      $set: payload,
+      $set: doc,
     },
     { returnDocument: 'after', readPreference: 'primary' }
   );

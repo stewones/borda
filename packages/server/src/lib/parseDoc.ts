@@ -6,6 +6,7 @@ import {
   ErrorCode,
   InternalFieldName,
   isISODate,
+  isPointer,
   log,
 } from '@elegante/sdk';
 import { ServerParams } from './Server';
@@ -72,6 +73,13 @@ export function parseDocForInsertion(obj: any): any {
 
         if (isISODate(obj[field])) {
           obj[field] = new Date(obj[field]);
+        }
+
+        if (isPointer(obj[field])) {
+          const newField = `_p_${field}`;
+          obj[newField] = obj[field];
+          delete obj[field];
+          field = newField;
         }
 
         if (typeof obj[field] === 'object') {

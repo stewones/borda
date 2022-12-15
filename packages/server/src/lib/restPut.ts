@@ -16,6 +16,7 @@ import { EleganteServer, ServerParams } from './Server';
 import { invalidateCache } from './Cache';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
+import { parseDocForInsertion } from './parseDoc';
 
 export function restPut({
   params,
@@ -32,8 +33,8 @@ export function restPut({
 
       const collection = db.collection<Document>(collectionName);
 
-      const payload = {
-        ...req.body.doc,
+      const doc: Document = {
+        ...parseDocForInsertion(req.body.doc),
         _updated_at: new Date(),
       };
 
@@ -72,7 +73,7 @@ export function restPut({
 
       if (!isUnlocked(res.locals)) {
         reservedFields.forEach((field) => {
-          delete payload[field];
+          delete doc[field];
         });
       }
 
@@ -97,7 +98,7 @@ export function restPut({
           },
         },
         {
-          $set: payload,
+          $set: doc,
         },
         { returnDocument: 'after', readPreference: 'primary' }
       );
