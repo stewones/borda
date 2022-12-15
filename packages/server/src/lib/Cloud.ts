@@ -17,7 +17,7 @@ type CloudTriggerEvent =
 
 type CloudFunctionProtocol = Map<string, CloudFunctionOptions>;
 
-interface CloudTriggerCallback {
+interface CloudTriggerFactory {
   req: Request;
   res: Response;
   docQRL: DocQRL;
@@ -28,18 +28,18 @@ interface CloudTriggerCallback {
 interface CloudTriggerOptions {
   collection: string;
   event: CloudTriggerEvent;
-  fn: (callback: CloudTriggerCallback) => Promise<boolean> | void;
+  fn: (factory: CloudTriggerFactory) => Promise<boolean> | void;
 }
 
 interface CloudFunctionOptions {
   name: string;
   isPublic?: boolean;
   fn: (
-    callback: CloudFunctionCallback
+    factory: CloudFunctionFactory
   ) => Promise<boolean | Document | Document[] | void>;
 }
 
-interface CloudFunctionCallback {
+interface CloudFunctionFactory {
   req: Request;
   res: Response;
   session?: Session | undefined;
@@ -63,7 +63,7 @@ export function getCloudFunction(name: string) {
 export abstract class Cloud {
   public static beforeSave(
     collection: string,
-    fn: (callback: CloudTriggerCallback) => Promise<boolean>
+    fn: (factory: CloudTriggerFactory) => Promise<boolean>
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.beforeSave`, {
@@ -75,7 +75,7 @@ export abstract class Cloud {
 
   public static afterSave(
     collection: string,
-    fn: (callback: CloudTriggerCallback) => void
+    fn: (factory: CloudTriggerFactory) => void
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.afterSave`, {
@@ -87,7 +87,7 @@ export abstract class Cloud {
 
   public static afterDelete(
     collection: string,
-    fn: (callback: CloudTriggerCallback) => void
+    fn: (factory: CloudTriggerFactory) => void
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.afterDelete`, {
@@ -135,16 +135,14 @@ export abstract class Cloud {
    * @param {string} name
    * @param {Pick<CloudFunctionOptions, 'isPublic'>} options
    * @param {((
-   *       callback: CloudFunctionCallback
+   *       factory: CloudFunctionFactory
    *     ) => Promise<Document | Document[] | void>)} fn
    * @memberof Cloud
    */
   public static addFunction(
     name: string,
     options: Pick<CloudFunctionOptions, 'isPublic'>,
-    fn: (
-      callback: CloudFunctionCallback
-    ) => Promise<Document | Document[] | void>
+    fn: (factory: CloudFunctionFactory) => Promise<Document | Document[] | void>
   ) {
     const cloudFn: CloudFunctionOptions = {
       ...options,

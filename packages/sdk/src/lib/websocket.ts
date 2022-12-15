@@ -9,8 +9,8 @@ export interface WebSocketFactory {
 }
 
 export function webSocketServer(socketURL: string) {
-  return (callback: WebSocketFactory) => {
-    const { onConnect, onOpen, onError, onClose, onMessage } = callback;
+  return (factory: WebSocketFactory) => {
+    const { onConnect, onOpen, onError, onClose, onMessage } = factory;
 
     const ws = new WebSocket(socketURL, [
       `${EleganteClient.params.apiKey}`,
