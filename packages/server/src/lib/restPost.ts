@@ -541,6 +541,7 @@ async function postSignUp(docQRL: DocQRL, res: Response) {
   const newUser = await query<User>('User')
     .unlock(true)
     .insert({
+      ...doc,
       name,
       email: email.toLowerCase(),
       password: await hash(password),

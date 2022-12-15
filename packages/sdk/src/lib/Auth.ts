@@ -45,11 +45,12 @@ export abstract class Auth {
     });
   }
 
-  public static signUp(
-    name: string,
-    email: string,
-    password: string
-  ): Promise<Session> {
+  public static signUp(from: {
+    name: string;
+    email: string;
+    password: string;
+    [key: string]: any;
+  }): Promise<Session> {
     const headers = {
       [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         EleganteClient.params.apiKey,
@@ -61,11 +62,7 @@ export abstract class Auth {
       method: 'POST',
       headers,
       body: {
-        doc: {
-          name,
-          email,
-          password,
-        },
+        doc: from,
       },
     }).then((session) => {
       const { token } = session;

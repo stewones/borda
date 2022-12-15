@@ -455,11 +455,11 @@ export class AppComponent {
   async signUp() {
     const { name, email, password } = this.signUpForm.getRawValue();
     try {
-      const response = await Auth.signUp(
-        name as string,
-        email as string,
-        password as string
-      );
+      const response = await Auth.signUp({
+        name: name ?? '',
+        email: email ?? '',
+        password: password ?? '',
+      });
 
       const { user, token, ...rest } = response;
 
