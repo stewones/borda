@@ -546,7 +546,7 @@ async function postSignUp(docQRL: DocQRL, res: Response) {
     .unlock(true)
     .insert({
       name,
-      email,
+      email: email.toLowerCase(),
       password: await hash(password),
     });
 
