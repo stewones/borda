@@ -18,6 +18,7 @@ import {
   init,
   User,
   Session,
+  InternalHeaders,
 } from '@elegante/sdk';
 
 import {
@@ -357,4 +358,16 @@ export async function createSession<T = Session>(user: User) {
   delete session['objectId'];
 
   return { ...session, user } as T;
+}
+
+export function prefixedServerHeaders() {
+  const headers = [];
+  for (const k in InternalHeaders) {
+    headers.push(
+      `${EleganteServer.params.serverHeaderPrefix}-${
+        InternalHeaders[k as keyof typeof InternalHeaders]
+      }`
+    );
+  }
+  return headers;
 }
