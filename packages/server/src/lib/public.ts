@@ -16,6 +16,8 @@ import {
   query,
   pointer,
   init,
+  User,
+  Session,
 } from '@elegante/sdk';
 
 import {
@@ -29,6 +31,7 @@ import { handleOn, handleOnce, LiveQueryServerParams } from './LiveQueryServer';
 import { Cache, invalidateCache } from './Cache';
 import { rest } from './rest';
 import { Version } from './Version';
+import { newToken } from './utils';
 
 export abstract class ServerEvents {
   public static onDatabaseConnect = new Subject<{ db: Db }>();
@@ -323,4 +326,35 @@ async function ensureSessionInvalidation(db: Db) {
           // it's fine if the session is already deleted or doesn't exist
         });
     });
+}
+
+export async function createSession<T = Session>(user: User) {
+  /**
+   * because we don't want to expose the user password
+   */
+  delete user.password;
+
+  /**
+   * expires in 1 year
+   * @todo make this an option ?
+   */
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+  /**
+   * generate a new session token
+   */
+  const token = `e:${newToken()}`;
+  const session = await query('Session')
+    .unlock(true)
+    .insert({
+      user: pointer('User', user.objectId),
+      token,
+      expiresAt: expiresAt.toISOString(),
+    });
+
+  delete session['updatedAt'];
+  delete session['objectId'];
+
+  return { ...session, user } as T;
 }

@@ -17,12 +17,7 @@ import {
 
 import { Request, Response } from 'express';
 import { getCloudTrigger } from './Cloud';
-import {
-  ServerParams,
-  createFindCursor,
-  createPipeline,
-  createSession,
-} from './Server';
+import { ServerParams, createFindCursor, createPipeline } from './Server';
 import { invalidateCache } from './Cache';
 import { parseDoc, parseDocForInsertion, parseDocs } from './parseDoc';
 import { parseFilter } from './parseFilter';
@@ -31,6 +26,7 @@ import { parseResponse } from './parseResponse';
 import { newObjectId } from './utils/crypto';
 import { isUnlocked } from './utils/isUnlocked';
 import { compare, hash } from './utils/password';
+import { createSession } from './public';
 
 export function restPost({
   params,
