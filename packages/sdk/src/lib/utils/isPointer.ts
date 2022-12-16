@@ -4,6 +4,8 @@ export function isPointer(value: any) {
     typeof value === 'string' &&
     value.includes('$') &&
     !value.startsWith('$') &&
-    !value.endsWith('$')
+    !value.endsWith('$') &&
+    value.split('$').length === 2 &&
+    value.split('$')[1].length === 10
   );
 }
