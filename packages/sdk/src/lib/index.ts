@@ -12,6 +12,7 @@ export * from './log';
 export * from './ping';
 export * from './Plugin';
 export * from './pointer';
+export * from './pubsub';
 export * from './query';
 export * from './Version';
 export * from './websocket';
