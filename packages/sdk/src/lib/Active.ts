@@ -1,4 +1,13 @@
+/**
+ * @license
+ * Copyright Intenseloop LTD All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://elegante.dev/license
+ */
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { Filter, FindOptions, Record, Document, Query, Sort } from './types';
 import { isEmpty, isServer, unset } from './utils';
 import { query } from './query';

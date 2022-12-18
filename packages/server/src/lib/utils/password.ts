@@ -1,3 +1,11 @@
+/**
+ * @license
+ * Copyright Intenseloop LTD All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://elegante.dev/license
+ */
+
 // Tools for encrypting and decrypting passwords.
 // Basically promise-friendly wrappers for bcrypt.
 import * as bcrypt from 'bcryptjs';
