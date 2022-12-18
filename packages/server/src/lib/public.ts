@@ -281,7 +281,8 @@ async function ensureCacheInvalidation(db: Db) {
   }
 }
 
-async function ensureSessionInvalidation(db: Db) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function ensureSessionInvalidation(_db: Db) {
   /**
    * listen to user deletions to invalidate all user sessions
    */
@@ -323,7 +324,8 @@ async function ensureSessionInvalidation(db: Db) {
           user: pointer('User', _id),
         })
         .delete()
-        .catch((err) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        .catch((_err) => {
           // it's fine if the session is already deleted or doesn't exist
         });
     });

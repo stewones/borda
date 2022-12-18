@@ -1,9 +1,10 @@
 import { isEmpty } from './isEmpty';
 
 /**
- * should remove irrelevant chars from the json string
- * - remove { }, [ ], " " from the final json string
+ * remove irrelevant chars from the json string
+ * eg: { }, [ ], " "
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function cleanKey(json: any): string {
   for (const key in json) {
     if (isEmpty(json[key])) {
