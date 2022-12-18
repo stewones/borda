@@ -44,6 +44,7 @@ export function parseFilter(obj: any | any[]): any | any[] {
          * )
          */
         const value = obj[field];
+
         if (typeof value === 'string' && !field.startsWith('_p_')) {
           if (isPointer(value)) {
             obj['_p_' + field] = value;
@@ -68,6 +69,11 @@ export function parseFilter(obj: any | any[]): any | any[] {
                 delete operation[op];
                 op = InternalFieldName[op];
               }
+
+              /**
+               * keep parsing
+               */
+              parseFilter(operation[op]);
             }
           }
         }
