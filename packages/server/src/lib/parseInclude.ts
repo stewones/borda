@@ -18,7 +18,7 @@ export function parseInclude<T extends Document>(
     const { include } = docQuery;
     /**
      * create a tree structure out of include
-     * to join the pointers in the following format
+     * to recursively join the pointers in the following format
      *
      * ie:
      * ['a', 'b', 'b.c', 'b.a', 'x.y.z']
@@ -31,7 +31,7 @@ export function parseInclude<T extends Document>(
      * }
      *
      * then:
-     * a, b, x are the pointer names (which should be mapped to the actual collection)
+     * a, b, x becomes the pointer names (which should be mapped to the actual collection)
      * while their values are the new join paths to be requested
      */
     const tree = createTree(include);

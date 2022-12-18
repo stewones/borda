@@ -1,9 +1,6 @@
 import { Request, Response } from 'express';
-
 import { Document, InternalCollectionName, Session } from '@elegante/sdk';
-
 import { routeEnsureAuth } from './route';
-
 import { DocQRL } from './parseQuery';
 import { EleganteServer } from './Server';
 

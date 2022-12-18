@@ -506,7 +506,7 @@ export function query<TSchema extends Document>(collection: string) {
 
   // ensure collection name doesn't ends with "s" because
   // it's already means plural and for good architecture practices
-  // we should keep it singular
+  // we should keep it as singular
   if (collection.endsWith('s')) {
     throw new EleganteError(
       ErrorCode.COLLECTION_NAME_SHOULD_BE_SINGULAR,
