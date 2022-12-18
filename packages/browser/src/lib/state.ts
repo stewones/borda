@@ -80,6 +80,12 @@ export function setDocState(
   value: any,
   options: SetStateOptions = { saveCache: true }
 ) {
+  if (!EleganteBrowser.store) {
+    throw new Error(
+      'unable to find any store. to use setDocState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+    );
+  }
+
   dispatch(
     $docSet({
       key,
@@ -97,6 +103,11 @@ export function unsetDocState(
   key: string,
   options: UnsetStateOptions = { removeCache: true }
 ) {
+  if (!EleganteBrowser.store) {
+    throw new Error(
+      'unable to find any store. to use unsetDocState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+    );
+  }
   dispatch(
     $docUnset({
       key,
@@ -114,6 +125,12 @@ export function unsetDocState(
 export function resetDocState(
   options: ResetStateOptions = { clearLocalStorage: true }
 ) {
+  if (!EleganteBrowser.store) {
+    throw new Error(
+      'unable to find any store. to use resetDocState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+    );
+  }
+
   dispatch($docReset());
   if (options.clearLocalStorage) {
     LocalStorage.clear();
