@@ -13,6 +13,7 @@ import {
   QueryMethod,
   validateEmail,
   User,
+  log,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
@@ -397,18 +398,18 @@ async function postAggregate(query: DocQRL) {
   } = query;
 
   const docs: Document[] = [];
+  const pipe = createPipeline<Document>({
+    filter: filter ?? {},
+    pipeline,
+    projection: projection ?? {},
+    limit: limit ?? 10000,
+    skip: skip ?? 0,
+    sort: sort ?? {},
+  });
 
-  const cursor = collection$.aggregate<Document>(
-    createPipeline<Document>({
-      filter: filter ?? {},
-      pipeline,
-      projection: projection ?? {},
-      limit: limit ?? 10000,
-      skip: skip ?? 0,
-      sort: sort ?? {},
-    }),
-    options
-  );
+  log('pipeline', JSON.stringify(pipe));
+
+  const cursor = collection$.aggregate<Document>(pipe, options);
 
   for await (const doc of cursor) {
     docs.push(doc);
