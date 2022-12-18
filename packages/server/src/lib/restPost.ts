@@ -76,21 +76,6 @@ export function restPost({
           );
       }
 
-      // let body = req.body;
-      // if (collectionName === '_User' && ['signIn', 'signUp'].includes(method)) {
-      //   body = {
-      //     ...body,
-      //     doc: {
-      //       name: req.body.name,
-      //       email: req.body.email,
-      //       password: req.body.password,
-      //     },
-      //   };
-      //   delete body.name;
-      //   delete body.email;
-      //   delete body.password;
-      // }
-
       const docQRLFrom: DocQRLFrom = {
         ...req.body,
         collection: collectionName,
@@ -110,8 +95,8 @@ export function restPost({
           .status(200)
           .send(
             method === 'findOne'
-              ? await parseDoc(docs[0])(docQRL, params, res.locals)
-              : await parseDocs(docs)(docQRL, params, res.locals)
+              ? (await parseDoc(docs[0])(docQRL, params, res.locals)) ?? {}
+              : (await parseDocs(docs)(docQRL, params, res.locals)) ?? []
           );
       } else if (method === 'update') {
         /**

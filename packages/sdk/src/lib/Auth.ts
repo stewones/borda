@@ -49,6 +49,7 @@ export abstract class Auth {
     name: string;
     email: string;
     password: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     [key: string]: any;
   }): Promise<Session> {
     const headers = {
