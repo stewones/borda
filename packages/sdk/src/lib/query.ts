@@ -296,118 +296,123 @@ export function query<TSchema extends Document>(collection: string) {
       let wssFinished = false;
       let wssConnected = false;
 
-      return new Observable<LiveQueryMessage<TSchema>>((observer) => {
-        if (!EleganteClient.params.serverURL) {
-          throw new EleganteError(
-            ErrorCode.SERVER_URL_UNDEFINED,
-            'serverURL is not defined on client'
-          );
+      const {
+        filter,
+        limit,
+        skip,
+        sort,
+        projection,
+        include,
+        exclude,
+        pipeline,
+        unlock,
+        collection,
+      } = bridge.params;
+
+      const body: DocumentLiveQuery = {
+        options,
+        filter,
+        projection,
+        sort,
+        limit,
+        skip,
+        include,
+        exclude,
+        pipeline,
+        unlock,
+        collection,
+        event,
+        method: 'on',
+      };
+
+      const observable = new Observable<LiveQueryMessage<TSchema>>(
+        (observer) => {
+          if (!EleganteClient.params.serverURL) {
+            throw new EleganteError(
+              ErrorCode.SERVER_URL_UNDEFINED,
+              'serverURL is not defined on client'
+            );
+          }
+
+          const socketURLPathname = `/${bridge.params['collection']}`;
+          const socketURL = getUrl() + socketURLPathname;
+
+          const webSocket: WebSocketFactory = {
+            onOpen: (ws, ev) => {
+              wss = ws;
+              wssConnected = true;
+              log('on', event, bridge.params['collection'], bridge.params);
+            },
+
+            onError: (ws, err) => {
+              log('error', 'on', event, err, bridge.params['collection']);
+            },
+
+            onConnect: (ws) => {
+              // send query to the server
+              ws.send(JSON.stringify(body));
+            },
+
+            onMessage: (ws, message) => {
+              const data = message.data;
+              try {
+                observer.next(JSON.parse(data));
+              } catch (err) {
+                log('on', event, bridge.params['collection'], 'error', err);
+                ws.close();
+              }
+            },
+
+            onClose: (ws, ev) => {
+              if (wssFinished || ev?.code === 1008) {
+                wss.close();
+                observer.error(
+                  new EleganteError(
+                    ErrorCode.LIVE_QUERY_SOCKET_CLOSE,
+                    ev.reason || ''
+                  )
+                );
+                return;
+              }
+              if (wssConnected) {
+                wssConnected = false;
+                log(
+                  'on',
+                  event,
+                  bridge.params['collection'],
+                  'disconnected',
+                  ev.reason,
+                  bridge.params
+                );
+              }
+              setTimeout(() => {
+                log(
+                  'on',
+                  event,
+                  bridge.params['collection'],
+                  'trying to reconnect',
+                  bridge.params
+                );
+                webSocketServer(socketURL)(webSocket);
+              }, 1 * 500);
+            },
+          };
+
+          /**
+           * connect to the server
+           */
+          webSocketServer(socketURL)(webSocket);
         }
-
-        const socketURLPathname = `/${bridge.params['collection']}`;
-        const socketURL = getUrl() + socketURLPathname;
-
-        const webSocket: WebSocketFactory = {
-          onOpen: (ws, ev) => {
-            wss = ws;
-            wssConnected = true;
-            log('on', event, bridge.params['collection'], bridge.params);
-          },
-
-          onError: (ws, err) => {
-            log('error', 'on', event, err, bridge.params['collection']);
-          },
-
-          onConnect: (ws) => {
-            const {
-              filter,
-              limit,
-              skip,
-              sort,
-              projection,
-              include,
-              exclude,
-              pipeline,
-              unlock,
-              collection,
-            } = bridge.params;
-
-            const body: DocumentLiveQuery = {
-              options,
-              filter,
-              projection,
-              sort,
-              limit,
-              skip,
-              include,
-              exclude,
-              pipeline,
-              unlock,
-              collection,
-              event,
-              method: 'on',
-            };
-
-            // send query to the server
-            ws.send(JSON.stringify(body));
-          },
-
-          onMessage: (ws, message) => {
-            const data = message.data;
-            try {
-              observer.next(JSON.parse(data));
-            } catch (err) {
-              log('on', event, bridge.params['collection'], 'error', err);
-              ws.close();
-            }
-          },
-
-          onClose: (ws, ev) => {
-            if (wssFinished || ev?.code === 1008) {
-              wss.close();
-              observer.error(
-                new EleganteError(
-                  ErrorCode.LIVE_QUERY_SOCKET_CLOSE,
-                  ev.reason || ''
-                )
-              );
-              return;
-            }
-            if (wssConnected) {
-              wssConnected = false;
-              log(
-                'on',
-                event,
-                bridge.params['collection'],
-                'disconnected',
-                ev.reason,
-                bridge.params
-              );
-            }
-            setTimeout(() => {
-              log(
-                'on',
-                event,
-                bridge.params['collection'],
-                'trying to reconnect',
-                bridge.params
-              );
-              webSocketServer(socketURL)(webSocket);
-            }, 1 * 500);
-          },
-        };
-
-        /**
-         * connect to the server
-         */
-        webSocketServer(socketURL)(webSocket);
-      }).pipe(
+      ).pipe(
         finalize(() => {
           log('on', event, 'unsubscribed', bridge.params);
           wssFinished = true;
           wss.close();
         })
       );
+
+      Reflect.defineMetadata('key', cleanKey(body), observable);
+      return observable;
     },
 
     once: () => {
