@@ -76,11 +76,17 @@ export abstract class Cache {
 
   /**
    * set in-memory cache
-   * the following format is accepted
+   *
+   * data is stored in the following format
+   * considering internal collections automatically
    *
    * "doc:[collectionName]:[objectId]"
    *
    * ie:
+   *
+   * Cache.set('User', '1337', { objectId: '1337', name: 'John' })
+   *
+   * produces:
    *
    * {
    *  'doc:_User:1337': { expires: 1234567890, data: { objectId: '1337', name: 'John' } },

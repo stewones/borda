@@ -1,5 +1,3 @@
-import { EleganteClient } from './Client';
-
 export const InternalHeaders = {
   apiSecret: 'Api-Secret',
   apiKey: 'Api-Key',
