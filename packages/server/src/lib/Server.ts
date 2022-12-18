@@ -11,11 +11,14 @@ import {
   Document,
   ElegantePlugin,
   log,
+  query,
+  pointer,
 } from '@elegante/sdk';
 
 import { InternalFieldName } from '@elegante/sdk';
 import { parseFilter } from './parseFilter';
 import { DocQRL } from './parseQuery';
+import { invalidateCache } from './Cache';
 
 interface ServerProtocol {
   params: ServerParams;
@@ -177,4 +180,97 @@ export function createPipeline<TSchema>(bridge: {
     ...(typeof limit === 'number' ? [{ $limit: limit }] : []),
     ...(typeof skip === 'number' ? [{ $skip: skip }] : []),
   ];
+}
+
+export async function ensureCacheInvalidation(db: Db) {
+  if (!EleganteServer.params.documentCacheTTL) return;
+  const collections = db.listCollections();
+  const collectionsArray = await collections.toArray();
+  for (const collectionInfo of collectionsArray) {
+    if (
+      collectionInfo.type === 'collection' &&
+      !collectionInfo.name.startsWith('system.')
+    ) {
+      /**
+       * listen to collection changes to invalidate the server cache (memoized queries)
+       */
+      const collection = EleganteServer.db.collection(collectionInfo.name);
+      collection
+        .watch(
+          [
+            {
+              $match: {
+                operationType: {
+                  $in: ['update'],
+                },
+              },
+            },
+          ],
+          collectionInfo.name === '_Session'
+            ? {
+                fullDocument: 'updateLookup',
+              }
+            : {}
+        )
+        .on('change', (change) => {
+          const { documentKey, fullDocument }: any = change;
+          const { _id } = documentKey;
+          if (collectionInfo.name === '_Session') {
+            invalidateCache(collectionInfo.name, fullDocument);
+          } else {
+            invalidateCache(collectionInfo.name, { _id });
+          }
+        });
+    }
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function ensureSessionInvalidation(_db: Db) {
+  /**
+   * listen to user deletions to invalidate all user sessions
+   */
+  const collection = EleganteServer.db.collection('_User');
+  collection
+    .watch(
+      [
+        {
+          $match: {
+            $or: [
+              {
+                operationType: {
+                  $in: ['delete'],
+                },
+              },
+              {
+                operationType: {
+                  $in: ['update'],
+                },
+                'fullDocument._expires_at': {
+                  $exists: true,
+                },
+              },
+            ],
+          },
+        },
+      ],
+      {
+        fullDocument: 'updateLookup',
+      }
+    )
+    .on('change', (change) => {
+      const { documentKey }: any = change;
+      const { _id } = documentKey;
+
+      query('Session')
+        .unlock(true)
+        .filter({
+          user: pointer('User', _id),
+        })
+        .delete()
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        .catch((_err) => {
+          // it's fine if the session is already deleted or doesn't exist
+        });
+    });
 }

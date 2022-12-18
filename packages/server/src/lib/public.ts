@@ -26,10 +26,12 @@ import {
   EleganteServer,
   mongoConnect,
   createIndexes,
+  ensureSessionInvalidation,
+  ensureCacheInvalidation,
 } from './Server';
 
 import { handleOn, handleOnce, LiveQueryServerParams } from './LiveQueryServer';
-import { Cache, invalidateCache } from './Cache';
+import { Cache } from './Cache';
 import { rest } from './rest';
 import { Version } from './Version';
 import { newToken } from './utils';
@@ -236,99 +238,6 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
     ensureCacheInvalidation(db);
     ensureSessionInvalidation(db);
   });
-}
-
-async function ensureCacheInvalidation(db: Db) {
-  if (!EleganteServer.params.documentCacheTTL) return;
-  const collections = db.listCollections();
-  const collectionsArray = await collections.toArray();
-  for (const collectionInfo of collectionsArray) {
-    if (
-      collectionInfo.type === 'collection' &&
-      !collectionInfo.name.startsWith('system.')
-    ) {
-      /**
-       * listen to collection changes to invalidate the server cache (memoized queries)
-       */
-      const collection = EleganteServer.db.collection(collectionInfo.name);
-      collection
-        .watch(
-          [
-            {
-              $match: {
-                operationType: {
-                  $in: ['update'],
-                },
-              },
-            },
-          ],
-          collectionInfo.name === '_Session'
-            ? {
-                fullDocument: 'updateLookup',
-              }
-            : {}
-        )
-        .on('change', (change) => {
-          const { documentKey, fullDocument }: any = change;
-          const { _id } = documentKey;
-          if (collectionInfo.name === '_Session') {
-            invalidateCache(collectionInfo.name, fullDocument);
-          } else {
-            invalidateCache(collectionInfo.name, { _id });
-          }
-        });
-    }
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function ensureSessionInvalidation(_db: Db) {
-  /**
-   * listen to user deletions to invalidate all user sessions
-   */
-  const collection = EleganteServer.db.collection('_User');
-  collection
-    .watch(
-      [
-        {
-          $match: {
-            $or: [
-              {
-                operationType: {
-                  $in: ['delete'],
-                },
-              },
-              {
-                operationType: {
-                  $in: ['update'],
-                },
-                'fullDocument._expires_at': {
-                  $exists: true,
-                },
-              },
-            ],
-          },
-        },
-      ],
-      {
-        fullDocument: 'updateLookup',
-      }
-    )
-    .on('change', (change) => {
-      const { documentKey }: any = change;
-      const { _id } = documentKey;
-
-      query('Session')
-        .unlock(true)
-        .filter({
-          user: pointer('User', _id),
-        })
-        .delete()
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        .catch((_err) => {
-          // it's fine if the session is already deleted or doesn't exist
-        });
-    });
 }
 
 export async function createSession<T = Session>(user: User) {
