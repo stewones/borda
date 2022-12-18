@@ -153,7 +153,7 @@ export async function invalidateCache(collection: string, data: Document) {
   collection = InternalCollectionName[collection] ?? collection;
 
   if (collection === '_Session') {
-    return Cache.invalidate(collection, data['_session_token']);
+    return Cache.invalidate(collection, data['_token']);
   }
 
   if (collection === '_User') {

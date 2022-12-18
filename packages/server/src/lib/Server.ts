@@ -10,6 +10,7 @@ import {
   Sort,
   Document,
   ElegantePlugin,
+  log,
 } from '@elegante/sdk';
 
 import { InternalFieldName } from '@elegante/sdk';
@@ -116,8 +117,9 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
       delete sortAny[fieldName];
     }
   }
-
-  const cursor = collection$.find<T>(parseFilter(filter), {
+  const f = parseFilter(filter);
+  log('parseFilter result', f);
+  const cursor = collection$.find<T>(f, {
     projection,
     sort: sortAny,
     ...options,

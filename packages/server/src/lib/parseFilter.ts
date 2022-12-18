@@ -30,38 +30,38 @@ export function parseFilter(obj: any | any[]): any | any[] {
          * keep parsing
          */
         parseFilter(obj[field]);
-      } else {
-        /**
-         * format internal keys
-         * createdAt -> _created_at
-         */
-        if (InternalFieldName[field]) {
-          obj[InternalFieldName[field]] = obj[field];
+      }
+
+      /**
+       * format internal keys
+       * createdAt -> _created_at
+       */
+      if (InternalFieldName[field]) {
+        obj[InternalFieldName[field]] = obj[field];
+        delete obj[field];
+        field = InternalFieldName[field];
+      }
+
+      /**
+       * checks if value is a valid iso date
+       * and convert to Date as it's required by mongo
+       */
+      if (typeof value === 'string' && isISODate(value)) {
+        obj[field] = new Date(value) as any;
+      }
+
+      /**
+       * cover pointer cases
+       * fieldName -> _p_fieldName
+       *
+       * cursor.filter(
+       *  { _p_fieldName: { $eq: 'Collection$objectId' } }
+       * )
+       */
+      if (!field.startsWith('_p_') && typeof value === 'string') {
+        if (isPointer(value)) {
+          obj['_p_' + field] = value;
           delete obj[field];
-          field = InternalFieldName[field];
-        }
-
-        /**
-         * checks if value is a valid iso date
-         * and convert to Date as it's required by mongo
-         */
-        if (typeof value === 'string' && isISODate(value)) {
-          obj[field] = new Date(value) as any;
-        }
-
-        /**
-         * cover pointer cases
-         * fieldName -> _p_fieldName
-         *
-         * cursor.filter(
-         *  { _p_fieldName: { $eq: 'Collection$objectId' } }
-         * )
-         */
-        if (!field.startsWith('_p_') && typeof value === 'string') {
-          if (isPointer(value)) {
-            obj['_p_' + field] = value;
-            delete obj[field];
-          }
         }
       }
     }

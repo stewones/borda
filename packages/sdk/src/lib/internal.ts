@@ -20,7 +20,7 @@ export const InternalFieldName: {
   createdAt: '_created_at',
   updatedAt: '_updated_at',
   expiresAt: '_expires_at',
-  token: '_session_token',
+  token: '_token',
   password: '_hashed_password',
 };
 
@@ -35,7 +35,7 @@ export const InternalSensitiveFields = [
    */
   'password',
   '_expires_at',
-  '_session_token',
+  '_token',
   '_hashed_password',
 
   /**
