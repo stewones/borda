@@ -55,5 +55,6 @@ export const InternalSensitiveFields = [
   '_acl',
   '_wperm',
   '_rperm',
+  '_session_token',
   '_auth_data_MagicAuth',
 ];
