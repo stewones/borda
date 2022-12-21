@@ -15,7 +15,13 @@
         "updateBuildableProjectDepsInPackageJson": false,
         "buildableProjectDepsInPackageJsonType": "dependencies",
         "external": "all",
-        "externalBuildTargets": ["@elegante/sdk"]
+        "externalBuildTargets": [
+          "@elegante/sdk",
+          "@reduxjs/toolkit",
+          "rxjs",
+          "redux-watch",
+          "immer"
+        ]
       }
     },
     "publish": {

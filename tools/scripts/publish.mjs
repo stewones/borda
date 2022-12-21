@@ -53,7 +53,8 @@ try {
 
   if (name === 'browser') {
     json['name'] = `@elegante/${name}`;
-    json['dependencies'] = {
+    json['type'] = 'module';
+    json['devDependencies'] = {
       'reflect-metadata': '0.1.13',
     };
   }
