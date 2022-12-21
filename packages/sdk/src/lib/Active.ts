@@ -31,6 +31,7 @@ export interface ActiveParams<T = any> {
 
   by?: string[];
   context?: any;
+  excludeExpiredDocs?: boolean;
 
   [key: string]: any;
 }
@@ -53,12 +54,18 @@ export class ActiveRecord<Doc extends Record> {
 
     let filter: Filter<Doc> = this.params.filter ?? ({} as Filter<Doc>);
 
-    filter = {
-      ...filter,
-      expiresAt: {
-        $exists: false,
-      },
-    };
+    /**
+     * here we force to not include expired documents by default
+     * but it can be disabled with the option `excludeExpiredDocs`
+     */
+    if (this.params.excludeExpiredDocs !== false && !filter.expiresAt) {
+      filter = {
+        ...filter,
+        expiresAt: {
+          $exists: false,
+        },
+      };
+    }
 
     if (typeof record === 'string') {
       this.objectId = record;
