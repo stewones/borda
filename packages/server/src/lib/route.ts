@@ -16,6 +16,7 @@ import {
   Session,
   EleganteError,
   ErrorCode,
+  isEmpty,
 } from '@elegante/sdk';
 
 import { getCloudFunction } from './Cloud';
@@ -111,7 +112,6 @@ export const routeEnsureAuth =
 
     if (token) {
       memo = Cache.get('Session', token);
-
       if (memo) {
         res.locals['session'] = memo;
         session = memo;
@@ -127,10 +127,9 @@ export const routeEnsureAuth =
               $gt: new Date().toISOString(),
             },
           })
-          .findOne()
-          .catch((err) => console.log(err));
+          .findOne();
 
-        if (session) {
+        if (!isEmpty(session)) {
           res.locals['session'] = session;
           // cache the session itself
           Cache.set('Session', session.token, session);
@@ -142,7 +141,12 @@ export const routeEnsureAuth =
       }
     }
 
-    if (isLocked && !isSpecialRoutes && !session && !isPublicCloudFunction) {
+    if (
+      isEmpty(session) &&
+      isLocked &&
+      !isSpecialRoutes &&
+      !isPublicCloudFunction
+    ) {
       const err = new EleganteError(ErrorCode.UNAUTHORIZED, 'Unauthorized');
       res.status(401).json(err);
       return;
