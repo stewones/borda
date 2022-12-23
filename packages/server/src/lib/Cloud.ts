@@ -24,8 +24,6 @@ type CloudTriggerEvent =
 type CloudFunctionProtocol = Map<string, CloudFunctionOptions>;
 
 interface CloudTriggerFactory<T = any> {
-  req: Request;
-  res: Response;
   doc?: T;
   before?: T;
   after?: T;

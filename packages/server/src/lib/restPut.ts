@@ -73,8 +73,6 @@ export function restPut({
 
       if (beforeSave) {
         beforeSaveCallback = await beforeSave.fn({
-          req,
-          res,
           doc: req.body.doc,
         });
       }

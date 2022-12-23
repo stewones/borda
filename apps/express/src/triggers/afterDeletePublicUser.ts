@@ -1,12 +1,12 @@
 import { Cloud } from '@elegante/server';
 import { query } from '@elegante/sdk';
 
-Cloud.afterDelete('PublicUser', ({ before }) => {
+Cloud.afterDelete('PublicUser', ({ doc }) => {
   query('User')
     .unlock()
     .filter({
       email: {
-        $eq: before.email,
+        $eq: doc.email,
       },
     })
     .delete()

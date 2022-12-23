@@ -82,7 +82,7 @@ export function restDelete({
 
       if (cursor.ok && cursor.value) {
         const afterDeletePayload = parseResponse(
-          { before: cursor.value, after: null },
+          { doc: cursor.value },
           {
             removeSensitiveFields: !isUnlocked(res.locals),
           }
@@ -91,10 +91,7 @@ export function restDelete({
         const afterDelete = getCloudTrigger(collectionName, 'afterDelete');
         if (afterDelete) {
           afterDelete.fn({
-            req,
-            res,
             ...afterDeletePayload,
-            docQRL,
           });
         }
 

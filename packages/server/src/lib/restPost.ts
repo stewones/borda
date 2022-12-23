@@ -117,8 +117,6 @@ export function restPost({
         const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
         if (beforeSave) {
           beforeSaveCallback = await beforeSave.fn({
-            req,
-            res,
             doc: docQRL.doc ?? undefined,
           });
         }
@@ -234,8 +232,6 @@ export function restPost({
 
         if (beforeSave) {
           beforeSaveCallback = await beforeSave.fn({
-            req,
-            res,
             doc: docQRL.doc ?? undefined,
           });
         }
