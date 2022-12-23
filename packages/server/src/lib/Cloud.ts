@@ -6,6 +6,8 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { Request, Response } from 'express';
 import { Document, InternalCollectionName, Session } from '@elegante/sdk';
 import { routeEnsureAuth } from './route';
@@ -21,18 +23,15 @@ type CloudTriggerEvent =
 
 type CloudFunctionProtocol = Map<string, CloudFunctionOptions>;
 
-interface CloudTriggerFactory {
+interface CloudTriggerFactory<T = any> {
   req: Request;
   res: Response;
-  doc?: Document;
-  before?: Document;
-  after?: Document;
+  doc?: T;
+  before?: T;
+  after?: T;
 }
 
-export type CloudTriggerCallback =
-  | void
-  | boolean
-  | { before?: Document; after?: Document; doc?: Document };
+export type CloudTriggerCallback<T = any> = void | boolean | { doc?: T };
 
 interface CloudTriggerOptions {
   collection: string;
@@ -72,11 +71,15 @@ export function getCloudFunction(name: string) {
 }
 
 export abstract class Cloud {
-  public static beforeSave(
+  public static beforeSave<T = any>(
     collection: string,
     fn: (
-      factory: CloudTriggerFactory
-    ) => Promise<CloudTriggerCallback> | CloudTriggerCallback | boolean | void
+      factory: CloudTriggerFactory<T>
+    ) =>
+      | Promise<CloudTriggerCallback<T>>
+      | CloudTriggerCallback<T>
+      | boolean
+      | void
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.beforeSave`, {
@@ -217,7 +220,6 @@ function createFunction(options: CloudFunctionOptions): void {
   const { name, fn } = options;
   app.post(
     `/functions/${name}`,
-    // routeHandlePublicFunction(options),
     routeEnsureAuth({
       params,
     }),
