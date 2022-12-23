@@ -6,6 +6,6 @@
     "types": ["node", "jest"]
   },
   "files": ["./package.json"],
-  "include": ["**/*.ts", "**/*.d.ts", "./package.json"],
+  "include": ["src/index.ts", "./package.json"],
   "exclude": ["jest.config.ts", "**/*.spec.ts", "**/*.test.ts"]
 }

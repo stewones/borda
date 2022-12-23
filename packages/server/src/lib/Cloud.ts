@@ -9,7 +9,6 @@
 import { Request, Response } from 'express';
 import { Document, InternalCollectionName, Session } from '@elegante/sdk';
 import { routeEnsureAuth } from './route';
-import { DocQRL } from './parseQuery';
 import { EleganteServer } from './Server';
 
 type CloudTriggerProtocol = Map<string, CloudTriggerOptions>;
@@ -25,15 +24,19 @@ type CloudFunctionProtocol = Map<string, CloudFunctionOptions>;
 interface CloudTriggerFactory {
   req: Request;
   res: Response;
-  docQRL: DocQRL;
   before: Document | null | undefined;
   after: Document | null | undefined;
 }
 
+export type CloudTriggerCallback =
+  | void
+  | boolean
+  | { before?: Document; after?: Document };
+
 interface CloudTriggerOptions {
   collection: string;
   event: CloudTriggerEvent;
-  fn: (factory: CloudTriggerFactory) => Promise<boolean> | void;
+  fn: (factory: CloudTriggerFactory) => Promise<CloudTriggerCallback>;
 }
 
 interface CloudFunctionOptions {
@@ -68,7 +71,7 @@ export function getCloudFunction(name: string) {
 export abstract class Cloud {
   public static beforeSave(
     collection: string,
-    fn: (factory: CloudTriggerFactory) => Promise<boolean>
+    fn: (factory: CloudTriggerFactory) => Promise<CloudTriggerCallback>
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.beforeSave`, {
@@ -80,7 +83,7 @@ export abstract class Cloud {
 
   public static afterSave(
     collection: string,
-    fn: (factory: CloudTriggerFactory) => void
+    fn: (factory: CloudTriggerFactory) => Promise<CloudTriggerCallback>
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.afterSave`, {
@@ -92,7 +95,7 @@ export abstract class Cloud {
 
   public static afterDelete(
     collection: string,
-    fn: (factory: CloudTriggerFactory) => void
+    fn: (factory: CloudTriggerFactory) => Promise<CloudTriggerCallback>
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.afterDelete`, {

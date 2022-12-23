@@ -23,10 +23,12 @@ import {
   validateEmail,
   User,
   log,
+  objectFieldsUpdated,
+  objectFieldsCreated,
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { getCloudTrigger } from './Cloud';
+import { CloudTriggerCallback, getCloudTrigger } from './Cloud';
 import { ServerParams, createFindCursor, createPipeline } from './Server';
 import { invalidateCache } from './Cache';
 import { parseDoc, parseDocForInsertion, parseDocs } from './parseDoc';
@@ -102,7 +104,7 @@ export function restPost({
         const docs = await postFind(docQRL);
         return res
           .status(200)
-          .send(
+          .json(
             method === 'findOne'
               ? (await parseDoc(docs[0])(docQRL, params, res.locals)) ?? {}
               : (await parseDocs(docs)(docQRL, params, res.locals)) ?? []
@@ -111,26 +113,36 @@ export function restPost({
         /**
          * update
          */
-        let shouldRun: boolean | void = true;
+        let beforeSaveCallback: CloudTriggerCallback = true;
         const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
         if (beforeSave) {
-          shouldRun = await beforeSave.fn({
+          beforeSaveCallback = await beforeSave.fn({
             req,
             res,
-            docQRL,
             before: docQRL.doc ?? null,
             after: null,
           });
         }
 
-        if (shouldRun) {
+        if (beforeSaveCallback) {
+          if (
+            beforeSaveCallback &&
+            typeof beforeSaveCallback === 'object' &&
+            beforeSaveCallback.before
+          ) {
+            docQRL.doc = beforeSaveCallback.before;
+          }
+
           const { cursor, before } = await postUpdate(docQRL, res);
+
           if (cursor.ok) {
             const after = cursor.value ?? ({} as Document);
             const afterSavePayload = parseResponse(
               {
                 before,
                 after,
+                updatedFields: objectFieldsUpdated(before, after),
+                createdFields: objectFieldsCreated(before, after),
               },
               {
                 removeSensitiveFields: !isUnlocked(res.locals),
@@ -143,26 +155,30 @@ export function restPost({
                 req,
                 res,
                 ...afterSavePayload,
-                docQRL,
               });
             }
 
-            // @todo run afterSaveTrigger
             invalidateCache(collectionName, after);
-            return res.status(200).send();
+            return res.status(200).json({});
+          } else {
+            return Promise.reject(
+              new EleganteError(
+                ErrorCode.REST_DOCUMENT_NOT_UPDATED,
+                `could not update ${collectionName} document`
+              )
+            );
           }
         }
 
-        return Promise.reject(
-          new EleganteError(
-            ErrorCode.REST_DOCUMENT_NOT_UPDATED,
-            `could not update ${collectionName} document`
-          )
-        );
+        /**
+         * didn't pass the beforeSave trigger
+         * but also doesn't mean it's an error
+         */
+        return res.status(200).json({});
       } else if (method === 'remove') {
         /**
          * remove
-         * @todo run beforeDeleteTrigger and afterDeleteTrigger
+         * @todo run beforeDelete trigger
          */
         const { cursor } = await postDelete(docQRL);
 
@@ -179,12 +195,11 @@ export function restPost({
               req,
               res,
               ...afterDeletePayload,
-              docQRL,
             });
           }
 
           invalidateCache(collectionName, afterDeletePayload.before);
-          return res.status(200).send();
+          return res.status(200).json({});
         } else {
           res
             .status(404)
@@ -213,34 +228,48 @@ export function restPost({
           .status(200)
           .json(await parseDocs(docs)(docQRL, params, res.locals));
       } else if (method === 'insert') {
-        /**
-         * insert new documents
-         */
-        const doc: Document = {
-          ...parseDocForInsertion(docQRL.doc),
-          _id: newObjectId(),
-          _created_at: new Date(),
-          _updated_at: new Date(),
-        };
+        let beforeSaveCallback: CloudTriggerCallback = true;
 
-        let shouldRun: boolean | void = true;
         const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
+
         if (beforeSave) {
-          shouldRun = await beforeSave.fn({
+          beforeSaveCallback = await beforeSave.fn({
             req,
             res,
-            docQRL,
             before: null,
-            after: doc,
+            after: docQRL.doc,
           });
         }
 
-        if (shouldRun) {
+        if (
+          beforeSaveCallback &&
+          typeof beforeSaveCallback === 'object' &&
+          beforeSaveCallback.after
+        ) {
+          docQRL.doc = beforeSaveCallback.after;
+        }
+
+        if (beforeSaveCallback) {
+          /**
+           * insert new documents
+           */
+          const doc: Document = {
+            ...parseDocForInsertion(docQRL.doc),
+            _id: newObjectId(),
+            _created_at: new Date(),
+            _updated_at: new Date(),
+          };
+
           const cursor = await collection$.insertOne(doc);
 
           if (cursor.acknowledged) {
             const afterSavePayload = parseResponse(
-              { before: null, after: doc },
+              {
+                before: null,
+                after: doc,
+                updatedFields: objectFieldsUpdated(null, doc),
+                createdFields: objectFieldsCreated(null, doc),
+              },
               {
                 removeSensitiveFields: !isUnlocked(res.locals),
               }
@@ -256,16 +285,22 @@ export function restPost({
               });
             }
 
-            return res.status(201).send(afterSavePayload.after);
+            return res.status(201).json(afterSavePayload.after);
+          } else {
+            return Promise.reject(
+              new EleganteError(
+                ErrorCode.REST_DOCUMENT_NOT_CREATED,
+                `could not create ${collectionName} document`
+              )
+            );
           }
         }
 
-        return Promise.reject(
-          new EleganteError(
-            ErrorCode.REST_DOCUMENT_NOT_CREATED,
-            `could not create ${collectionName} document`
-          )
-        );
+        /**
+         * didn't pass the beforeSave trigger
+         * but also doesn't mean it's an error
+         */
+        return res.status(200).json({});
       } else if (collectionName === '_User' && method === 'signUp') {
         /**
          * user sign up
@@ -283,7 +318,7 @@ export function restPost({
           }
           return res
             .status(405)
-            .send(
+            .json(
               err?.code
                 ? err
                 : new EleganteError(ErrorCode.REST_POST_ERROR, err as object)
@@ -303,7 +338,7 @@ export function restPost({
     } catch (err: any) {
       return res
         .status(405)
-        .send(
+        .json(
           err?.code
             ? err
             : new EleganteError(ErrorCode.REST_POST_ERROR, err as object)

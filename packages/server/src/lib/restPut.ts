@@ -26,6 +26,7 @@ import { invalidateCache } from './Cache';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
 import { parseDocForInsertion } from './parseDoc';
+import { CloudTriggerCallback, getCloudTrigger } from './Cloud';
 
 export function restPut({
   params,
@@ -42,13 +43,12 @@ export function restPut({
 
       const collection = db.collection<Document>(collectionName);
 
-      const doc: Document = {
-        ...parseDocForInsertion(req.body.doc),
-        _updated_at: new Date(),
-      };
+      let beforeSaveCallback: CloudTriggerCallback = true;
+
+      const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
 
       /**
-       * can't delete to any of the reserved collections if not unlocked
+       * can't update to any of the reserved collections if not unlocked
        */
       const reservedCollections = [
         ...Object.keys(InternalCollectionName),
@@ -71,82 +71,117 @@ export function restPut({
           );
       }
 
-      /**
-       * ensure each internal/external field is deleted from the user payload
-       * if session is not unlocked
-       */
-      const reservedFields = [
-        ...Object.keys(InternalFieldName),
-        ...Object.keys(ExternalFieldName),
-      ];
-
-      if (!isUnlocked(res.locals)) {
-        reservedFields.forEach((field) => {
-          delete doc[field];
+      if (beforeSave) {
+        beforeSaveCallback = await beforeSave.fn({
+          req,
+          res,
+          before: null,
+          after: req.body.doc,
         });
       }
 
-      /**
-       * @todo run beforeUpdate and afterUpdate hooks
-       */
-      const before = await collection.findOne(
-        {
-          _id: {
-            $eq: objectId,
-          },
-        },
-        {
-          readPreference: 'primary',
+      if (
+        beforeSaveCallback &&
+        typeof beforeSaveCallback === 'object' &&
+        beforeSaveCallback.after
+      ) {
+        req.body.doc = beforeSaveCallback.after;
+      }
+
+      if (beforeSaveCallback) {
+        const doc: Document = {
+          ...parseDocForInsertion(req.body.doc),
+          _updated_at: new Date(),
+        };
+
+        /**
+         * ensure each internal/external field is deleted from the user payload
+         * if session is not unlocked
+         */
+        const reservedFields = [
+          ...Object.keys(InternalFieldName),
+          ...Object.keys(ExternalFieldName),
+        ];
+
+        if (!isUnlocked(res.locals)) {
+          reservedFields.forEach((field) => {
+            delete doc[field];
+          });
         }
-      );
 
-      const cursor = await collection.findOneAndUpdate(
-        {
-          _id: {
-            $eq: objectId,
-          },
-        },
-        {
-          $set: doc,
-        },
-        { returnDocument: 'after', readPreference: 'primary' }
-      );
-
-      if (cursor.ok) {
-        const after = cursor.value ?? ({} as Document);
-        const afterSaveTrigger = parseResponse(
+        const before = await collection.findOne(
           {
-            before,
-            after,
-            updatedFields: objectFieldsUpdated(before, after),
-            createdFields: objectFieldsCreated(before, after),
+            _id: {
+              $eq: objectId,
+            },
           },
           {
-            removeSensitiveFields: !isUnlocked(res.locals),
+            readPreference: 'primary',
           }
         );
 
-        if (cursor.value) {
-          invalidateCache(collectionName, after);
-          return res.status(200).send();
-        } else {
-          return res
-            .status(404)
-            .json(
-              new EleganteError(
-                ErrorCode.REST_DOCUMENT_NOT_UPDATED,
-                'document not found'
-              )
+        const cursor = await collection.findOneAndUpdate(
+          {
+            _id: {
+              $eq: objectId,
+            },
+          },
+          {
+            $set: doc,
+          },
+          { returnDocument: 'after', readPreference: 'primary' }
+        );
+
+        if (cursor.ok) {
+          if (cursor.value) {
+            const after = cursor.value ?? ({} as Document);
+            const afterSavePayload = parseResponse(
+              {
+                before,
+                after,
+                updatedFields: objectFieldsUpdated(before, after),
+                createdFields: objectFieldsCreated(before, after),
+              },
+              {
+                removeSensitiveFields: !isUnlocked(res.locals),
+              }
             );
+
+            const afterSave = getCloudTrigger(collectionName, 'afterSave');
+            if (afterSave) {
+              afterSave.fn({
+                req,
+                res,
+                ...afterSavePayload,
+              });
+            }
+
+            invalidateCache(collectionName, after);
+            return res.status(200).json({});
+          } else {
+            return res
+              .status(404)
+              .json(
+                new EleganteError(
+                  ErrorCode.REST_DOCUMENT_NOT_UPDATED,
+                  'document not found'
+                )
+              );
+          }
+        } else {
+          return Promise.reject(
+            new EleganteError(
+              ErrorCode.REST_DOCUMENT_NOT_UPDATED,
+              'could not update document'
+            )
+          );
         }
       }
-
-      return Promise.reject(
-        new EleganteError(
-          ErrorCode.REST_DOCUMENT_NOT_UPDATED,
-          'could not update document'
-        )
-      );
+      /**
+       * didn't pass the beforeSave trigger
+       * but also doesn't mean it's an error
+       */
+      return res.status(200).json({});
     } catch (err) {
       return res
         .status(500)
