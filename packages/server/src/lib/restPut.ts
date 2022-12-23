@@ -71,8 +71,20 @@ export function restPut({
           );
       }
 
+      const before = await collection.findOne(
+        {
+          _id: {
+            $eq: objectId,
+          },
+        },
+        {
+          readPreference: 'primary',
+        }
+      );
+
       if (beforeSave) {
         beforeSaveCallback = await beforeSave.fn({
+          before,
           doc: req.body.doc,
         });
       }
@@ -105,17 +117,6 @@ export function restPut({
             delete doc[field];
           });
         }
-
-        const before = await collection.findOne(
-          {
-            _id: {
-              $eq: objectId,
-            },
-          },
-          {
-            readPreference: 'primary',
-          }
-        );
 
         const cursor = await collection.findOneAndUpdate(
           {

@@ -8,6 +8,5 @@
   },
   "types": "./index.d.ts",
   "module": "./index.js",
-  "main": "./index.cjs",
-  "type": "module"
+  "main": "./index.cjs"
 }

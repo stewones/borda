@@ -113,10 +113,15 @@ export function restPost({
         /**
          * update
          */
+        const before = await collection$.findOne(parseFilter(filter), {
+          readPreference: 'primary',
+        });
+
         let beforeSaveCallback: CloudTriggerCallback = true;
         const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
         if (beforeSave) {
           beforeSaveCallback = await beforeSave.fn({
+            before,
             doc: docQRL.doc ?? undefined,
           });
         }
@@ -130,7 +135,7 @@ export function restPost({
             docQRL.doc = beforeSaveCallback.doc;
           }
 
-          const { cursor, before } = await postUpdate(docQRL, res);
+          const { cursor } = await postUpdate(docQRL, res);
 
           if (cursor.ok) {
             const after = cursor.value ?? ({} as Document);
@@ -353,10 +358,6 @@ async function postFind(docQRL: DocQRL) {
 async function postUpdate(docQRL: DocQRL, res: Response) {
   const { filter, collection$ } = docQRL;
 
-  const before = await collection$.findOne(parseFilter(filter), {
-    readPreference: 'primary',
-  });
-
   const doc: Document = {
     ...parseDocForInsertion(docQRL.doc),
     _updated_at: new Date(),
@@ -386,7 +387,6 @@ async function postUpdate(docQRL: DocQRL, res: Response) {
   );
 
   return {
-    before,
     cursor,
   };
 }
