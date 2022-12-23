@@ -10,7 +10,7 @@ Cloud.addFunction(
     print('executing', `getCounter`);
     try {
       let counter = await query('Counter')
-        .unlock(true)
+        .unlock()
         .filter({
           name: {
             $eq: 'elegante',
@@ -19,7 +19,7 @@ Cloud.addFunction(
         .findOne();
 
       if (!counter) {
-        counter = await query('Counter').unlock(true).insert({
+        counter = await query('Counter').unlock().insert({
           total: 0,
           name: 'elegante',
         });

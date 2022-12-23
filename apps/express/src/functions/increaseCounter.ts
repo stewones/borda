@@ -10,7 +10,7 @@ Cloud.addFunction(
     print('executing', `increaseCounter`, req.body);
     try {
       const { objectId, total } = req.body;
-      await query('Counter').unlock(true).update(objectId, {
+      await query('Counter').unlock().update(objectId, {
         total,
       });
       res.status(200).send();

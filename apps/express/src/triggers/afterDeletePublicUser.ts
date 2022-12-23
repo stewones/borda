@@ -3,7 +3,7 @@ import { query } from '@elegante/sdk';
 
 Cloud.afterDelete('PublicUser', ({ before }) => {
   query('User')
-    .unlock(true)
+    .unlock()
     .filter({
       email: {
         $eq: before.email,

@@ -188,7 +188,7 @@ export declare interface Query<TSchema = Document> {
    * the unlock method is meant to make operations without restrictions.
    * make sure to only use this when running on server and *never expose your api secret*.
    */
-  unlock(isUnlocked: boolean): Query<TSchema>;
+  unlock(isUnlocked?: boolean): Query<TSchema>;
 
   /**
    * live queries

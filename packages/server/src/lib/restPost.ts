@@ -469,7 +469,7 @@ async function postSignIn(docQRL: DocQRL, res: Response) {
   }
 
   const user = await query<User>('User')
-    .unlock(true)
+    .unlock()
     .projection(
       !isEmpty(projection)
         ? {
@@ -544,7 +544,7 @@ async function postSignUp(docQRL: DocQRL, res: Response) {
   }
 
   const checkUserExists = await query<User>('User')
-    .unlock(true)
+    .unlock()
     .projection({ email: 1 })
     .filter({
       email: {
@@ -568,7 +568,7 @@ async function postSignUp(docQRL: DocQRL, res: Response) {
   }
 
   const newUser = await query<User>('User')
-    .unlock(true)
+    .unlock()
     .insert({
       ...doc,
       name,

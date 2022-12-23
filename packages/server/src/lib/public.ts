@@ -267,7 +267,7 @@ export async function createSession<T = Session>(user: User) {
    */
   const token = `e:${newToken()}`;
   const session = await query('Session')
-    .unlock(true)
+    .unlock()
     .insert({
       user: pointer('User', user.objectId),
       token,

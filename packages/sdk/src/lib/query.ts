@@ -14,7 +14,7 @@ import 'reflect-metadata';
 import { finalize, Observable } from 'rxjs';
 import { EleganteClient } from './Client';
 import { EleganteError, ErrorCode } from './Error';
-import { cleanKey, isEmpty, isServer, LocalStorage } from './utils';
+import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
 import { fetch, HttpMethod } from './fetch';
 import { InternalFieldName, InternalHeaders } from './internal';
 import { webSocketServer, getUrl, WebSocketFactory } from './websocket';
@@ -170,7 +170,11 @@ export function query<TSchema extends Document>(collection: string) {
       return bridge.run('aggregate', options) as Promise<TSchema[]>;
     },
 
-    unlock: (isUnlocked) => {
+    unlock: (isUnlocked?: boolean) => {
+      if (!isBoolean(isUnlocked)) {
+        isUnlocked = true;
+      }
+
       /**
        * unlock can only be used in server environment
        * with proper ApiKey+ApiSecret defined

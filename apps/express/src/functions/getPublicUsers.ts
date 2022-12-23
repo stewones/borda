@@ -10,7 +10,7 @@ Cloud.addFunction(
     try {
       res.status(200).send(
         await query('PublicUser')
-          .unlock(true)
+          .unlock()
           .projection({
             name: 1,
             email: 1,

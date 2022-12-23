@@ -8,7 +8,7 @@ Cloud.afterSave('User', ({ doc, before }) => {
    */
   if (!before) {
     const { name, email } = doc;
-    query('PublicUser').unlock(true).insert({
+    query('PublicUser').unlock().insert({
       name,
       email,
     });

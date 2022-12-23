@@ -117,7 +117,7 @@ export const routeEnsureAuth =
         session = memo;
       } else {
         session = await query<Session>('Session')
-          .unlock(true)
+          .unlock()
           .include(['user'])
           .filter({
             token: {

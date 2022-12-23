@@ -91,7 +91,7 @@ export function parseInclude<T extends Document>(
       } else {
         const doc = await query<T>(collection)
           .include(join)
-          .unlock(true) // here we force unlock because `parseInclude` run in the server anyways 💁‍♂️
+          .unlock() // here we force unlock because `parseInclude` run in the server anyways 💁‍♂️
           .findOne(objectId);
 
         if (!doc) continue;

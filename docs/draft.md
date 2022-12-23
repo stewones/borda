@@ -165,7 +165,7 @@ client
  * example for lock/unlock security
  */
 const salesAgg = await query()
-  .unlock(true) // only works in the server
+  .unlock() // only works in the server
   .collection('Sale')
   .include([
     'author',

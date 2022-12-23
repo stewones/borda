@@ -21,7 +21,7 @@ export function restDeleteMe({
   return async (req, res) => {
     try {
       const { session } = res.locals ?? {};
-      await query('Session').unlock(true).delete(session.objectId);
+      await query('Session').unlock().delete(session.objectId);
       return res.status(200).send();
     } catch (err) {
       return res

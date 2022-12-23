@@ -35,7 +35,7 @@ export const InternalFieldName: {
 /**
  * these fields can't be exposed as they are reserved for the system
  * sensitive fields are removed by default from responses
- * unless you explicitly ask for them via `query.unlock(true)`
+ * unless you explicitly ask for them via `query.unlock()`
  */
 export const InternalSensitiveFields = [
   /**

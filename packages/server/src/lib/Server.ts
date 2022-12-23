@@ -272,7 +272,7 @@ export async function ensureSessionInvalidation(_db: Db) {
       const { _id } = documentKey;
 
       query('Session')
-        .unlock(true)
+        .unlock()
         .filter({
           user: pointer('User', _id),
         })
