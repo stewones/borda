@@ -119,8 +119,7 @@ export function restPost({
           beforeSaveCallback = await beforeSave.fn({
             req,
             res,
-            before: docQRL.doc ?? null,
-            after: null,
+            doc: docQRL.doc ?? undefined,
           });
         }
 
@@ -128,9 +127,9 @@ export function restPost({
           if (
             beforeSaveCallback &&
             typeof beforeSaveCallback === 'object' &&
-            beforeSaveCallback.before
+            beforeSaveCallback.doc
           ) {
-            docQRL.doc = beforeSaveCallback.before;
+            docQRL.doc = beforeSaveCallback.doc;
           }
 
           const { cursor, before } = await postUpdate(docQRL, res);
@@ -141,6 +140,7 @@ export function restPost({
               {
                 before,
                 after,
+                doc: after,
                 updatedFields: objectFieldsUpdated(before, after),
                 createdFields: objectFieldsCreated(before, after),
               },
@@ -236,17 +236,16 @@ export function restPost({
           beforeSaveCallback = await beforeSave.fn({
             req,
             res,
-            before: null,
-            after: docQRL.doc,
+            doc: docQRL.doc ?? undefined,
           });
         }
 
         if (
           beforeSaveCallback &&
           typeof beforeSaveCallback === 'object' &&
-          beforeSaveCallback.after
+          beforeSaveCallback.doc
         ) {
-          docQRL.doc = beforeSaveCallback.after;
+          docQRL.doc = beforeSaveCallback.doc;
         }
 
         if (beforeSaveCallback) {
@@ -259,7 +258,6 @@ export function restPost({
             _created_at: new Date(),
             _updated_at: new Date(),
           };
-
           const cursor = await collection$.insertOne(doc);
 
           if (cursor.acknowledged) {
@@ -267,8 +265,9 @@ export function restPost({
               {
                 before: null,
                 after: doc,
-                updatedFields: objectFieldsUpdated(null, doc),
-                createdFields: objectFieldsCreated(null, doc),
+                doc,
+                updatedFields: objectFieldsUpdated({}, doc),
+                createdFields: objectFieldsCreated({}, doc),
               },
               {
                 removeSensitiveFields: !isUnlocked(res.locals),
@@ -281,7 +280,6 @@ export function restPost({
                 req,
                 res,
                 ...afterSavePayload,
-                docQRL,
               });
             }
 
@@ -492,7 +490,7 @@ async function postSignIn(docQRL: DocQRL, res: Response) {
     })
     .findOne();
 
-  if (!user) {
+  if (isEmpty(user)) {
     return res
       .status(404)
       .json(
@@ -518,7 +516,9 @@ async function postSignIn(docQRL: DocQRL, res: Response) {
 
 async function postSignUp(docQRL: DocQRL, res: Response) {
   const { doc } = docQRL;
+
   const { name, email, password } = doc ?? {};
+
   /**
    * validation chain
    */
@@ -556,7 +556,7 @@ async function postSignUp(docQRL: DocQRL, res: Response) {
     })
     .findOne();
 
-  if (checkUserExists) {
+  if (!isEmpty(checkUserExists)) {
     return res
       .status(404)
       .json(

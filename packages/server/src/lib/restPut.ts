@@ -75,17 +75,16 @@ export function restPut({
         beforeSaveCallback = await beforeSave.fn({
           req,
           res,
-          before: null,
-          after: req.body.doc,
+          doc: req.body.doc,
         });
       }
 
       if (
         beforeSaveCallback &&
         typeof beforeSaveCallback === 'object' &&
-        beforeSaveCallback.after
+        beforeSaveCallback.doc
       ) {
-        req.body.doc = beforeSaveCallback.after;
+        req.body.doc = beforeSaveCallback.doc;
       }
 
       if (beforeSaveCallback) {
@@ -139,6 +138,7 @@ export function restPut({
               {
                 before,
                 after,
+                doc: after,
                 updatedFields: objectFieldsUpdated(before, after),
                 createdFields: objectFieldsCreated(before, after),
               },

@@ -24,19 +24,22 @@ type CloudFunctionProtocol = Map<string, CloudFunctionOptions>;
 interface CloudTriggerFactory {
   req: Request;
   res: Response;
-  before: Document | null | undefined;
-  after: Document | null | undefined;
+  doc?: Document;
+  before?: Document;
+  after?: Document;
 }
 
 export type CloudTriggerCallback =
   | void
   | boolean
-  | { before?: Document; after?: Document };
+  | { before?: Document; after?: Document; doc?: Document };
 
 interface CloudTriggerOptions {
   collection: string;
   event: CloudTriggerEvent;
-  fn: (factory: CloudTriggerFactory) => Promise<CloudTriggerCallback>;
+  fn: (
+    factory: CloudTriggerFactory
+  ) => Promise<CloudTriggerCallback> | CloudTriggerCallback | boolean | void;
 }
 
 interface CloudFunctionOptions {
@@ -71,7 +74,9 @@ export function getCloudFunction(name: string) {
 export abstract class Cloud {
   public static beforeSave(
     collection: string,
-    fn: (factory: CloudTriggerFactory) => Promise<CloudTriggerCallback>
+    fn: (
+      factory: CloudTriggerFactory
+    ) => Promise<CloudTriggerCallback> | CloudTriggerCallback | boolean | void
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.beforeSave`, {
@@ -83,7 +88,7 @@ export abstract class Cloud {
 
   public static afterSave(
     collection: string,
-    fn: (factory: CloudTriggerFactory) => Promise<CloudTriggerCallback>
+    fn: (factory: CloudTriggerFactory) => void
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.afterSave`, {
@@ -95,7 +100,7 @@ export abstract class Cloud {
 
   public static afterDelete(
     collection: string,
-    fn: (factory: CloudTriggerFactory) => Promise<CloudTriggerCallback>
+    fn: (factory: CloudTriggerFactory) => void
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.afterDelete`, {
