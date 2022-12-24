@@ -36,17 +36,7 @@ export function restPut({
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
-      const { db } = EleganteServer;
-      const { objectId } = req.params;
-      let { collectionName } = req.params;
-
-      collectionName = InternalCollectionName[collectionName] ?? collectionName;
-
-      const collection = db.collection<Document>(collectionName);
-
-      let beforeSaveCallback: CloudTriggerCallback = true;
-
-      const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
+      const { objectId, collectionName } = req.params;
 
       /**
        * can't update to any of the reserved collections if not unlocked
@@ -72,7 +62,16 @@ export function restPut({
           );
       }
 
-      const before = await collection.findOne(
+      const { doc, collection$ } = parseQuery({
+        doc: req.body.doc,
+        collection: collectionName,
+      });
+
+      const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
+      let beforeSaveCallback: CloudTriggerCallback = true;
+      let document = doc;
+
+      const docBefore = await collection$.findOne(
         {
           _id: {
             $eq: objectId,
@@ -83,12 +82,10 @@ export function restPut({
         }
       );
 
-      let { doc } = parseQuery({ doc: req.body.doc });
-
       if (beforeSave) {
         beforeSaveCallback = await beforeSave.fn({
-          before,
-          doc,
+          before: docBefore,
+          doc: document,
         });
       }
 
@@ -97,12 +94,12 @@ export function restPut({
         typeof beforeSaveCallback === 'object' &&
         beforeSaveCallback.doc
       ) {
-        doc = beforeSaveCallback.doc;
+        document = beforeSaveCallback.doc;
       }
 
       if (beforeSaveCallback) {
-        doc = {
-          ...parseDocForInsertion(doc),
+        document = {
+          ...parseDocForInsertion(document),
           _updated_at: new Date(),
         };
 
@@ -117,32 +114,32 @@ export function restPut({
 
         if (!isUnlocked(res.locals)) {
           reservedFields.forEach((field) => {
-            delete doc[field];
+            delete document[field];
           });
         }
 
-        const cursor = await collection.findOneAndUpdate(
+        const cursor = await collection$.findOneAndUpdate(
           {
             _id: {
               $eq: objectId,
             },
           },
           {
-            $set: doc,
+            $set: document,
           },
           { returnDocument: 'after', readPreference: 'primary' }
         );
 
         if (cursor.ok) {
           if (cursor.value) {
-            const after = cursor.value ?? ({} as Document);
+            const docAfter = cursor.value ?? ({} as Document);
             const afterSavePayload = parseResponse(
               {
-                before,
-                after,
-                doc: after,
-                updatedFields: objectFieldsUpdated(before, after),
-                createdFields: objectFieldsCreated(before, after),
+                before: docBefore,
+                after: docAfter,
+                doc: document,
+                updatedFields: objectFieldsUpdated(docBefore, docAfter),
+                createdFields: objectFieldsCreated(docBefore, docAfter),
               },
               {
                 removeSensitiveFields: !isUnlocked(res.locals),
@@ -158,7 +155,7 @@ export function restPut({
               });
             }
 
-            invalidateCache(collectionName, after);
+            invalidateCache(collectionName, docAfter);
             return res.status(200).json({});
           } else {
             return res

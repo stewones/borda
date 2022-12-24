@@ -171,7 +171,9 @@ export class ActiveRecord<Doc extends Record> {
     return pointer<T>(this.collection, this.objectId);
   }
 
-  private async beforeDocumentSave(obj: any) {
+  private async beforeDocumentSave(obj: Doc) {
+    obj = this.parseDocBeforeSave(obj);
+
     const hook: any = getPluginHook('ActiveRecordBeforeDocumentSave');
 
     if (hook) {
@@ -188,6 +190,18 @@ export class ActiveRecord<Doc extends Record> {
       obj = hook({ doc: obj, params: this.params });
     }
 
+    return obj;
+  }
+
+  private parseDocBeforeSave(obj: Doc) {
+    const include = this.params.include ?? [];
+    for (const field in obj) {
+      include.forEach((inc) => {
+        if (inc.startsWith(field) && typeof obj[field] === 'object') {
+          delete obj[field];
+        }
+      });
+    }
     return obj;
   }
 }

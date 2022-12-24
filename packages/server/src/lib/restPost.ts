@@ -113,7 +113,7 @@ export function restPost({
         /**
          * update
          */
-        const before = await collection$.findOne(parseFilter(filter), {
+        const docBefore = await collection$.findOne(parseFilter(filter), {
           readPreference: 'primary',
         });
 
@@ -121,7 +121,7 @@ export function restPost({
         const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
         if (beforeSave) {
           beforeSaveCallback = await beforeSave.fn({
-            before,
+            before: docBefore,
             doc: docQRL.doc ?? undefined,
           });
         }
@@ -138,14 +138,14 @@ export function restPost({
           const { cursor } = await postUpdate(docQRL, res);
 
           if (cursor.ok) {
-            const after = cursor.value ?? ({} as Document);
+            const docAfter = cursor.value ?? ({} as Document);
             const afterSavePayload = parseResponse(
               {
-                before,
-                after,
-                doc: after,
-                updatedFields: objectFieldsUpdated(before, after),
-                createdFields: objectFieldsCreated(before, after),
+                before: docBefore,
+                after: docAfter,
+                doc: docQRL.doc,
+                updatedFields: objectFieldsUpdated(docBefore, docAfter),
+                createdFields: objectFieldsCreated(docBefore, docAfter),
               },
               {
                 removeSensitiveFields: !isUnlocked(res.locals),
@@ -154,14 +154,10 @@ export function restPost({
 
             const afterSave = getCloudTrigger(collectionName, 'afterSave');
             if (afterSave) {
-              afterSave.fn({
-                req,
-                res,
-                ...afterSavePayload,
-              });
+              afterSave.fn(afterSavePayload);
             }
 
-            invalidateCache(collectionName, after);
+            invalidateCache(collectionName, docAfter);
             return res.status(200).json({});
           } else {
             return Promise.reject(
@@ -277,14 +273,10 @@ export function restPost({
 
             const afterSave = getCloudTrigger(collectionName, 'afterSave');
             if (afterSave) {
-              afterSave.fn({
-                req,
-                res,
-                ...afterSavePayload,
-              });
+              afterSave.fn(afterSavePayload);
             }
 
-            return res.status(201).json(afterSavePayload.after);
+            return res.status(201).json(afterSavePayload.doc);
           } else {
             return Promise.reject(
               new EleganteError(
