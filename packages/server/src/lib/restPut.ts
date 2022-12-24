@@ -27,6 +27,7 @@ import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
 import { parseDocForInsertion } from './parseDoc';
 import { CloudTriggerCallback, getCloudTrigger } from './Cloud';
+import { parseQuery } from './parseQuery';
 
 export function restPut({
   params,
@@ -82,10 +83,12 @@ export function restPut({
         }
       );
 
+      let { doc } = parseQuery({ doc: req.body.doc });
+
       if (beforeSave) {
         beforeSaveCallback = await beforeSave.fn({
           before,
-          doc: req.body.doc,
+          doc,
         });
       }
 
@@ -94,12 +97,12 @@ export function restPut({
         typeof beforeSaveCallback === 'object' &&
         beforeSaveCallback.doc
       ) {
-        req.body.doc = beforeSaveCallback.doc;
+        doc = beforeSaveCallback.doc;
       }
 
       if (beforeSaveCallback) {
-        const doc: Document = {
-          ...parseDocForInsertion(req.body.doc),
+        doc = {
+          ...parseDocForInsertion(doc),
           _updated_at: new Date(),
         };
 

@@ -274,9 +274,6 @@ export async function createSession<T = Session>(user: User) {
       expiresAt: expiresAt.toISOString(),
     });
 
-  delete session['updatedAt'];
-  delete session['objectId'];
-
   return { ...session, user } as T;
 }
 

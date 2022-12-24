@@ -9,16 +9,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Collection, Document } from 'mongodb';
+
 import {
   DocumentLiveQuery,
   DocumentQuery,
   InternalCollectionName,
 } from '@elegante/sdk';
+
 import { EleganteServer } from './Server';
 
 export interface DocQRL extends DocumentQuery {
   collection$: Collection<Document>;
-  doc?: Document | null | undefined;
+  doc: Document;
 }
 
 export type DocQRLFrom = DocumentQuery | DocumentLiveQuery | Document;
@@ -37,8 +39,22 @@ export function parseQuery(from: DocQRLFrom): DocQRL {
     InternalCollectionName[collectionName] ?? collectionName
   );
 
+  if (docQuery.doc) {
+    /**
+     * remove fields that are also pointers
+     */
+    for (const field in docQuery.doc) {
+      if (docQuery.doc[`_p_${field}`]) {
+        delete docQuery.doc[field];
+      }
+    }
+  } else {
+    docQuery.doc = {};
+  }
+
   return {
     ...docQuery,
+    doc: docQuery.doc,
     collection$,
   };
 }
