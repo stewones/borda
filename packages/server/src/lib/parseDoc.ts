@@ -70,9 +70,8 @@ export function parseDocForInsertion(obj: any): any {
 
     if (!Array.isArray(obj) && typeof obj === 'object') {
       for (let field in obj) {
-        /**
-         * fallback for instances
-         */
+        // console.log('field', field, 'obj[field]', obj[field]);
+
         if (InternalFieldName[field]) {
           obj[InternalFieldName[field]] = obj[field];
           delete obj[field];
@@ -83,7 +82,7 @@ export function parseDocForInsertion(obj: any): any {
           obj[field] = new Date(obj[field]);
         }
 
-        if (isPointer(obj[field])) {
+        if (!field.startsWith('_p_') && isPointer(obj[field])) {
           const newField = `_p_${field}`;
           obj[newField] = obj[field];
           delete obj[field];

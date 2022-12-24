@@ -37,6 +37,10 @@ export function pointer<T = Document>(
     return pointer(collection, object['objectId']);
   }
 
+  console.trace(
+    `Invalid pointer (${JSON.stringify(object)}) for collection ${collection}`
+  );
+
   throw new EleganteError(ErrorCode.INVALID_DOCUMENT, 'Invalid pointer');
 }
 

@@ -39,16 +39,7 @@ export function parseQuery(from: DocQRLFrom): DocQRL {
     InternalCollectionName[collectionName] ?? collectionName
   );
 
-  if (docQuery.doc) {
-    /**
-     * remove fields that are also pointers
-     */
-    for (const field in docQuery.doc) {
-      if (docQuery.doc[`_p_${field}`]) {
-        delete docQuery.doc[field];
-      }
-    }
-  } else {
+  if (!docQuery.doc) {
     docQuery.doc = {};
   }
 

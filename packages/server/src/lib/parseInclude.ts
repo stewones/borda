@@ -57,23 +57,6 @@ export function parseInclude<T extends Document>(
       log('isPointer', isPointer(pointerValue));
 
       if (!isPointer(pointerValue)) {
-        /**
-         * this means the object may be already populated
-         * ie: aggregation or memoization
-         * so we need to continue in the next tree level
-         */
-        for (const pointerTreeField of tree[pointerField]) {
-          const pointerTreeBase = pointerTreeField.split('.')[0];
-
-          log('pointerTreeField', pointerTreeField);
-          log('pointerTreeBase', pointerTreeBase);
-
-          await parseInclude(obj[`${pointerField}`])(
-            { ...docQuery, include: [pointerTreeField] },
-            params,
-            locals
-          );
-        }
         continue;
       }
 
@@ -88,6 +71,23 @@ export function parseInclude<T extends Document>(
 
         // remove raw _p_ entry
         delete obj[`_p_${pointerField}`];
+
+        /**
+         * this means the object may be populated in the first level
+         * but we still need to keep trying to populate the next level
+         */
+        for (const pointerTreeField of tree[pointerField]) {
+          const pointerTreeBase = pointerTreeField.split('.')[0];
+
+          log('pointerTreeField', pointerTreeField);
+          log('pointerTreeBase', pointerTreeBase);
+
+          await parseInclude(obj[pointerField])(
+            { ...docQuery, include: [pointerTreeField] },
+            params,
+            locals
+          );
+        }
       } else {
         const doc = await query<T>(collection)
           .include(join)
