@@ -12,6 +12,7 @@ import { Request, Response } from 'express';
 import { Document, InternalCollectionName, Session } from '@elegante/sdk';
 import { routeEnsureAuth } from './route';
 import { EleganteServer } from './Server';
+import { DocQRL } from './parseQuery';
 
 type CloudTriggerProtocol = Map<string, CloudTriggerOptions>;
 
@@ -27,6 +28,8 @@ interface CloudTriggerFactory<T = any> {
   doc?: T;
   before?: T;
   after?: T;
+  qrl: DocQRL;
+  context: Record<string, any>;
 }
 
 export type CloudTriggerCallback<T = any> = void | boolean | { doc?: T };

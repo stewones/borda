@@ -15,6 +15,16 @@ export declare interface Document {
 }
 
 export type DocumentResponse<T extends Document> = number | void | T | T[];
+export type DocumentOptions =
+  | {
+      context?: Record<string, any>;
+    }
+  | (FindOptions & {
+      context?: Record<string, any>;
+    })
+  | (AggregateOptions & {
+      context?: Record<string, any>;
+    });
 
 /**
  * learn more
@@ -41,7 +51,7 @@ export interface DocumentQuery<T = Document> {
   skip: number | undefined;
   sort: Sort | undefined;
   projection?: T;
-  options?: FindOptions | undefined;
+  options?: DocumentOptions;
   pipeline?: Document[];
   include: string[];
   exclude: string[];
@@ -90,6 +100,12 @@ export declare interface Query<TSchema = Document> {
   options: FindOptions;
 
   /**
+   * the unlock method is meant to make operations without restrictions.
+   * make sure to only use this when running on server and *never expose your api secret*.
+   */
+  unlock(isUnlocked?: boolean): Query<TSchema>;
+
+  /**
    * project 1st level fields for this query
    */
   projection(
@@ -136,59 +152,90 @@ export declare interface Query<TSchema = Document> {
   /**
    * find documents using mongo-like queries
    */
-  find(options?: FindOptions): Promise<TSchema[]>;
+  find(
+    options?: FindOptions & { context?: Record<string, any> }
+  ): Promise<TSchema[]>;
 
   /**
    * find a document using mongo-like queries
    * or direclty by passing its objectId
    */
-  findOne(options?: FindOptions): Promise<TSchema>;
   findOne(objectId: string): Promise<TSchema>;
+  findOne(
+    objectId: string,
+    options?: FindOptions & {
+      context?: Record<string, any>;
+    }
+  ): Promise<TSchema>;
+  findOne(options?: { context?: Record<string, any> }): Promise<TSchema>;
 
   /**
    * update a document using mongo-like queries
    * or direclty by passing its objectId
    */
-  update(doc: TSchema): Promise<void>;
-  update(objectId: string, doc?: TSchema): Promise<void>;
+  update(
+    doc: TSchema,
+    options?: {
+      context?: Record<string, any>;
+    }
+  ): Promise<void>;
+  update(
+    objectId: string,
+    doc: TSchema,
+    options?: {
+      context?: Record<string, any>;
+    }
+  ): Promise<void>;
 
   /**
    * insert a document
    */
-  insert(doc: Partial<TSchema>): Promise<TSchema>;
+  insert(
+    doc: Partial<TSchema>,
+    options?: {
+      context?: Record<string, any>;
+    }
+  ): Promise<TSchema>;
 
   /**
    * delete a document using mongo-like queries
    * or direclty by passing its objectId
    */
-  delete(): Promise<void>;
-  delete(objectId: string): Promise<void>;
+  delete(options?: { context?: Record<string, any> }): Promise<void>;
+  delete(
+    objectId: string,
+    options?: {
+      context?: Record<string, any>;
+    }
+  ): Promise<void>;
 
   /**
    * count documents using mongo-like queries
    */
-  count(options?: FindOptions): Promise<number>;
+  count(
+    options?: FindOptions & {
+      context?: Record<string, any>;
+    }
+  ): Promise<number>;
 
   /**
    * aggregate documents using mongo-like queries
    */
-  aggregate(options?: AggregateOptions): Promise<TSchema[]>;
+  aggregate(
+    options?: AggregateOptions & {
+      context?: Record<string, any>;
+    }
+  ): Promise<TSchema[]>;
 
   /**
    * run mongo query methods
    */
   run(
     method: QueryMethod,
-    options?: FindOptions,
+    options?: DocumentOptions,
     doc?: Partial<TSchema>,
     objectId?: string
   ): Promise<number | TSchema | TSchema[] | void>;
-
-  /**
-   * the unlock method is meant to make operations without restrictions.
-   * make sure to only use this when running on server and *never expose your api secret*.
-   */
-  unlock(isUnlocked?: boolean): Query<TSchema>;
 
   /**
    * live queries

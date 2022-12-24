@@ -18,7 +18,7 @@ import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
 import { fetch, HttpMethod } from './fetch';
 import { InternalFieldName, InternalHeaders } from './internal';
 import { webSocketServer, getUrl, WebSocketFactory } from './websocket';
-import { DocumentLiveQuery, LiveQueryMessage } from './types/livequery';
+import { DocumentLiveQuery, LiveQueryMessage } from './types';
 
 import {
   Query,
@@ -39,10 +39,29 @@ export function query<TSchema extends Document>(collection: string) {
 
     options: {},
 
-    /**
-     * modifiers
-     */
+    unlock: (isUnlocked?: boolean) => {
+      if (!isBoolean(isUnlocked)) {
+        isUnlocked = true;
+      }
 
+      /**
+       * unlock can only be used in server environment
+       * with proper ApiKey+ApiSecret defined
+       */
+      if (!isServer() && isUnlocked) {
+        throw new EleganteError(
+          ErrorCode.SERVER_UNLOCK_ONLY,
+          `unlock can only be used in server environment`
+        );
+      }
+
+      bridge.params['unlock'] = isUnlocked;
+      return bridge;
+    },
+
+    /**
+     * doc modifiers
+     */
     projection: (project) => {
       const newProject: Document = { ...project };
 
@@ -104,14 +123,13 @@ export function query<TSchema extends Document>(collection: string) {
     },
 
     /**
-     * methods
+     * doc methods
      */
-
     find: (options) => {
       return bridge.run('find', options) as Promise<TSchema[]>;
     },
 
-    findOne: (optionsOrObjectId) => {
+    findOne: (optionsOrObjectId, options?) => {
       const hasDocModifier =
         !isEmpty(bridge.params['projection']) ||
         !isEmpty(bridge.params['include']) ||
@@ -134,31 +152,47 @@ export function query<TSchema extends Document>(collection: string) {
         typeof optionsOrObjectId === 'string' && !hasDocModifier
           ? 'get'
           : 'findOne',
-        typeof optionsOrObjectId === 'string' ? {} : optionsOrObjectId,
+        typeof optionsOrObjectId === 'string'
+          ? options ?? {}
+          : optionsOrObjectId,
         {},
         typeof optionsOrObjectId === 'string' ? optionsOrObjectId : undefined
       ) as Promise<TSchema>;
     },
 
-    update: (objectIdOrDoc, doc?: TSchema) => {
+    update: (objectIdOrDoc, docOrOptions?: Partial<TSchema>, options?) => {
       return bridge.run(
-        typeof objectIdOrDoc === 'string' ? 'put' : 'update', // method
-        {}, // options
-        typeof objectIdOrDoc === 'string' ? doc : objectIdOrDoc, // optional: doc
-        typeof objectIdOrDoc === 'string' ? objectIdOrDoc : undefined //  optional: objectId
+        // method
+        typeof objectIdOrDoc === 'string' ? 'put' : 'update',
+        // options
+        typeof docOrOptions === 'object' && docOrOptions['context']
+          ? docOrOptions
+          : options ?? {},
+        // optional: doc
+        typeof docOrOptions === 'object' && docOrOptions['context']
+          ? objectIdOrDoc
+          : options ?? docOrOptions,
+        // optional: objectId
+        typeof objectIdOrDoc === 'string' ? objectIdOrDoc : undefined
       ) as Promise<void>;
     },
 
-    insert: (doc) => {
-      return bridge.run('insert', {}, doc) as Promise<TSchema>;
+    insert: (doc, options?) => {
+      return bridge.run('insert', options ?? {}, doc) as Promise<TSchema>;
     },
 
-    delete: (objectId?: string) => {
+    delete: (objectIdOrOptions?, options?) => {
       return bridge.run(
-        typeof objectId === 'string' ? 'delete' : 'remove',
+        // method
+        typeof objectIdOrOptions === 'string' ? 'delete' : 'remove',
+        // options
+        typeof objectIdOrOptions === 'object' && objectIdOrOptions['context']
+          ? objectIdOrOptions
+          : options ?? {},
+        // doc
         {},
-        {},
-        objectId
+        // objectId
+        typeof objectIdOrOptions === 'string' ? objectIdOrOptions : undefined
       ) as Promise<void>;
     },
 
@@ -170,30 +204,9 @@ export function query<TSchema extends Document>(collection: string) {
       return bridge.run('aggregate', options) as Promise<TSchema[]>;
     },
 
-    unlock: (isUnlocked?: boolean) => {
-      if (!isBoolean(isUnlocked)) {
-        isUnlocked = true;
-      }
-
-      /**
-       * unlock can only be used in server environment
-       * with proper ApiKey+ApiSecret defined
-       */
-      if (!isServer() && isUnlocked) {
-        throw new EleganteError(
-          ErrorCode.SERVER_UNLOCK_ONLY,
-          `unlock can only be used in server environment`
-        );
-      }
-
-      bridge.params['unlock'] = isUnlocked;
-      return bridge;
-    },
-
     /**
-     * retrieval methods
+     * doc retrieval
      */
-
     run: (method, options, doc?, objectId?) => {
       options = {
         ...bridge.options,

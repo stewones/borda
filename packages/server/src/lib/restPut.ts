@@ -21,7 +21,7 @@ import {
 } from '@elegante/sdk';
 
 import { Request, Response } from 'express';
-import { EleganteServer, ServerParams } from './Server';
+import { ServerParams } from './Server';
 import { invalidateCache } from './Cache';
 import { parseResponse } from './parseResponse';
 import { isUnlocked } from './utils/isUnlocked';
@@ -61,11 +61,12 @@ export function restPut({
             )
           );
       }
-
-      const { doc, collection$ } = parseQuery({
+      const docQRL = parseQuery({
         doc: req.body.doc,
         collection: collectionName,
       });
+
+      const { doc, collection$ } = docQRL;
 
       const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
       let beforeSaveCallback: CloudTriggerCallback = true;
@@ -86,6 +87,8 @@ export function restPut({
         beforeSaveCallback = await beforeSave.fn({
           before: docBefore,
           doc: document,
+          qrl: docQRL,
+          context: docQRL.options?.context ?? {},
         });
       }
 

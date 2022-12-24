@@ -9,7 +9,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import WebSocket, { ServerOptions } from 'ws';
-import { Document, ChangeStreamUpdateDocument } from 'mongodb';
+import {
+  Document,
+  ChangeStreamUpdateDocument,
+  AggregateOptions,
+} from 'mongodb';
 
 import {
   DocumentLiveQuery,
@@ -217,7 +221,7 @@ export async function handleOnce(
       skip: skip ?? 0,
       sort: sort ?? {},
     }),
-    options
+    options as AggregateOptions
   );
 
   for await (const doc of cursor) {

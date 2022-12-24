@@ -22,6 +22,7 @@ import {
   log,
   query,
   pointer,
+  FindOptions,
 } from '@elegante/sdk';
 
 import { InternalFieldName } from '@elegante/sdk';
@@ -115,8 +116,7 @@ export async function createIndexes({
 export function createFindCursor<T extends Document>(docQRL: DocQRL) {
   const { collection$, options, filter, sort, projection, limit, skip } =
     docQRL;
-
-  const { allowDiskUse } = options || {};
+  const { allowDiskUse } = (options as FindOptions) || {};
 
   /**
    * decode sort

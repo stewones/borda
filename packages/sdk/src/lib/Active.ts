@@ -13,26 +13,88 @@ import { isEmpty, isServer, unset } from './utils';
 import { query } from './query';
 import { pointer } from './pointer';
 import { getPluginHook } from './Plugin';
+import { AggregateOptions } from 'mongodb';
 
 export type ActiveModel<T> = Partial<T> | string;
 export interface ActiveParams<T = any> {
+  /**
+   * define a default filter for the query (same as MongoDB's)
+   */
   filter?: Filter<T>;
+
+  /**
+   * define a default sort for the query. (Same as MongoDB's)
+   */
   sort?: Sort;
 
+  /**
+   * define a default projection for the query. (Same as MongoDB's)
+   */
   projection?: Partial<{
     [key in keyof T]: number;
   }>;
 
-  options?: FindOptions | undefined;
+  /**
+   * define default options for the Find ang Aggregate operations
+   */
+  options?: FindOptions | AggregateOptions | undefined;
 
+  /**
+   * define a default MongoDB aggregation pipeline
+   */
   pipeline?: Document[];
+
+  /**
+   * similiar to MySQL's join
+   * This will allow you to join other collections
+   * just by passing a list of pointer names
+   * it accepts nested pointers ie: ['user.profile.photo']
+   */
   include?: string[];
+
+  /**
+   * define props to be excluded from the query results
+   * it accepts nested pointers ie: ['user.profile.createdAt']
+   */
   exclude?: string[];
 
+  /**
+   * this is a shortcut to multiple "wheres" at same time
+   *
+   * @example
+   * new UserModel({
+   *   name: 'John',
+   *   email: 'john@doe.com'
+   * }, {
+   *   by: ['name', 'email']
+   * })
+   * .fetch()
+   *
+   * will generate the following query:
+   *
+   * {
+   *  // ...
+   *  filter: {
+   *    name: 'John',
+   *    email: 'john@doe.com'
+   *  }
+   * }
+   */
   by?: string[];
+
+  /**
+   * pass any data context to the server triggers
+   */
   context?: any;
+
+  /**
+   * whether or not to exclude expired documents by default
+   */
   excludeExpiredDocs?: boolean;
 
+  /**
+   * for plugin extensions
+   */
   [key: string]: any;
 }
 
@@ -130,29 +192,38 @@ export class ActiveRecord<Doc extends Record> {
   }
 
   public async fetch() {
-    return this.query.findOne(this.objectId).then((doc) => {
-      Object.assign(this.doc, doc);
+    return this.query
+      .findOne(this.objectId, {
+        context: this.params.context,
+      })
+      .then((doc) => {
+        Object.assign(this.doc, doc);
 
-      if (isEmpty(doc)) {
-        this.hit = false;
-      } else {
-        this.hit = true;
-        this.objectId = doc.objectId;
-      }
+        if (isEmpty(doc)) {
+          this.hit = false;
+        } else {
+          this.hit = true;
+          this.objectId = doc.objectId;
+        }
 
-      return doc;
-    });
+        return doc;
+      });
   }
 
   public async save() {
     if (this.objectId) {
       return this.query.update(
         this.objectId,
-        await this.beforeDocumentSave(this.doc)
+        await this.beforeDocumentSave(this.doc),
+        {
+          context: this.params.context,
+        }
       );
     } else {
       return this.query
-        .insert(await this.beforeDocumentSave(this.doc))
+        .insert(await this.beforeDocumentSave(this.doc), {
+          context: this.params.context,
+        })
         .then((doc) => {
           this.doc = doc;
           this.objectId = doc.objectId;
@@ -164,7 +235,9 @@ export class ActiveRecord<Doc extends Record> {
     if (!this.objectId) {
       throw new Error('objectId is required to delete a record');
     }
-    return this.query.delete(this.objectId);
+    return this.query.delete(this.objectId, {
+      context: this.params.context,
+    });
   }
 
   public pointer<T = Doc>() {

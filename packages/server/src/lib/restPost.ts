@@ -39,6 +39,7 @@ import { newObjectId } from './utils/crypto';
 import { isUnlocked } from './utils/isUnlocked';
 import { compare, hash } from './utils/password';
 import { createSession } from './public';
+import { AggregateOptions } from 'mongodb';
 
 export function restPost({
   params,
@@ -123,6 +124,8 @@ export function restPost({
           beforeSaveCallback = await beforeSave.fn({
             before: docBefore,
             doc: docQRL.doc ?? undefined,
+            qrl: docQRL,
+            context: docQRL.options?.context ?? {},
           });
         }
 
@@ -234,6 +237,8 @@ export function restPost({
         if (beforeSave) {
           beforeSaveCallback = await beforeSave.fn({
             doc: docQRL.doc ?? undefined,
+            qrl: docQRL,
+            context: docQRL.options?.context ?? {},
           });
         }
 
@@ -424,7 +429,10 @@ async function postAggregate(query: DocQRL) {
 
   log('pipeline', JSON.stringify(pipe));
 
-  const cursor = collection$.aggregate<Document>(pipe, options);
+  const cursor = collection$.aggregate<Document>(
+    pipe,
+    options as AggregateOptions
+  );
 
   for await (const doc of cursor) {
     docs.push(doc);

@@ -41,10 +41,17 @@ export function pointer<T = Document>(
     `Invalid pointer (${JSON.stringify(object)}) for collection ${collection}`
   );
 
-  throw new EleganteError(ErrorCode.INVALID_DOCUMENT, 'Invalid pointer');
+  throw new EleganteError(ErrorCode.INVALID_POINTER, 'Invalid pointer');
 }
 
 export function pointerObjectFrom(value: string) {
+  if (!isPointer(value)) {
+    console.trace(`Invalid pointer (${value})`);
+    throw new EleganteError(
+      ErrorCode.INVALID_POINTER,
+      'Invalid string pointer'
+    );
+  }
   const explode = value.split('$');
   const collection = ExternalCollectionName[explode[0]] ?? explode[0];
   const objectId = explode[1];
