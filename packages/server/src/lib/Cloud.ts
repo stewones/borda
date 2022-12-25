@@ -9,7 +9,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Request, Response } from 'express';
-import { Document, InternalCollectionName, Session } from '@elegante/sdk';
+import { Document, InternalCollectionName, Session, User } from '@elegante/sdk';
 import { routeEnsureAuth } from './route';
 import { EleganteServer } from './Server';
 import { DocQRL } from './parseQuery';
@@ -29,9 +29,10 @@ interface CloudTriggerFactory<T = any> {
   before?: T;
   after?: T;
   qrl: DocQRL;
+  user: User;
+  context: Record<string, any>;
   req: Request;
   res: Response;
-  context: Record<string, any>;
 }
 
 export type CloudTriggerCallback<T = any> = void | boolean | { doc?: T };
