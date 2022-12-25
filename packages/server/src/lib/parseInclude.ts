@@ -14,6 +14,7 @@ import {
   isPointer,
   log,
   query,
+  isArrayPointer,
 } from '@elegante/sdk';
 
 import { ServerParams } from './Server';
@@ -56,58 +57,102 @@ export function parseInclude<T extends Document>(
       log('pointerValue', pointerValue);
       log('isPointer', isPointer(pointerValue));
 
+      if (isArrayPointer(pointerValue)) {
+        for (let pointer of pointerValue) {
+          const index = pointerValue.indexOf(pointer);
+          pointer = await parseJoin(
+            docQuery,
+            params,
+            locals,
+            obj,
+            tree,
+            pointerField,
+            pointer
+          );
+          pointerValue[index] = pointer;
+        }
+        continue;
+      }
+
       if (!isPointer(pointerValue)) {
         continue;
       }
 
-      const join = tree[pointerField];
-      const { collection, objectId } = pointerObjectFrom(pointerValue);
+      const doc = await parseJoin(
+        docQuery,
+        params,
+        locals,
+        obj,
+        tree,
+        pointerField,
+        pointerValue
+      );
 
-      const memo = Cache.get(collection, objectId);
+      // replace pointer with the actual document
+      obj[pointerField] = doc;
 
-      if (memo) {
-        // reuse pointer value
-        obj[pointerField] = memo;
+      // remove raw _p_ entry
+      delete obj[`_p_${pointerField}`];
 
-        // remove raw _p_ entry
-        delete obj[`_p_${pointerField}`];
-
-        /**
-         * this means the object may be populated in the first level
-         * but we still need to keep trying to populate the next level
-         */
-        for (const pointerTreeField of tree[pointerField]) {
-          const pointerTreeBase = pointerTreeField.split('.')[0];
-
-          log('pointerTreeField', pointerTreeField);
-          log('pointerTreeBase', pointerTreeBase);
-
-          await parseInclude(obj[pointerField])(
-            { ...docQuery, include: [pointerTreeField] },
-            params,
-            locals
-          );
-        }
-      } else {
-        const doc = await query<T>(collection)
-          .include(join)
-          .unlock() // here we force unlock because `parseInclude` run in the server anyways 💁‍♂️
-          .findOne(objectId);
-
-        if (!doc) continue;
-
-        // remove raw _p_ entry
-        delete obj[`_p_${pointerField}`];
-
-        // add pointer value
-        obj[pointerField] = doc;
-
-        // memoize
-        Cache.set(collection, objectId, obj[pointerField]);
-      }
+      /**
+       * this means the object may be populated in the first level
+       * but we still need to keep trying to populate the next level
+       */
+      await parseJoinKeep(docQuery, params, locals, obj, tree, pointerField);
     }
     return Promise.resolve(obj);
   };
+}
+
+export async function parseJoin<T extends Document>(
+  docQuery: DocumentQuery,
+  params: ServerParams,
+  locals: any,
+  obj: any,
+  tree: { [key: string]: string[] },
+  pointerField: string,
+  pointerValue: any
+) {
+  let doc;
+
+  const join = tree[pointerField];
+  const { collection, objectId } = pointerObjectFrom(pointerValue);
+  const memo = Cache.get(collection, objectId);
+
+  if (memo) {
+    doc = memo;
+  } else {
+    doc = await query<T>(collection)
+      .include(join)
+      .unlock() // here we force unlock because `parseInclude` run in the server anyways 💁‍♂️
+      .findOne(objectId);
+
+    // memoize
+    Cache.set(collection, objectId, obj[pointerField]);
+  }
+  return doc;
+}
+
+export async function parseJoinKeep(
+  docQuery: DocumentQuery,
+  params: ServerParams,
+  locals: any,
+  obj: any,
+  tree: { [key: string]: string[] },
+  pointerField: string
+) {
+  for (const pointerTreeField of tree[pointerField]) {
+    const pointerTreeBase = pointerTreeField.split('.')[0];
+
+    log('pointerTreeField', pointerTreeField);
+    log('pointerTreeBase', pointerTreeBase);
+
+    await parseInclude(obj[pointerField])(
+      { ...docQuery, include: [pointerTreeField] },
+      params,
+      locals
+    );
+  }
 }
 
 export function createTree(arr: string[] | undefined) {
