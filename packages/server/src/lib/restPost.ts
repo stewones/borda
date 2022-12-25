@@ -122,7 +122,8 @@ export function restPost({
         const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
         if (beforeSave) {
           beforeSaveCallback = await beforeSave.fn({
-            before: docBefore,
+            before: docBefore ?? undefined,
+            after: undefined,
             doc: docQRL.doc ?? undefined,
             qrl: docQRL,
             context: docQRL.options?.context ?? {},
@@ -160,7 +161,14 @@ export function restPost({
 
             const afterSave = getCloudTrigger(collectionName, 'afterSave');
             if (afterSave) {
-              afterSave.fn(afterSavePayload);
+              afterSave.fn({
+                ...afterSavePayload,
+                qrl: docQRL,
+                context: docQRL.options?.context ?? {},
+                user: res.locals['session']['user'],
+                req,
+                res,
+              });
             }
 
             invalidateCache(collectionName, docAfter);
@@ -239,6 +247,8 @@ export function restPost({
 
         if (beforeSave) {
           beforeSaveCallback = await beforeSave.fn({
+            before: undefined,
+            after: undefined,
             doc: docQRL.doc ?? undefined,
             qrl: docQRL,
             context: docQRL.options?.context ?? {},
@@ -284,7 +294,14 @@ export function restPost({
 
             const afterSave = getCloudTrigger(collectionName, 'afterSave');
             if (afterSave) {
-              afterSave.fn(afterSavePayload);
+              afterSave.fn({
+                ...afterSavePayload,
+                qrl: docQRL,
+                context: docQRL.options?.context ?? {},
+                user: res.locals['session']['user'],
+                req,
+                res,
+              });
             }
 
             return res.status(201).json(afterSavePayload.doc);

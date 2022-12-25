@@ -75,7 +75,7 @@ export function getCloudFunction(name: string) {
 }
 
 export abstract class Cloud {
-  public static beforeSave<T = any>(
+  public static beforeSave<T = Document>(
     collection: string,
     fn: (
       factory: CloudTriggerFactory<T>
@@ -93,9 +93,9 @@ export abstract class Cloud {
     });
   }
 
-  public static afterSave(
+  public static afterSave<T = Document>(
     collection: string,
-    fn: (factory: CloudTriggerFactory) => void
+    fn: (factory: CloudTriggerFactory<T>) => void
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.afterSave`, {

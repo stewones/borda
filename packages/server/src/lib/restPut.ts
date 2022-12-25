@@ -85,7 +85,8 @@ export function restPut({
 
       if (beforeSave) {
         beforeSaveCallback = await beforeSave.fn({
-          before: docBefore,
+          before: docBefore ?? undefined,
+          after: undefined,
           doc: document,
           qrl: docQRL,
           context: docQRL.options?.context ?? {},
@@ -155,9 +156,12 @@ export function restPut({
             const afterSave = getCloudTrigger(collectionName, 'afterSave');
             if (afterSave) {
               afterSave.fn({
+                ...afterSavePayload,
+                qrl: docQRL,
+                context: docQRL.options?.context ?? {},
+                user: res.locals['session']['user'],
                 req,
                 res,
-                ...afterSavePayload,
               });
             }
 
