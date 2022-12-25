@@ -29,6 +29,8 @@ interface CloudTriggerFactory<T = any> {
   before?: T;
   after?: T;
   qrl: DocQRL;
+  req: Request;
+  res: Response;
   context: Record<string, any>;
 }
 

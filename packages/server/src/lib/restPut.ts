@@ -89,6 +89,8 @@ export function restPut({
           doc: document,
           qrl: docQRL,
           context: docQRL.options?.context ?? {},
+          req,
+          res,
         });
       }
 

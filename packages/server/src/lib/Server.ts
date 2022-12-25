@@ -48,8 +48,8 @@ export interface ServerParams {
   /**
    * Default to 1h for document time-to-live.
    * it means that some internal queries will hit memory and be invalidated on every hour.
-   * *unless* related docs are updated/deleted in the database, then its cache is invalidated immediately.
-   * this is so we don't need to be accessing database every time we need to get a document.
+   * *unless* related docs are updated/deleted in the database, then its cache is invalidated right away.
+   * this is so we don't need to be hitting database every time we need to get a document.
    */
   documentCacheTTL?: number;
 }
@@ -95,10 +95,11 @@ export async function createIndexes({
         !collection.name.startsWith('system.')
       ) {
         /**
-         * create _expires_at index used for internal soft deletes
-         * ie: we don't actually delete the document, we just set _expires_at to a new Date() object
-         * representing the TTL. Then mongo will automatically delete the document after the TTL expires
-         * so project-wide, we should never directly delete a documentif we want to keep a record of it. ie: hooks like afterDelete
+         * Create `_expires_at` index used for soft deletes.
+         * We don't actually delete a document, we update its _expires_at field with the current `Date`.
+         * Then mongo will automatically in fact delete this document once the TTL is reached.
+         * Project-wide, we should never directly delete a document if we want to keep its reference.
+         * The reasoning is due to hooks like `afterDelete` where we need the document to be available for linking back.
          */
         await db
           .collection(collection.name)

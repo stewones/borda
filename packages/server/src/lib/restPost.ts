@@ -126,6 +126,8 @@ export function restPost({
             doc: docQRL.doc ?? undefined,
             qrl: docQRL,
             context: docQRL.options?.context ?? {},
+            req,
+            res,
           });
         }
 
@@ -239,6 +241,8 @@ export function restPost({
             doc: docQRL.doc ?? undefined,
             qrl: docQRL,
             context: docQRL.options?.context ?? {},
+            req,
+            res,
           });
         }
 
