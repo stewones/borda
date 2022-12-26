@@ -64,7 +64,7 @@ export function restDelete({
       /**
        * @todo run beforeDelete
        */
-      const docQRL: Partial<DocQRL> = {
+      const docQRL: Partial<DocQRL<any>> = {
         filter: {
           _id: {
             $eq: objectId,

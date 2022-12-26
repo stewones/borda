@@ -8,7 +8,14 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Filter, FindOptions, Record, Document, Query, Sort } from './types';
+import {
+  Filter,
+  FindOptions,
+  Record,
+  Query,
+  Sort,
+  FilterOperators,
+} from './types';
 import { isEmpty, isServer, unset } from './utils';
 import { query } from './query';
 import { pointer } from './pointer';
@@ -20,7 +27,9 @@ export interface ActiveParams<T = any> {
   /**
    * define a default filter for the query (same as MongoDB's)
    */
-  filter?: Filter<T>;
+  filter?: Partial<{
+    [key in keyof T]: T[key] | FilterOperators<T[key]>;
+  }>;
 
   /**
    * define a default sort for the query. (Same as MongoDB's)
@@ -30,9 +39,9 @@ export interface ActiveParams<T = any> {
   /**
    * define a default projection for the query. (Same as MongoDB's)
    */
-  projection?: Partial<{
+  projection?: {
     [key in keyof T]: number;
-  }>;
+  };
 
   /**
    * define default options for the Find ang Aggregate operations
@@ -42,7 +51,7 @@ export interface ActiveParams<T = any> {
   /**
    * define a default MongoDB aggregation pipeline
    */
-  pipeline?: Document[];
+  pipeline?: { [key in keyof T]: Filter<T> }[];
 
   /**
    * similiar to MySQL's join
@@ -114,7 +123,7 @@ export class ActiveRecord<Doc extends Record> {
     this.collection = collection;
     this.params = params ?? ({} as ActiveParams);
 
-    let filter: Filter<Doc> = this.params.filter ?? ({} as Filter<Doc>);
+    let filter: any = this.params.filter ?? {};
 
     /**
      * here we force to not include expired documents by default
@@ -135,7 +144,7 @@ export class ActiveRecord<Doc extends Record> {
         .unlock(isServer())
         .include(this.params.include ?? [])
         .exclude(this.params.exclude ?? [])
-        .projection(this.params.projection ?? {});
+        .projection(this.params.projection ?? ({} as any));
     } else if (typeof record === 'object') {
       Object.assign(this.doc, record);
 
@@ -164,8 +173,8 @@ export class ActiveRecord<Doc extends Record> {
         .unlock(isServer())
         .include(this.params.include ?? [])
         .exclude(this.params.exclude ?? [])
-        .projection(this.params.projection ?? {})
-        .pipeline(this.params.pipeline ?? [])
+        .projection(this.params.projection ?? ({} as any))
+        .pipeline(this.params.pipeline ?? ([] as any))
         .sort(this.params.sort ?? {})
         .filter(filter);
     }

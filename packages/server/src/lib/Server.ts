@@ -23,6 +23,7 @@ import {
   query,
   pointer,
   FindOptions,
+  DocumentPipeline,
 } from '@elegante/sdk';
 
 import { InternalFieldName } from '@elegante/sdk';
@@ -162,21 +163,21 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
  * @param {{
  *   filter: Filter<TSchema>;
  *   pipeline: Document[];
- *   projection: Partial<{
+ *   projection: {
  *     [key in keyof TSchema]: number;
- *   }>;
+ *   };
  *   sort?: Sort;
  *   limit?: number;
  *   skip?: number;
  * }} bridge
  * @returns {*}
  */
-export function createPipeline<TSchema>(bridge: {
+export function createPipeline<TSchema extends Document = Document>(bridge: {
   filter: Filter<TSchema>;
-  pipeline?: Document[] | undefined;
-  projection: Partial<{
+  pipeline?: DocumentPipeline<TSchema>;
+  projection?: {
     [key in keyof TSchema]: number;
-  }>;
+  };
   sort?: Sort;
   limit?: number;
   skip?: number;

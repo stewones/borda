@@ -45,19 +45,47 @@ export type DocumentEvent =
   | 'rename'
   | 'shardCollection';
 
-export interface DocumentQuery<T = Document> {
-  filter: FilterOperations<T>;
-  limit: number | undefined;
-  skip: number | undefined;
-  sort: Sort | undefined;
-  projection?: T;
+export interface DocumentQuery<TSchema = Document> {
+  filter?: Partial<{
+    [key in keyof TSchema]: TSchema[key] | FilterOperators<TSchema[key]>;
+  }>;
+  limit?: number;
+  skip?: number;
+  sort?: Sort;
+  projection?: Partial<{
+    [key in keyof TSchema]: number;
+  }>;
   options?: DocumentOptions;
-  pipeline?: Document[];
-  include: string[];
-  exclude: string[];
-  doc?: Document | null | undefined;
-  collection?: string;
+  pipeline?: DocumentPipeline<TSchema>;
+  include?: string[];
+  exclude?: string[];
+  doc?: Document | null;
+  collection: string;
 }
+
+export type DocumentPipe<TSchema = Document> =
+  | { $explain: ExplainVerbosityLike }
+  | { $group: Document }
+  | { $limit: number }
+  | {
+      $match: Partial<{
+        [key in keyof TSchema]: TSchema[key] | FilterOperators<TSchema[key]>;
+      }>;
+    }
+  | { $out: string | { db: string; coll: string } }
+  | {
+      $project: Partial<{
+        [key in keyof TSchema]: number;
+      }>;
+    }
+  | { $lookup: Document }
+  | { $redact: Document }
+  | { $skip: number }
+  | { $sort: Sort }
+  | { $unwind: Document }
+  | { $geoNear: Document };
+
+export type DocumentPipeline<TSchema = Document> = DocumentPipe<TSchema>[];
 
 export declare type QueryMethod =
   /**
@@ -84,19 +112,24 @@ export declare type QueryMethod =
   | 'signUp'
   | 'signIn';
 
-export interface QRLParams extends Document {
+export interface QRLParams<TSchema extends Document = Document> {
   collection: string;
-  filter: FilterOperations<Document>;
-  pipeline?: Document[] | undefined;
-  projection: Partial<{
-    [key in keyof Document]: number;
+  filter?: Partial<{
+    [key in keyof TSchema]: TSchema[key] | FilterOperators<TSchema[key]>;
+  }>;
+  pipeline?: DocumentPipeline<TSchema>;
+  projection?: Partial<{
+    [key in keyof TSchema]: number;
   }>;
   sort?: Sort;
   limit?: number;
   skip?: number;
+  include?: string[];
+  exclude?: string[];
+  unlock?: boolean;
 }
-export declare interface Query<TSchema = Document> {
-  params: QRLParams;
+export declare interface Query<TSchema extends Document = Document> {
+  params: QRLParams<TSchema>;
   options: FindOptions;
 
   /**
@@ -122,7 +155,15 @@ export declare interface Query<TSchema = Document> {
   /**
    * filter documents unsing mogo-like syntax
    */
-  filter(by: Filter<TSchema>): Query<TSchema>;
+  filter(
+    by: Partial<{
+      [key in keyof TSchema]:
+        | string
+        | boolean
+        | Partial<TSchema>
+        | FilterOperators<TSchema[key]>;
+    }>
+  ): Query<TSchema>;
 
   /**
    * limit results for this query
@@ -137,7 +178,7 @@ export declare interface Query<TSchema = Document> {
   /**
    * pipeline documents using mongo-like syntax
    */
-  pipeline(docs: Document[]): Query<TSchema>;
+  pipeline(docs: DocumentPipeline<TSchema>): Query<TSchema>;
 
   /**
    * include pointer results for this query. can be dot notation. ie: ['product.owner.name']
@@ -376,6 +417,24 @@ export declare interface RootFilterOperators<TSchema> extends Document {
   $where?: string | ((this: TSchema) => boolean);
   $comment?: string | Document;
 }
+
+export declare const ExplainVerbosity: Readonly<{
+  readonly queryPlanner: 'queryPlanner';
+  readonly queryPlannerExtended: 'queryPlannerExtended';
+  readonly executionStats: 'executionStats';
+  readonly allPlansExecution: 'allPlansExecution';
+}>;
+
+/** @public */
+export declare type ExplainVerbosity = string;
+
+/**
+ * For backwards compatibility, true is interpreted as "allPlansExecution"
+ * and false as "queryPlanner". Prior to server version 3.6, aggregate()
+ * ignores the verbosity parameter and executes in "queryPlanner".
+ * @public
+ */
+export declare type ExplainVerbosityLike = ExplainVerbosity | boolean;
 
 export declare type Filter<TSchema> =
   | Partial<TSchema>

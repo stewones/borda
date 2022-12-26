@@ -90,8 +90,8 @@ export function handleOn(
       ...addFullDocumentPrefix(
         createPipeline<Document>({
           filter: filter ?? ({} as any),
-          pipeline,
-          projection: projection ?? {},
+          pipeline: pipeline ?? ([] as any),
+          projection: projection ?? ({} as any),
         })
       ),
     ],
@@ -215,8 +215,8 @@ export async function handleOnce(
   const cursor = collection$.aggregate<Document>(
     createPipeline<Document>({
       filter: filter ?? {},
-      pipeline,
-      projection: projection ?? {},
+      pipeline: pipeline ?? ([] as any),
+      projection: projection ?? ({} as any),
       limit: limit ?? 10000,
       skip: skip ?? 0,
       sort: sort ?? {},

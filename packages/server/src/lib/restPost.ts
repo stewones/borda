@@ -350,7 +350,7 @@ export function restPost({
         /**
          * user sign in
          */
-        return postSignIn(docQRL, res);
+        return postSignIn(docQRL as unknown as DocQRL<User>, res);
       } else {
         throw new EleganteError(
           ErrorCode.REST_METHOD_NOT_FOUND,
@@ -446,8 +446,8 @@ async function postAggregate(query: DocQRL) {
   const docs: Document[] = [];
   const pipe = createPipeline<Document>({
     filter: filter ?? {},
-    pipeline,
-    projection: projection ?? {},
+    pipeline: pipeline ?? ([] as any),
+    projection: projection ?? ({} as any),
     limit: limit ?? 10000,
     skip: skip ?? 0,
     sort: sort ?? {},
@@ -467,7 +467,7 @@ async function postAggregate(query: DocQRL) {
   return docs;
 }
 
-async function postSignIn(docQRL: DocQRL, res: Response) {
+async function postSignIn(docQRL: DocQRL<User>, res: Response) {
   const { projection, include, exclude, doc } = docQRL;
   const { email, password } = doc ?? {};
   /**
@@ -498,7 +498,7 @@ async function postSignIn(docQRL: DocQRL, res: Response) {
             ...projection,
             password: 1,
           }
-        : {}
+        : ({} as any)
     )
     .include(include ?? [])
     .exclude(exclude ?? [])

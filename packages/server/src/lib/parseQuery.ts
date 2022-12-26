@@ -18,9 +18,10 @@ import {
 
 import { EleganteServer } from './Server';
 
-export interface DocQRL extends DocumentQuery {
-  collection$: Collection<Document>;
-  doc: Document;
+export interface DocQRL<T extends Document = Document>
+  extends DocumentQuery<T> {
+  collection$: Collection<T>;
+  doc: T;
 }
 
 export type DocQRLFrom = DocumentQuery | DocumentLiveQuery | Document;

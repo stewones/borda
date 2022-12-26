@@ -29,12 +29,14 @@ import {
 } from './types/query';
 import { log } from './log';
 
-export function query<TSchema extends Document>(collection: string) {
+export function query<TSchema extends Document = Document>(collection: string) {
   const bridge: Query<TSchema> = {
     params: {
       collection: '',
-      projection: {},
       filter: {},
+      include: [],
+      exclude: [],
+      unlock: false,
     },
 
     options: {},
@@ -63,14 +65,16 @@ export function query<TSchema extends Document>(collection: string) {
      * doc modifiers
      */
     projection: (project) => {
-      const newProject: Document = { ...project };
+      const newProject = {
+        ...project,
+      } as any;
 
       /**
        * applies a little hack to make sure the projection
        * also work with pointers. ie: _p_fieldName
        */
       for (const fieldName in project) {
-        newProject['_p_' + fieldName] = project[fieldName];
+        newProject[`_p_${fieldName}`] = project[fieldName] ? 1 : 0;
       }
 
       /**
@@ -93,7 +97,7 @@ export function query<TSchema extends Document>(collection: string) {
     },
 
     filter: (by) => {
-      bridge.params['filter'] = by;
+      bridge.params['filter'] = by as any;
       return bridge;
     },
 
@@ -118,7 +122,7 @@ export function query<TSchema extends Document>(collection: string) {
     },
 
     pipeline: (docs) => {
-      bridge.params['pipeline'] = docs;
+      bridge.params['pipeline'] = docs ? docs : ([] as any);
       return bridge;
     },
 
@@ -145,7 +149,7 @@ export function query<TSchema extends Document>(collection: string) {
           _id: {
             $eq: optionsOrObjectId,
           },
-        };
+        } as any;
       }
 
       return bridge.run(
@@ -344,10 +348,10 @@ export function query<TSchema extends Document>(collection: string) {
         skip,
         include,
         exclude,
-        pipeline,
-        unlock,
         collection,
         event,
+        pipeline: pipeline ?? ([] as any),
+        unlock: unlock ?? false,
         method: 'on',
       };
 
@@ -489,8 +493,8 @@ export function query<TSchema extends Document>(collection: string) {
               include,
               exclude,
               pipeline,
-              unlock,
               collection,
+              unlock: unlock ?? false,
               method: 'once',
             };
 
