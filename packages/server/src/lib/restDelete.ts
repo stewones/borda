@@ -82,7 +82,7 @@ export function restDelete({
 
       if (cursor.ok && cursor.value) {
         const afterDeletePayload = parseResponse(
-          { doc: cursor.value },
+          { before: cursor.value, doc: cursor.value, after: null },
           {
             removeSensitiveFields: !isUnlocked(res.locals),
           }
@@ -92,6 +92,11 @@ export function restDelete({
         if (afterDelete) {
           afterDelete.fn({
             ...afterDeletePayload,
+            qrl: docQRL,
+            context: docQRL.options?.context ?? {},
+            user: res.locals['session']['user'],
+            req,
+            res,
           });
         }
 
