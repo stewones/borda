@@ -11,6 +11,7 @@ export * from './cleanKey';
 export * from './cloneDeep';
 export * from './delay';
 export * from './get';
+export * from './guid';
 export * from './isArrayPointer';
 export * from './isBoolean';
 export * from './isDate';
