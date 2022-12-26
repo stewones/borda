@@ -46,9 +46,7 @@ export type DocumentEvent =
   | 'shardCollection';
 
 export interface DocumentQuery<TSchema = Document> {
-  filter?: Partial<{
-    [key in keyof TSchema]: TSchema[key] | FilterOperators<TSchema[key]>;
-  }>;
+  filter?: DocumentFilter<TSchema>;
   limit?: number;
   skip?: number;
   sort?: Sort;
@@ -63,29 +61,40 @@ export interface DocumentQuery<TSchema = Document> {
   collection: string;
 }
 
+export type DocumentRootFilter<TSchema = Document> =
+  RootFilterOperators<TSchema> & { $expr?: Record<string, any> };
+
 export type DocumentPipe<TSchema = Document> =
   | { $explain: ExplainVerbosityLike }
   | { $group: Document }
   | { $limit: number }
   | {
-      $match: Partial<{
-        [key in keyof TSchema]: TSchema[key] | FilterOperators<TSchema[key]>;
-      }>;
+      $match:
+        | Partial<{
+            [key in keyof TSchema]:
+              | TSchema[key]
+              | FilterOperators<TSchema[key]>;
+          }>
+        | DocumentRootFilter<TSchema>;
     }
   | { $out: string | { db: string; coll: string } }
   | {
-      $project: Partial<{
-        [key in keyof TSchema]: number;
-      }>;
+      $project: Document;
     }
   | { $lookup: Document }
   | { $redact: Document }
   | { $skip: number }
   | { $sort: Sort }
-  | { $unwind: Document }
-  | { $geoNear: Document };
+  | { $unwind: string | Document }
+  | { $geoNear: Document }
+  | { $addFields: Document };
 
 export type DocumentPipeline<TSchema = Document> = DocumentPipe<TSchema>[];
+
+export type DocumentFilter<TSchema = Document> = Partial<{
+  [key in keyof TSchema]: TSchema[key] | FilterOperators<TSchema[key]>;
+}> &
+  DocumentRootFilter<TSchema>;
 
 export declare type QueryMethod =
   /**
@@ -114,9 +123,7 @@ export declare type QueryMethod =
 
 export interface QRLParams<TSchema extends Document = Document> {
   collection: string;
-  filter?: Partial<{
-    [key in keyof TSchema]: TSchema[key] | FilterOperators<TSchema[key]>;
-  }>;
+  filter?: DocumentFilter<TSchema>;
   pipeline?: DocumentPipeline<TSchema>;
   projection?: Partial<{
     [key in keyof TSchema]: number;
@@ -155,15 +162,7 @@ export declare interface Query<TSchema extends Document = Document> {
   /**
    * filter documents unsing mogo-like syntax
    */
-  filter(
-    by: Partial<{
-      [key in keyof TSchema]:
-        | string
-        | boolean
-        | Partial<TSchema>
-        | FilterOperators<TSchema[key]>;
-    }>
-  ): Query<TSchema>;
+  filter(by: DocumentFilter<TSchema>): Query<TSchema>;
 
   /**
    * limit results for this query
@@ -1054,11 +1053,11 @@ export declare interface FilterOperators<TValue>
   $eq?: TValue;
   $gt?: TValue;
   $gte?: TValue;
-  $in?: ReadonlyArray<TValue>;
+  $in?: TValue;
   $lt?: TValue;
   $lte?: TValue;
   $ne?: TValue;
-  $nin?: ReadonlyArray<TValue>;
+  $nin?: TValue;
   $not?: TValue extends string
     ? FilterOperators<TValue> | RegExp
     : FilterOperators<TValue>;

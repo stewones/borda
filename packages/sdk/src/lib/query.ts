@@ -341,7 +341,6 @@ export function query<TSchema extends Document = Document>(collection: string) {
 
       const body: DocumentLiveQuery = {
         options,
-        filter,
         projection,
         sort,
         limit,
@@ -350,6 +349,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
         exclude,
         collection,
         event,
+        filter: filter ?? ({} as any),
         pipeline: pipeline ?? ([] as any),
         unlock: unlock ?? false,
         method: 'on',
@@ -485,7 +485,6 @@ export function query<TSchema extends Document = Document>(collection: string) {
             } = bridge.params;
 
             const body: DocumentLiveQuery = {
-              filter,
               projection,
               sort,
               limit,
@@ -494,6 +493,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
               exclude,
               pipeline,
               collection,
+              filter: filter ?? ({} as any),
               unlock: unlock ?? false,
               method: 'once',
             };

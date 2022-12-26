@@ -15,6 +15,7 @@ import {
   Query,
   Sort,
   FilterOperators,
+  DocumentFilter,
 } from './types';
 import { isEmpty, isServer, unset } from './utils';
 import { query } from './query';
@@ -27,9 +28,7 @@ export interface ActiveParams<T = any> {
   /**
    * define a default filter for the query (same as MongoDB's)
    */
-  filter?: Partial<{
-    [key in keyof T]: T[key] | FilterOperators<T[key]>;
-  }>;
+  filter?: DocumentFilter<T>;
 
   /**
    * define a default sort for the query. (Same as MongoDB's)
