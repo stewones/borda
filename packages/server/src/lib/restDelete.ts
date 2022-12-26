@@ -94,7 +94,7 @@ export function restDelete({
             ...afterDeletePayload,
             qrl: docQRL,
             context: docQRL.options?.context ?? {},
-            user: res.locals['session']['user'],
+            user: res.locals['session']?.user,
             req,
             res,
           });

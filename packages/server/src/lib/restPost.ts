@@ -127,7 +127,7 @@ export function restPost({
             doc: docQRL.doc ?? undefined,
             qrl: docQRL,
             context: docQRL.options?.context ?? {},
-            user: res.locals['session']['user'],
+            user: res.locals['session']?.user,
             req,
             res,
           });
@@ -165,7 +165,7 @@ export function restPost({
                 ...afterSavePayload,
                 qrl: docQRL,
                 context: docQRL.options?.context ?? {},
-                user: res.locals['session']['user'],
+                user: res.locals['session']?.user,
                 req,
                 res,
               });
@@ -208,7 +208,7 @@ export function restPost({
               ...afterDeletePayload,
               qrl: docQRL,
               context: docQRL.options?.context ?? {},
-              user: res.locals['session']['user'],
+              user: res.locals['session']?.user,
               req,
               res,
             });
@@ -255,7 +255,7 @@ export function restPost({
             doc: docQRL.doc ?? undefined,
             qrl: docQRL,
             context: docQRL.options?.context ?? {},
-            user: res.locals['session']['user'],
+            user: res.locals['session']?.user,
             req,
             res,
           });
@@ -301,7 +301,7 @@ export function restPost({
                 ...afterSavePayload,
                 qrl: docQRL,
                 context: docQRL.options?.context ?? {},
-                user: res.locals['session']['user'],
+                user: res.locals['session']?.user,
                 req,
                 res,
               });

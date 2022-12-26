@@ -13,7 +13,7 @@
         "tsConfig": "packages/sdk/tsconfig.lib.json",
         "project": "packages/sdk/src/package.json",
         "compiler": "tsc",
-        "format": ["cjs"],
+        "format": ["cjs", "esm"],
         "updateBuildableProjectDepsInPackageJson": false
       }
     },

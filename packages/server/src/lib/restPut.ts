@@ -90,7 +90,7 @@ export function restPut({
           doc: document,
           qrl: docQRL,
           context: docQRL.options?.context ?? {},
-          user: res.locals['session']['user'],
+          user: res.locals['session']?.user,
           req,
           res,
         });
@@ -159,7 +159,7 @@ export function restPut({
                 ...afterSavePayload,
                 qrl: docQRL,
                 context: docQRL.options?.context ?? {},
-                user: res.locals['session']['user'],
+                user: res.locals['session']?.user,
                 req,
                 res,
               });

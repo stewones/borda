@@ -9,6 +9,7 @@
 export * from './types';
 export * from './utils';
 export * from './Auth';
+export * from './Client';
 export * from './Active';
 export * from './Cloud';
 export * from './Error';

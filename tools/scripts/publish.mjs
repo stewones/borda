@@ -53,10 +53,14 @@ try {
 
   if (name === 'browser') {
     json['name'] = `@elegante/${name}`;
-    // json['type'] = 'module';
+    json['type'] = 'module';
     json['dependencies'] = {
       'reflect-metadata': '0.1.13',
     };
+  }
+
+  if (name === 'sdk') {
+    delete json['type'];
   }
 
   // write to package.json
