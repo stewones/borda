@@ -105,9 +105,9 @@ export abstract class Cloud {
     });
   }
 
-  public static afterDelete(
+  public static afterDelete<T = Document>(
     collection: string,
-    fn: (factory: CloudTriggerFactory) => void
+    fn: (factory: CloudTriggerFactory<T>) => void
   ) {
     collection = InternalCollectionName[collection] ?? collection;
     CloudTrigger.set(`${collection}.afterDelete`, {
