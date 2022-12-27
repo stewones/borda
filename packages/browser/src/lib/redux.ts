@@ -109,16 +109,18 @@ export function createAction<T = any>(
  *
  * @export
  * @template T
- * @param {Action<T>} action
- * @returns {*}
+ * @param {(Action<T> | ((dispatch: any) => Promise<boolean>))} action
+ * @returns {*}  {Action<T>}
  */
-export function dispatch<T = any>(action: Action<T>) {
+export function dispatch<T = any>(
+  action: Action<T> | ((dispatch: any) => Promise<boolean>)
+): Action<T> {
   if (!EleganteBrowser.store) {
     throw new Error(
-      'unable to find any store. to use dispatch make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+      'unable to find any store. to use dispatch make sure to import { load } from @elegante/browser and call `load()` in your app startup.'
     );
   }
-  return EleganteBrowser.store.dispatch(action);
+  return EleganteBrowser.store.dispatch(action as Action<T>);
 }
 
 /**

@@ -1053,11 +1053,11 @@ export declare interface FilterOperators<TValue>
   $eq?: TValue;
   $gt?: TValue;
   $gte?: TValue;
-  $in?: TValue;
+  $in?: TValue | ReadonlyArray<TValue>;
   $lt?: TValue;
   $lte?: TValue;
   $ne?: TValue;
-  $nin?: TValue;
+  $nin?: TValue | ReadonlyArray<TValue>;
   $not?: TValue extends string
     ? FilterOperators<TValue> | RegExp
     : FilterOperators<TValue>;
