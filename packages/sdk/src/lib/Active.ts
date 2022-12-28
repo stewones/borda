@@ -14,7 +14,6 @@ import {
   Record,
   Query,
   Sort,
-  FilterOperators,
   DocumentFilter,
 } from './types';
 import { isEmpty, isServer, unset } from './utils';
@@ -99,11 +98,6 @@ export interface ActiveParams<T = any> {
    * whether or not to exclude expired documents by default
    */
   excludeExpiredDocs?: boolean;
-
-  /**
-   * for plugin extensions
-   */
-  [key: string]: any;
 }
 
 export class ActiveRecord<Doc extends Record> {
