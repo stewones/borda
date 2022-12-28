@@ -1,3 +1,20 @@
 {
-  "tsImportSorter.configuration.autoFormat": "off"
+  "tsImportSorter.configuration.autoFormat": "onSave",
+  "tsImportSorter.configuration.exclude": [
+    "node_modules",
+    "apps/express/src/main.ts"
+  ],
+  "tsImportSorter.configuration.keepUnused": [],
+  "tsImportSorter.configuration.groupRules": [
+    {},
+    "^node:",
+    "^@angular/",
+    "^vue$",
+    "^react(-dom)?$",
+    "^@elegante",
+    "^@intenseloop",
+    "^@inl",
+    "^[@]",
+    "^[.]"
+  ]
 }
