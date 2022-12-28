@@ -26,7 +26,7 @@ import { defer as deferRXJS, Observable } from 'rxjs';
  * import { query } from '@elegante/sdk';
  * import { from } from '@elegante/browser';
  *
- * const users$ = from(query('users', { name: 'John' }));
+ * const users$ = from(query('User').filter({ name: 'John' }).findOne());
  *
  * @export
  * @template T

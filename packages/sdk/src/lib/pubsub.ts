@@ -7,13 +7,11 @@
  */
 
 import { finalize, Subject, Subscription } from 'rxjs';
+
 import { EleganteClient } from './Client';
 import { Document } from './types/query';
 
-export function publish<T extends Document>(
-  key: string,
-  value: T = '' as unknown as T
-) {
+export function publish<T = void>(key: string, value?: T) {
   if (EleganteClient.pubsub[key]) {
     EleganteClient.pubsub[key].next(value);
   }
