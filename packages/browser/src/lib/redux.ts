@@ -109,11 +109,11 @@ export function createAction<T = any>(
  *
  * @export
  * @template T
- * @param {(Action<T> | ((dispatch: any) => Promise<boolean>))} action
+ * @param {(Action<T> | ((dispatch: any) => Promise<boolean | void> | void))} action
  * @returns {*}  {Action<T>}
  */
 export function dispatch<T = any>(
-  action: Action<T> | ((dispatch: any) => Promise<boolean>)
+  action: Action<T> | ((dispatch: any) => Promise<boolean | void> | void)
 ): Action<T> {
   if (!EleganteBrowser.store) {
     throw new Error(
