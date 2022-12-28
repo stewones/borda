@@ -53,13 +53,18 @@ export abstract class Auth {
     });
   }
 
-  public static signUp(from: {
-    name: string;
-    email: string;
-    password: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any;
-  }): Promise<Session> {
+  public static signUp(
+    from: {
+      name: string;
+      email: string;
+      password: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      [key: string]: any;
+    },
+    options?: {
+      saveToken?: boolean;
+    }
+  ): Promise<Session> {
     const headers = {
       [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         EleganteClient.params.apiKey,
@@ -75,7 +80,9 @@ export abstract class Auth {
       },
     }).then((session) => {
       const { token } = session;
-      if (token && !isServer()) {
+      const persist = options?.saveToken ?? true;
+
+      if (persist && token && !isServer()) {
         LocalStorage.set(
           `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`,
           token
