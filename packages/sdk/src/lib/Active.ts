@@ -220,13 +220,11 @@ export class ActiveRecord<Doc extends Record> {
 
   public async save() {
     if (this.objectId) {
-      return this.query.update(
-        this.objectId,
-        await this.beforeDocumentSave(this.doc),
-        {
+      return this.query
+        .update(this.objectId, await this.beforeDocumentSave(this.doc), {
           context: this.params.context,
-        }
-      );
+        })
+        .then(() => this.getRawValue());
     } else {
       return this.query
         .insert(await this.beforeDocumentSave(this.doc), {
@@ -235,6 +233,7 @@ export class ActiveRecord<Doc extends Record> {
         .then((doc) => {
           this.doc = doc;
           this.objectId = doc.objectId;
+          return this.getRawValue();
         });
     }
   }
