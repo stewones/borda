@@ -15,12 +15,12 @@ import {
   Query,
   Sort,
   DocumentFilter,
+  AggregateOptions,
 } from './types';
 import { isEmpty, isServer, unset } from './utils';
 import { query } from './query';
 import { pointer } from './pointer';
 import { getPluginHook } from './Plugin';
-import { AggregateOptions } from 'mongodb';
 
 export type ActiveModel<T> = Partial<T> | string;
 export interface ActiveParams<T = any> {
