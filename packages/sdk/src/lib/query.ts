@@ -11,23 +11,48 @@
 
 import 'reflect-metadata';
 
-import { finalize, Observable } from 'rxjs';
-import { EleganteClient } from './Client';
-import { EleganteError, ErrorCode } from './Error';
-import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
-import { fetch, HttpMethod } from './fetch';
-import { InternalFieldName, InternalHeaders } from './internal';
-import { webSocketServer, getUrl, WebSocketFactory } from './websocket';
-import { DocumentLiveQuery, LiveQueryMessage } from './types';
-
 import {
-  Query,
+  finalize,
+  Observable,
+} from 'rxjs';
+
+import { EleganteClient } from './Client';
+import {
+  EleganteError,
+  ErrorCode,
+} from './Error';
+import {
+  fetch,
+  HttpMethod,
+} from './fetch';
+import {
+  InternalFieldName,
+  InternalHeaders,
+} from './internal';
+import { log } from './log';
+import {
+  DocumentLiveQuery,
+  LiveQueryMessage,
+} from './types';
+import {
+  ChangeStreamOptions,
   Document,
   DocumentQuery,
   DocumentResponse,
-  ChangeStreamOptions,
+  Query,
 } from './types/query';
-import { log } from './log';
+import {
+  cleanKey,
+  isBoolean,
+  isEmpty,
+  isServer,
+  LocalStorage,
+} from './utils';
+import {
+  getUrl,
+  WebSocketFactory,
+  webSocketServer,
+} from './websocket';
 
 export function query<TSchema extends Document = Document>(collection: string) {
   const bridge: Query<TSchema> = {
@@ -169,13 +194,9 @@ export function query<TSchema extends Document = Document>(collection: string) {
         // method
         typeof objectIdOrDoc === 'string' ? 'put' : 'update',
         // options
-        typeof docOrOptions === 'object' && docOrOptions['context']
-          ? docOrOptions
-          : options ?? {},
+        docOrOptions && docOrOptions['context'] ? docOrOptions : options ?? {},
         // optional: doc
-        typeof docOrOptions === 'object' && docOrOptions['context']
-          ? objectIdOrDoc
-          : options ?? docOrOptions,
+        docOrOptions && !docOrOptions['context'] ? docOrOptions : {},
         // optional: objectId
         typeof objectIdOrDoc === 'string' ? objectIdOrDoc : undefined
       ) as Promise<void>;
@@ -284,7 +305,9 @@ export function query<TSchema extends Document = Document>(collection: string) {
         }
       }
 
-      log(method, JSON.stringify(bridge.params), options ?? '', doc ?? '');
+      log(method, 'params', JSON.stringify(bridge.params));
+      log(method, 'options', JSON.stringify(options));
+      log(method, 'doc', JSON.stringify(doc));
 
       const docQuery: Document | DocumentQuery<TSchema> = {
         options,

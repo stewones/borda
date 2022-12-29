@@ -8,19 +8,23 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { getPluginHook } from './Plugin';
+import { pointer } from './pointer';
+import { query } from './query';
 import {
+  AggregateOptions,
+  DocumentFilter,
   Filter,
   FindOptions,
-  Record,
   Query,
+  Record,
   Sort,
-  DocumentFilter,
-  AggregateOptions,
 } from './types';
-import { isEmpty, isServer, unset } from './utils';
-import { query } from './query';
-import { pointer } from './pointer';
-import { getPluginHook } from './Plugin';
+import {
+  isEmpty,
+  isServer,
+  unset,
+} from './utils';
 
 export type ActiveModel<T> = Partial<T> | string;
 export interface ActiveParams<T = any> {
