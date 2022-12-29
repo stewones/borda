@@ -8,7 +8,6 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { cloneDeep } from './cloneDeep';
 import { isServer } from './isServer';
 
 export class LocalStorage {
@@ -23,7 +22,7 @@ export class LocalStorage {
   }
 
   public static set(key: string, value: any): void {
-    window.localStorage.setItem(key, JSON.stringify(cloneDeep(value)));
+    window.localStorage.setItem(key, JSON.stringify(value));
   }
 
   public static unset(key: string): void {
