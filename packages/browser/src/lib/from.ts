@@ -7,8 +7,11 @@
  */
 
 import 'reflect-metadata';
-import { Document } from '@elegante/sdk';
-import { defer as deferRXJS, Observable } from 'rxjs';
+
+import {
+  defer as deferRXJS,
+  Observable,
+} from 'rxjs';
 
 /**
  * Similar to RxJS's `from/defer` api
@@ -33,7 +36,7 @@ import { defer as deferRXJS, Observable } from 'rxjs';
  * @param {Promise<T>} source
  * @returns {*}  {Observable<T>}
  */
-export function from<T extends Document>(source: Promise<T>): Observable<T> {
+export function from<T = void>(source: Promise<T>): Observable<T> {
   const key = Reflect.getMetadata('key', source);
 
   const def = deferRXJS(() => source);

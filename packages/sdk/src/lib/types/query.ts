@@ -7,6 +7,7 @@
  */
 
 import { Observable } from 'rxjs';
+
 import { LiveQueryMessage } from './livequery';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

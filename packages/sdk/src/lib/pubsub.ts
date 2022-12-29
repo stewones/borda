@@ -6,10 +6,13 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-import { finalize, Subject, Subscription } from 'rxjs';
+import {
+  finalize,
+  Subject,
+  Subscription,
+} from 'rxjs';
 
 import { EleganteClient } from './Client';
-import { Document } from './types/query';
 
 export function publish<T = void>(key: string, value?: T) {
   if (EleganteClient.pubsub[key]) {
@@ -17,7 +20,7 @@ export function publish<T = void>(key: string, value?: T) {
   }
 }
 
-export function subscribe<T extends Document>(
+export function subscribe<T = void>(
   key: string,
   handler: (arg: T) => void
 ): Subscription {
