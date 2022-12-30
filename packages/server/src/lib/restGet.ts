@@ -7,16 +7,24 @@
  */
 
 import {
+  Request,
+  Response,
+} from 'express';
+
+import {
+  Document,
   EleganteError,
   ErrorCode,
-  InternalCollectionName,
-  Document,
   ExternalCollectionName,
+  InternalCollectionName,
 } from '@elegante/sdk';
 
-import { Request, Response } from 'express';
-import { EleganteServer, ServerParams } from './Server';
-import { parseResponse } from './parseResponse';
+import { parseDoc } from './parseDoc';
+import {
+  DocQRLFrom,
+  parseQuery,
+} from './parseQuery';
+import { ServerParams } from './Server';
 import { isUnlocked } from './utils/isUnlocked';
 
 export function restGet({
@@ -26,12 +34,7 @@ export function restGet({
 }): (req: Request, res: Response) => void {
   return async (req: Request, res: Response) => {
     try {
-      const { db } = EleganteServer;
       const { collectionName, objectId } = req.params;
-
-      const collection = db.collection<Document>(
-        InternalCollectionName[collectionName] ?? collectionName
-      );
 
       /**
        * can't delete to any of the reserved collections if not unlocked
@@ -59,15 +62,24 @@ export function restGet({
       /**
        * @todo run beforeFind and afterFind hooks
        */
-      const doc = await collection.findOne<Document>({
+      const docQRLFrom: DocQRLFrom = {
+        ...req.body,
+        include: req.query['include'],
+        exclude: req.query['exclude'],
+        collection: collectionName,
+      };
+
+      const docQRL = parseQuery(docQRLFrom);
+
+      const { collection$ } = docQRL;
+
+      const doc = await collection$.findOne<Document>({
         _id: objectId,
       });
 
-      return res.status(200).send(
-        parseResponse(doc, {
-          removeSensitiveFields: !isUnlocked(res.locals),
-        })
-      );
+      return res
+        .status(200)
+        .send(await parseDoc(doc)(docQRL, params, res.locals));
     } catch (err) {
       return res
         .status(500)
