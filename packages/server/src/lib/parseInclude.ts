@@ -10,15 +10,15 @@
 
 import {
   DocumentQuery,
-  pointerObjectFrom,
+  isArrayPointer,
   isPointer,
   log,
+  pointerObjectFrom,
   query,
-  isArrayPointer,
 } from '@elegante/sdk';
 
-import { ServerParams } from './Server';
 import { Cache } from './Cache';
+import { ServerParams } from './Server';
 
 export function parseInclude<T extends Document>(
   obj: any
@@ -44,7 +44,7 @@ export function parseInclude<T extends Document>(
      * a, b, x becomes the pointer names (which should be mapped to the actual collection)
      * while their values are the new join paths to be requested
      */
-    const tree = createTree(include);
+    const tree = createTree(include ?? []);
     log('tree', tree);
 
     /**
@@ -155,9 +155,9 @@ export async function parseJoinKeep(
   }
 }
 
-export function createTree(arr: string[] | undefined) {
+export function createTree(arr: string[]) {
   return (
-    arr?.reduce((acc, item) => {
+    arr.reduce((acc, item) => {
       const [key, ...rest] = item.split('.');
       const value = rest.join('.');
       if (acc[key]) {

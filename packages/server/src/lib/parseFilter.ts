@@ -66,11 +66,13 @@ export function parseFilter(obj: any | any[]): any | any[] {
        *  { _p_fieldName: { $eq: 'Collection$objectId' } }
        * )
        */
-      if (!field.startsWith('_p_') && typeof value === 'string') {
-        if (isPointer(value)) {
-          obj['_p_' + field] = value;
-          delete obj[field];
-        }
+      if (
+        !field.startsWith('$') &&
+        !field.startsWith('_p_') &&
+        isPointer(value)
+      ) {
+        obj['_p_' + field] = value;
+        delete obj[field];
       }
     }
   }

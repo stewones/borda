@@ -9,27 +9,30 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Application } from 'express';
-import { Db, MongoClient } from 'mongodb';
+import {
+  Db,
+  MongoClient,
+} from 'mongodb';
 
 import {
-  EleganteError,
-  ErrorCode,
-  isEmpty,
-  Filter,
-  Sort,
   Document,
-  ElegantePlugin,
-  log,
-  query,
-  pointer,
-  FindOptions,
   DocumentPipeline,
+  EleganteError,
+  ElegantePlugin,
+  ErrorCode,
+  Filter,
+  FindOptions,
+  InternalFieldName,
+  isEmpty,
+  log,
+  pointer,
+  query,
+  Sort,
 } from '@elegante/sdk';
 
-import { InternalFieldName } from '@elegante/sdk';
+import { invalidateCache } from './Cache';
 import { parseFilter } from './parseFilter';
 import { DocQRL } from './parseQuery';
-import { invalidateCache } from './Cache';
 
 interface ServerProtocol {
   params: ServerParams;
@@ -132,7 +135,7 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
     }
   }
   const f = parseFilter(filter);
-  log('parseFilter result', f);
+  log('createFindCursor', 'parseFilter result', f);
   const cursor = collection$.find<T>(f, {
     projection,
     sort: sortAny,

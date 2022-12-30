@@ -8,9 +8,13 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { DocumentQuery, log } from '@elegante/sdk';
-import { ServerParams } from './Server';
+import {
+  DocumentQuery,
+  log,
+} from '@elegante/sdk';
+
 import { createTree } from './parseInclude';
+import { ServerParams } from './Server';
 
 export function parseExclude<T extends Document>(
   obj: any
@@ -36,7 +40,7 @@ export function parseExclude<T extends Document>(
      * a, b, x are the key names
      * while their values are the new exclude paths to be requested for deletion
      */
-    const tree = createTree(exclude);
+    const tree = createTree(exclude ?? []);
 
     log('exclude', exclude);
     log('tree', tree);
