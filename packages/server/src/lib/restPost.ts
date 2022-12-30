@@ -9,37 +9,59 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
-  query,
+  Request,
+  Response,
+} from 'express';
+import { AggregateOptions } from 'mongodb';
+
+import {
+  Document,
   EleganteError,
   ErrorCode,
-  ExternalFieldName,
   ExternalCollectionName,
+  ExternalFieldName,
   InternalCollectionName,
   InternalFieldName,
   InternalHeaders,
   isEmpty,
-  Document,
-  QueryMethod,
-  validateEmail,
-  User,
   log,
-  objectFieldsUpdated,
   objectFieldsCreated,
+  objectFieldsUpdated,
+  query,
+  QueryMethod,
+  User,
+  validateEmail,
 } from '@elegante/sdk';
 
-import { Request, Response } from 'express';
-import { CloudTriggerCallback, getCloudTrigger } from './Cloud';
-import { ServerParams, createFindCursor, createPipeline } from './Server';
 import { invalidateCache } from './Cache';
-import { parseDoc, parseDocForInsertion, parseDocs } from './parseDoc';
+import {
+  CloudTriggerCallback,
+  getCloudTrigger,
+} from './Cloud';
+import {
+  parseDoc,
+  parseDocForInsertion,
+  parseDocs,
+} from './parseDoc';
 import { parseFilter } from './parseFilter';
-import { DocQRL, DocQRLFrom, parseQuery } from './parseQuery';
+import {
+  DocQRL,
+  DocQRLFrom,
+  parseQuery,
+} from './parseQuery';
 import { parseResponse } from './parseResponse';
+import { createSession } from './public';
+import {
+  createFindCursor,
+  createPipeline,
+  ServerParams,
+} from './Server';
 import { newObjectId } from './utils/crypto';
 import { isUnlocked } from './utils/isUnlocked';
-import { compare, hash } from './utils/password';
-import { createSession } from './public';
-import { AggregateOptions } from 'mongodb';
+import {
+  compare,
+  hash,
+} from './utils/password';
 
 export function restPost({
   params,
@@ -151,6 +173,7 @@ export function restPost({
                 before: docBefore,
                 after: docAfter,
                 doc: docQRL.doc,
+                context: docQRL.options?.context ?? {},
                 updatedFields: objectFieldsUpdated(docBefore, docAfter),
                 createdFields: objectFieldsCreated(docBefore, docAfter),
               },
@@ -287,6 +310,7 @@ export function restPost({
                 before: null,
                 after: doc,
                 doc,
+                context: docQRL.options?.context ?? {},
                 updatedFields: objectFieldsUpdated({}, doc),
                 createdFields: objectFieldsCreated({}, doc),
               },
