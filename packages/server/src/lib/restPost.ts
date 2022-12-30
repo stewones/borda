@@ -163,47 +163,47 @@ export function restPost({
           ) {
             docQRL.doc = beforeSaveCallback.doc;
           }
+        }
 
-          const { cursor } = await postUpdate(docQRL, res);
+        const { cursor } = await postUpdate(docQRL, res);
 
-          if (cursor.ok) {
-            const docAfter = cursor.value ?? ({} as Document);
-            const afterSavePayload = parseResponse(
-              {
-                before: docBefore,
-                after: docAfter,
-                doc: docQRL.doc,
-                context: docQRL.options?.context ?? {},
-                updatedFields: objectFieldsUpdated(docBefore, docAfter),
-                createdFields: objectFieldsCreated(docBefore, docAfter),
-              },
-              {
-                removeSensitiveFields: !isUnlocked(res.locals),
-              }
-            );
-
-            const afterSave = getCloudTrigger(collectionName, 'afterSave');
-            if (afterSave) {
-              afterSave.fn({
-                ...afterSavePayload,
-                qrl: docQRL,
-                context: docQRL.options?.context ?? {},
-                user: res.locals['session']?.user,
-                req,
-                res,
-              });
+        if (cursor.ok) {
+          const docAfter = cursor.value ?? ({} as Document);
+          const afterSavePayload = parseResponse(
+            {
+              before: docBefore,
+              after: docAfter,
+              doc: docQRL.doc,
+              updatedFields: objectFieldsUpdated(docBefore, docAfter),
+              createdFields: objectFieldsCreated(docBefore, docAfter),
+            },
+            {
+              removeSensitiveFields: !isUnlocked(res.locals),
             }
+          );
 
-            invalidateCache(collectionName, docAfter);
-            return res.status(200).json({});
-          } else {
-            return Promise.reject(
-              new EleganteError(
-                ErrorCode.REST_DOCUMENT_NOT_UPDATED,
-                `could not update ${collectionName} document`
-              )
-            );
+          const afterSave = getCloudTrigger(collectionName, 'afterSave');
+
+          if (afterSave) {
+            afterSave.fn({
+              ...afterSavePayload,
+              qrl: docQRL,
+              context: docQRL.options?.context ?? {},
+              user: res.locals['session']?.user,
+              req,
+              res,
+            });
           }
+
+          invalidateCache(collectionName, docAfter);
+          return res.status(200).json({});
+        } else {
+          return Promise.reject(
+            new EleganteError(
+              ErrorCode.REST_DOCUMENT_NOT_UPDATED,
+              `could not update ${collectionName} document`
+            )
+          );
         }
 
         /**
@@ -310,7 +310,6 @@ export function restPost({
                 before: null,
                 after: doc,
                 doc,
-                context: docQRL.options?.context ?? {},
                 updatedFields: objectFieldsUpdated({}, doc),
                 createdFields: objectFieldsCreated({}, doc),
               },

@@ -9,25 +9,32 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
+  Request,
+  Response,
+} from 'express';
+
+import {
+  Document,
   EleganteError,
   ErrorCode,
-  InternalCollectionName,
-  Document,
-  objectFieldsUpdated,
-  objectFieldsCreated,
   ExternalCollectionName,
-  InternalFieldName,
   ExternalFieldName,
+  InternalCollectionName,
+  InternalFieldName,
+  objectFieldsCreated,
+  objectFieldsUpdated,
 } from '@elegante/sdk';
 
-import { Request, Response } from 'express';
-import { ServerParams } from './Server';
 import { invalidateCache } from './Cache';
-import { parseResponse } from './parseResponse';
-import { isUnlocked } from './utils/isUnlocked';
+import {
+  CloudTriggerCallback,
+  getCloudTrigger,
+} from './Cloud';
 import { parseDocForInsertion } from './parseDoc';
-import { CloudTriggerCallback, getCloudTrigger } from './Cloud';
 import { parseQuery } from './parseQuery';
+import { parseResponse } from './parseResponse';
+import { ServerParams } from './Server';
+import { isUnlocked } from './utils/isUnlocked';
 
 export function restPut({
   params,
@@ -64,6 +71,7 @@ export function restPut({
       const docQRL = parseQuery({
         doc: req.body.doc,
         collection: collectionName,
+        options: req.body.options,
       });
 
       const { doc, collection$ } = docQRL;
@@ -104,88 +112,87 @@ export function restPut({
         document = beforeSaveCallback.doc;
       }
 
-      if (beforeSaveCallback) {
-        document = {
-          ...parseDocForInsertion(document),
-          _updated_at: new Date(),
-        };
+      document = {
+        ...parseDocForInsertion(document),
+        _updated_at: new Date(),
+      };
 
-        /**
-         * ensure each internal/external field is deleted from the user payload
-         * if session is not unlocked
-         */
-        const reservedFields = [
-          ...Object.keys(InternalFieldName),
-          ...Object.keys(ExternalFieldName),
-        ];
+      /**
+       * ensure each internal/external field is deleted from the user payload
+       * if session is not unlocked
+       */
+      const reservedFields = [
+        ...Object.keys(InternalFieldName),
+        ...Object.keys(ExternalFieldName),
+      ];
 
-        if (!isUnlocked(res.locals)) {
-          reservedFields.forEach((field) => {
-            delete document[field];
-          });
-        }
-
-        const cursor = await collection$.findOneAndUpdate(
-          {
-            _id: {
-              $eq: objectId,
-            },
-          },
-          {
-            $set: document,
-          },
-          { returnDocument: 'after', readPreference: 'primary' }
-        );
-
-        if (cursor.ok) {
-          if (cursor.value) {
-            const docAfter = cursor.value ?? ({} as Document);
-            const afterSavePayload = parseResponse(
-              {
-                before: docBefore,
-                after: docAfter,
-                doc: document,
-                updatedFields: objectFieldsUpdated(docBefore, docAfter),
-                createdFields: objectFieldsCreated(docBefore, docAfter),
-              },
-              {
-                removeSensitiveFields: !isUnlocked(res.locals),
-              }
-            );
-
-            const afterSave = getCloudTrigger(collectionName, 'afterSave');
-            if (afterSave) {
-              afterSave.fn({
-                ...afterSavePayload,
-                qrl: docQRL,
-                context: docQRL.options?.context ?? {},
-                user: res.locals['session']?.user,
-                req,
-                res,
-              });
-            }
-
-            invalidateCache(collectionName, docAfter);
-            return res.status(200).json({});
-          } else {
-            return res
-              .status(404)
-              .json(
-                new EleganteError(
-                  ErrorCode.REST_DOCUMENT_NOT_UPDATED,
-                  'document not found'
-                )
-              );
-          }
-        } else {
-          return Promise.reject(
-            new EleganteError(
-              ErrorCode.REST_DOCUMENT_NOT_UPDATED,
-              'could not update document'
-            )
-          );
-        }
+      if (!isUnlocked(res.locals)) {
+        reservedFields.forEach((field) => {
+          delete document[field];
+        });
       }
+
+      const cursor = await collection$.findOneAndUpdate(
+        {
+          _id: {
+            $eq: objectId,
+          },
+        },
+        {
+          $set: document,
+        },
+        { returnDocument: 'after', readPreference: 'primary' }
+      );
+
+      if (cursor.ok) {
+        if (cursor.value) {
+          const docAfter = cursor.value ?? ({} as Document);
+          const afterSavePayload = parseResponse(
+            {
+              before: docBefore,
+              after: docAfter,
+              doc: document,
+              updatedFields: objectFieldsUpdated(docBefore, docAfter),
+              createdFields: objectFieldsCreated(docBefore, docAfter),
+            },
+            {
+              removeSensitiveFields: !isUnlocked(res.locals),
+            }
+          );
+
+          const afterSave = getCloudTrigger(collectionName, 'afterSave');
+          if (afterSave) {
+            afterSave.fn({
+              ...afterSavePayload,
+              qrl: docQRL,
+              context: docQRL.options?.context ?? {},
+              user: res.locals['session']?.user,
+              req,
+              res,
+            });
+          }
+
+          invalidateCache(collectionName, docAfter);
+          return res.status(200).json({});
+        } else {
+          return res
+            .status(404)
+            .json(
+              new EleganteError(
+                ErrorCode.REST_DOCUMENT_NOT_UPDATED,
+                'document not found'
+              )
+            );
+        }
+      } else {
+        return Promise.reject(
+          new EleganteError(
+            ErrorCode.REST_DOCUMENT_NOT_UPDATED,
+            'could not update document'
+          )
+        );
+      }
+
       /**
        * didn't pass the beforeSave trigger
        * but also doesn't mean it's an error
