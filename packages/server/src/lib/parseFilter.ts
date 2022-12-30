@@ -33,12 +33,6 @@ export function parseFilter(obj: any | any[]): any | any[] {
   if (!Array.isArray(obj) && typeof obj === 'object') {
     for (let field in obj) {
       const value: any = obj[field];
-      if (typeof obj[field] === 'object') {
-        /**
-         * keep parsing
-         */
-        parseFilter(obj[field]);
-      }
 
       /**
        * format internal keys
@@ -73,6 +67,26 @@ export function parseFilter(obj: any | any[]): any | any[] {
       ) {
         obj['_p_' + field] = value;
         delete obj[field];
+      }
+
+      /**
+       * deal with the $eq case
+       */
+      if (
+        !field.startsWith('$') &&
+        !field.startsWith('_p_') &&
+        typeof value === 'object' &&
+        isPointer(value['$eq'])
+      ) {
+        obj['_p_' + field] = value;
+        delete obj[field];
+      }
+
+      /**
+       * keep parsing
+       */
+      if (typeof obj[field] === 'object') {
+        parseFilter(obj[field]);
       }
     }
   }
