@@ -53,12 +53,10 @@ export function parseFilter(obj: any | any[]): any | any[] {
       }
 
       /**
-       * cover pointer cases
-       * fieldName -> _p_fieldName
-       *
-       * cursor.filter(
-       *  { _p_fieldName: { $eq: 'Collection$objectId' } }
-       * )
+       * deal with pointers
+       * {
+       *   fieldName: 'Collection$objectId'
+       * }
        */
       if (
         !field.startsWith('$') &&
@@ -70,16 +68,28 @@ export function parseFilter(obj: any | any[]): any | any[] {
       }
 
       /**
-       * deal with the $eq case
+       * deal with pointers
+       * {
+       *   fieldName: {
+       *     $eq: 'Collection$objectId'
+       *   }
+       * }
        */
       if (
         !field.startsWith('$') &&
         !field.startsWith('_p_') &&
-        typeof value === 'object' &&
-        isPointer(value['$eq'])
+        typeof value === 'object'
       ) {
-        obj['_p_' + field] = value;
-        delete obj[field];
+        let foundPointer = false;
+        for (const operator in value) {
+          if (operator.startsWith('$') && isPointer(value[operator])) {
+            foundPointer = true;
+          }
+        }
+        if (foundPointer) {
+          obj['_p_' + field] = value;
+          delete obj[field];
+        }
       }
 
       /**
