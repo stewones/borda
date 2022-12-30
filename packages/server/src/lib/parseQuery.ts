@@ -8,7 +8,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Collection, Document } from 'mongodb';
+import {
+  Collection,
+  Document,
+} from 'mongodb';
 
 import {
   DocumentLiveQuery,
@@ -22,6 +25,7 @@ export interface DocQRL<T extends Document = Document>
   extends DocumentQuery<T> {
   collection$: Collection<T>;
   doc: T;
+  docs: T[];
 }
 
 export type DocQRLFrom = DocumentQuery | DocumentLiveQuery | Document;
@@ -43,10 +47,14 @@ export function parseQuery(from: DocQRLFrom): DocQRL {
   if (!docQuery.doc) {
     docQuery.doc = {};
   }
+  if (!docQuery.docs) {
+    docQuery.docs = [];
+  }
 
   return {
     ...docQuery,
     doc: docQuery.doc,
+    docs: docQuery.docs,
     collection$,
   };
 }

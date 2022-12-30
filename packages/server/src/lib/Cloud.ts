@@ -8,17 +8,29 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Request, Response } from 'express';
-import { Document, InternalCollectionName, Session, User } from '@elegante/sdk';
+import {
+  Request,
+  Response,
+} from 'express';
+
+import {
+  Document,
+  InternalCollectionName,
+  Session,
+  User,
+} from '@elegante/sdk';
+
+import { DocQRL } from './parseQuery';
 import { routeEnsureAuth } from './route';
 import { EleganteServer } from './Server';
-import { DocQRL } from './parseQuery';
 
 type CloudTriggerProtocol = Map<string, CloudTriggerOptions>;
 
 type CloudTriggerEvent =
   | 'beforeSave'
+  | 'beforeSaveMany'
   | 'afterSave'
+  | 'afterSaveMany'
   | 'beforeDelete'
   | 'afterDelete';
 
@@ -26,6 +38,7 @@ type CloudFunctionProtocol = Map<string, CloudFunctionOptions>;
 
 interface CloudTriggerFactory<T = any> {
   doc?: T;
+  docs?: T[];
   before?: T;
   after?: T;
   qrl: DocQRL;
@@ -35,7 +48,10 @@ interface CloudTriggerFactory<T = any> {
   res: Response;
 }
 
-export type CloudTriggerCallback<T = any> = void | boolean | { doc?: T };
+export type CloudTriggerCallback<T = any> =
+  | void
+  | boolean
+  | { doc?: T; docs?: T[] };
 
 interface CloudTriggerOptions {
   collection: string;

@@ -25,6 +25,9 @@ export type DocumentOptions =
     })
   | (AggregateOptions & {
       context?: Record<string, any>;
+    })
+  | (ManyInsertOptions & {
+      context?: Record<string, any>;
     });
 
 /**
@@ -59,6 +62,7 @@ export interface DocumentQuery<TSchema = Document> {
   include?: string[];
   exclude?: string[];
   doc?: Document | null;
+  docs?: Document[] | null;
   collection: string;
 }
 
@@ -111,6 +115,7 @@ export declare type QueryMethod =
    * data mutation
    */
   | 'insert'
+  | 'insertMany'
   | 'update'
   | 'put'
   | 'remove'
@@ -239,6 +244,16 @@ export declare interface Query<TSchema extends Document = Document> {
   ): Promise<TSchema>;
 
   /**
+   * insert many documents
+   * The number of operations in each group cannot exceed the value of the maxWriteBatchSize of the database. As of MongoDB 3.6, this value is 100,000.
+   * learn more https://www.mongodb.com/docs/manual/reference/method/db.collection.insertMany/
+   */
+  insertMany(
+    docs: Partial<TSchema[]>,
+    options?: ManyInsertOptions<TSchema>
+  ): Promise<ManyInsertResponse<TSchema>>;
+
+  /**
    * delete a document using mongo-like queries
    * or direclty by passing its objectId
    */
@@ -274,9 +289,9 @@ export declare interface Query<TSchema extends Document = Document> {
   run(
     method: QueryMethod,
     options?: DocumentOptions,
-    doc?: Partial<TSchema>,
+    docOrDocs?: Partial<TSchema | TSchema[]>,
     objectId?: string
-  ): Promise<number | TSchema | TSchema[] | void>;
+  ): Promise<number | TSchema | TSchema[] | ManyInsertResponse<TSchema> | void>;
 
   /**
    * live queries
@@ -290,6 +305,22 @@ export declare interface Query<TSchema extends Document = Document> {
    * similiar to find but run on websockets
    */
   once(): Observable<LiveQueryMessage<TSchema>>;
+}
+
+export interface ManyInsertResponse<TSchema> {
+  /** Indicates whether this write result was acknowledged. If not, then all other members of this result will be undefined */
+  acknowledged: boolean;
+  /** The number of inserted documents for this operations */
+  insertedCount: number;
+  /** Map of the index of the inserted document to the id of the inserted document */
+  insertedIds: {
+    [key: number]: InferIdType<TSchema>;
+  };
+}
+
+export interface ManyInsertOptions<TSchema extends Document = Document> {
+  writeConcern: TSchema;
+  ordered: boolean;
 }
 
 export declare type ResumeToken = unknown;

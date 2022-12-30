@@ -39,6 +39,7 @@ import {
   Document,
   DocumentQuery,
   DocumentResponse,
+  ManyInsertResponse,
   Query,
 } from './types/query';
 import {
@@ -206,6 +207,12 @@ export function query<TSchema extends Document = Document>(collection: string) {
       return bridge.run('insert', options ?? {}, doc) as Promise<TSchema>;
     },
 
+    insertMany: (docs, options?) => {
+      return bridge.run('insertMany', options ?? {}, docs ?? []) as Promise<
+        ManyInsertResponse<TSchema>
+      >;
+    },
+
     delete: (objectIdOrOptions?, options?) => {
       return bridge.run(
         // method
@@ -232,7 +239,17 @@ export function query<TSchema extends Document = Document>(collection: string) {
     /**
      * doc retrieval
      */
-    run: (method, options, doc?, objectId?) => {
+    run: (method, options, docOrDocs?, objectId?) => {
+      let doc: Document = {};
+      let docs: Document[] = [];
+      if (docOrDocs && Array.isArray(docOrDocs)) {
+        docs = docOrDocs as Document[];
+      }
+
+      if (docOrDocs && !Array.isArray(docOrDocs)) {
+        doc = docOrDocs as Document;
+      }
+
       options = {
         ...bridge.options,
         ...options,
@@ -307,7 +324,12 @@ export function query<TSchema extends Document = Document>(collection: string) {
 
       log(method, 'params', JSON.stringify(bridge.params));
       log(method, 'options', JSON.stringify(options));
-      log(method, 'doc', JSON.stringify(doc));
+      if (!isEmpty(doc)) {
+        log(method, 'doc', JSON.stringify(doc));
+      }
+      if (!isEmpty(docs)) {
+        log(method, 'docs', docs.length, docs[0]);
+      }
 
       const docQuery: Document | DocumentQuery<TSchema> = {
         options,
@@ -320,6 +342,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
         exclude,
         pipeline,
         doc,
+        docs,
       };
 
       const promise = fetch<DocumentResponse<TSchema>>(
@@ -327,11 +350,11 @@ export function query<TSchema extends Document = Document>(collection: string) {
           ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
         }`,
         {
+          headers,
+          body: method === 'get' ? null : docQuery,
           method: ['get', 'put', 'delete'].includes(method)
             ? (method.toUpperCase() as HttpMethod)
             : 'POST',
-          headers,
-          body: method === 'get' ? null : docQuery,
         }
       );
 

@@ -5,9 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://elegante.dev/license
  */
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
 import {
   Request,
   Response,
@@ -296,11 +294,12 @@ export function restPost({
           /**
            * insert new documents
            */
+          const d = parseDocForInsertion(docQRL.doc);
           const doc: Document = {
-            ...parseDocForInsertion(docQRL.doc),
-            _id: newObjectId(),
-            _created_at: new Date(),
-            _updated_at: new Date(),
+            ...d,
+            _id: d._id ?? newObjectId(),
+            _created_at: d._created_at ?? new Date(),
+            _updated_at: d._updated_at ?? new Date(),
           };
           const cursor = await collection$.insertOne(doc);
 
@@ -331,6 +330,91 @@ export function restPost({
             }
 
             return res.status(201).json(afterSavePayload.doc);
+          } else {
+            return Promise.reject(
+              new EleganteError(
+                ErrorCode.REST_DOCUMENT_NOT_CREATED,
+                `could not create ${collectionName} document`
+              )
+            );
+          }
+        }
+
+        /**
+         * didn't pass the beforeSave trigger
+         * but also doesn't mean it's an error
+         */
+        return res.status(200).json({});
+      } else if (method === 'insertMany') {
+        let beforeSaveCallback: CloudTriggerCallback = true;
+
+        const beforeSave = getCloudTrigger(collectionName, 'beforeSaveMany');
+
+        if (beforeSave) {
+          beforeSaveCallback = await beforeSave.fn({
+            before: undefined,
+            after: undefined,
+            doc: undefined,
+            docs: docQRL.docs ?? undefined,
+            qrl: docQRL,
+            context: docQRL.options?.context ?? {},
+            user: res.locals['session']?.user,
+            req,
+            res,
+          });
+        }
+
+        if (
+          beforeSaveCallback &&
+          typeof beforeSaveCallback === 'object' &&
+          beforeSaveCallback.docs
+        ) {
+          docQRL.docs = beforeSaveCallback.docs;
+        }
+
+        if (beforeSaveCallback) {
+          /**
+           * insert new documents
+           */
+          const docs: Document[] = [];
+
+          docQRL.docs.map((d) => {
+            const doc = parseDocForInsertion(d);
+            docs.push({
+              ...doc,
+              _id: doc._id ?? newObjectId(),
+              _created_at: doc._created_at ?? new Date(),
+              _updated_at: doc._updated_at ?? new Date(),
+            });
+          });
+
+          const cursor = await collection$.insertMany(docs);
+
+          if (cursor.acknowledged) {
+            const afterSavePayload = parseResponse(
+              {
+                before: null,
+                after: docs,
+                docs,
+              },
+              {
+                removeSensitiveFields: !isUnlocked(res.locals),
+              }
+            );
+
+            const afterSave = getCloudTrigger(collectionName, 'afterSaveMany');
+            if (afterSave) {
+              afterSave.fn({
+                ...afterSavePayload,
+                qrl: docQRL,
+                context: docQRL.options?.context ?? {},
+                user: res.locals['session']?.user,
+                req,
+                res,
+              });
+            }
+
+            return res.status(201).json(cursor);
           } else {
             return Promise.reject(
               new EleganteError(
