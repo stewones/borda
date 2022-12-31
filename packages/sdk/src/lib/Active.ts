@@ -105,7 +105,7 @@ export interface ActiveParams<T = any> {
 }
 
 export class ActiveRecord<Doc extends Record> {
-  private params: ActiveParams<Doc>;
+  private params: ActiveParams<Doc> = {} as ActiveParams<Doc>;
   private collection: string;
   private doc: Doc = {} as Doc;
   private query!: Query<Doc>;
@@ -115,18 +115,17 @@ export class ActiveRecord<Doc extends Record> {
   constructor(
     collection: string,
     record?: ActiveModel<Doc>,
-    params?: ActiveParams
+    params: ActiveParams<Doc> = {}
   ) {
     this.collection = collection;
-    this.params = params ?? ({} as ActiveParams);
 
-    let filter: any = this.params.filter ?? {};
+    let filter: any = params.filter ?? {};
 
     /**
      * here we force to not include expired documents by default
      * but it can be disabled with the option `excludeExpiredDocs`
      */
-    if (this.params.excludeExpiredDocs !== false && !filter.expiresAt) {
+    if (params.excludeExpiredDocs !== false && !filter.expiresAt) {
       filter = {
         ...filter,
         expiresAt: {
@@ -139,9 +138,9 @@ export class ActiveRecord<Doc extends Record> {
       this.objectId = record;
       this.query = query<Doc>(this.collection)
         .unlock(isServer())
-        .include(this.params.include ?? [])
-        .exclude(this.params.exclude ?? [])
-        .projection(this.params.projection ?? ({} as any));
+        .include(params.include ?? [])
+        .exclude(params.exclude ?? [])
+        .projection(params.projection ?? ({} as any));
     } else if (typeof record === 'object') {
       Object.assign(this.doc, record);
 
@@ -152,8 +151,8 @@ export class ActiveRecord<Doc extends Record> {
         };
       }
 
-      if (this.params.by) {
-        for (const key of this.params.by) {
+      if (params.by) {
+        for (const key of params.by) {
           type k = keyof typeof this.doc;
           if (this.doc[key as k]) {
             filter = {
@@ -168,13 +167,15 @@ export class ActiveRecord<Doc extends Record> {
 
       this.query = query<Doc>(this.collection)
         .unlock(isServer())
-        .include(this.params.include ?? [])
-        .exclude(this.params.exclude ?? [])
-        .projection(this.params.projection ?? ({} as any))
-        .pipeline(this.params.pipeline ?? ([] as any))
-        .sort(this.params.sort ?? {})
+        .include(params.include ?? [])
+        .exclude(params.exclude ?? [])
+        .projection(params.projection ?? ({} as any))
+        .pipeline(params.pipeline ?? ([] as any))
+        .sort(params.sort ?? {})
         .filter(filter);
     }
+
+    this.params = { ...params, filter };
   }
 
   public get<K extends keyof Doc>(key: K): Doc[K] {

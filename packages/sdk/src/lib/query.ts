@@ -600,5 +600,5 @@ export function query<TSchema extends Document = Document>(collection: string) {
 
   bridge.params['collection'] = collection;
 
-  return bridge;
+  return Object.freeze(bridge);
 }
