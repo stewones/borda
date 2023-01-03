@@ -91,6 +91,7 @@ export type DocumentPipe<TSchema = Document> =
   | { $skip: number }
   | { $sort: Sort }
   | { $unwind: string | Document }
+  | { $unset: string | Document | Document[] }
   | { $geoNear: Document }
   | { $addFields: Document };
 
