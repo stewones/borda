@@ -17,10 +17,11 @@ import {
   isPointer,
   log,
 } from '@elegante/sdk';
-import { ServerParams } from './Server';
+
 import { parseExclude } from './parseExclude';
 import { parseInclude } from './parseInclude';
 import { parseResponse } from './parseResponse';
+import { ServerParams } from './Server';
 import { isUnlocked } from './utils/isUnlocked';
 
 export function parseDoc<T extends Document>(

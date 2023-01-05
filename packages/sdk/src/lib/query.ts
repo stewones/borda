@@ -96,14 +96,6 @@ export function query<TSchema extends Document = Document>(collection: string) {
       } as any;
 
       /**
-       * applies a little hack to make sure the projection
-       * also work with pointers. ie: _p_fieldName
-       */
-      for (const fieldName in project) {
-        newProject[`_p_${fieldName}`] = project[fieldName] ? 1 : 0;
-      }
-
-      /**
        * deal with internal field names
        */
       const keys = Object.keys(newProject);

@@ -20,6 +20,7 @@ import {
 } from '@elegante/sdk';
 
 import { parseDoc } from './parseDoc';
+import { parseProjection } from './parseProjection';
 import {
   DocQRLFrom,
   parseQuery,
@@ -79,7 +80,12 @@ export function restGet({
 
       return res
         .status(200)
-        .send(await parseDoc(doc)(docQRL, params, res.locals));
+        .send(
+          parseProjection(
+            docQRL.projection ?? {},
+            await parseDoc(doc)(docQRL, params, res.locals)
+          )
+        );
     } catch (err) {
       return res
         .status(500)

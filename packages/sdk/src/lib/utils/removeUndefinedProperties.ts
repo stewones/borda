@@ -6,7 +6,11 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function isBoolean(value: any): value is boolean {
-  return typeof value === 'boolean';
+export function removeUndefinedProperties<T>(obj: T): T {
+  for (const prop in obj) {
+    if (obj[prop] === undefined) {
+      delete obj[prop];
+    }
+  }
+  return obj;
 }

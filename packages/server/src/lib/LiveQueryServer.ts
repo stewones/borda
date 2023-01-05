@@ -8,26 +8,33 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import WebSocket, { ServerOptions } from 'ws';
 import {
-  Document,
-  ChangeStreamUpdateDocument,
   AggregateOptions,
+  ChangeStreamUpdateDocument,
+  Document,
 } from 'mongodb';
+import WebSocket, { ServerOptions } from 'ws';
 
 import {
-  DocumentLiveQuery,
   DocumentEvent,
-  LiveQueryMessage,
+  DocumentLiveQuery,
   EleganteError,
   ErrorCode,
-  log,
   isDate,
+  LiveQueryMessage,
+  log,
 } from '@elegante/sdk';
 
-import { EleganteServer, createPipeline } from './Server';
+import {
+  parseDoc,
+  parseDocs,
+} from './parseDoc';
+import { parseProjection } from './parseProjection';
 import { parseQuery } from './parseQuery';
-import { parseDoc, parseDocs } from './parseDoc';
+import {
+  createPipeline,
+  EleganteServer,
+} from './Server';
 
 export interface LiveQueryServerParams extends ServerOptions {
   collections: string[]; // allowed collections
@@ -144,7 +151,10 @@ export function handleOn(
 
     if (isDeleted) {
       message = {
-        doc: await parseDoc(fullDocument)(rawQuery, EleganteServer.params, {}),
+        doc: parseProjection(
+          projection ?? {},
+          await parseDoc(fullDocument)(rawQuery, EleganteServer.params, {})
+        ),
         docs: [],
       };
     } else if (
@@ -152,7 +162,10 @@ export function handleOn(
       ['insert', 'replace', 'update'].includes(operationType)
     ) {
       message = {
-        doc: await parseDoc(fullDocument)(rawQuery, EleganteServer.params, {}),
+        doc: parseProjection(
+          projection ?? {},
+          await parseDoc(fullDocument)(rawQuery, EleganteServer.params, {})
+        ),
         docs: [],
         updatedFields,
         removedFields,
@@ -232,7 +245,10 @@ export async function handleOnce(
    * send the message over the wire to the client
    */
   const message: LiveQueryMessage = {
-    docs: await parseDocs(docs)(query, EleganteServer.params, {}),
+    docs: parseProjection(
+      projection ?? ({} as any),
+      await parseDocs(docs)(query, EleganteServer.params, {})
+    ),
     doc: null,
   };
 

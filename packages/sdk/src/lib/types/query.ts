@@ -155,11 +155,7 @@ export declare interface Query<TSchema extends Document = Document> {
   /**
    * project 1st level fields for this query
    */
-  projection(
-    doc: Partial<{
-      [key in keyof TSchema]: number;
-    }>
-  ): Query<TSchema>;
+  projection(doc: Partial<Projection<TSchema>>): Query<TSchema>;
 
   /**
    * sort documents
@@ -307,6 +303,13 @@ export declare interface Query<TSchema extends Document = Document> {
    */
   once(): Observable<LiveQueryMessage<TSchema>>;
 }
+
+export type Projection<TSchema extends Document = Document> = {
+  [key in keyof TSchema]:
+    | number
+    | Partial<{ [key in keyof TSchema]: number }>
+    | Projection<TSchema[key][key]>;
+};
 
 export interface ManyInsertResponse<TSchema> {
   /** Indicates whether this write result was acknowledged. If not, then all other members of this result will be undefined */

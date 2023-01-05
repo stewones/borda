@@ -42,6 +42,7 @@ import {
   parseDocs,
 } from './parseDoc';
 import { parseFilter } from './parseFilter';
+import { parseProjection } from './parseProjection';
 import {
   DocQRL,
   DocQRLFrom,
@@ -127,8 +128,14 @@ export function restPost({
           .status(200)
           .json(
             method === 'findOne'
-              ? (await parseDoc(docs[0])(docQRL, params, res.locals)) ?? {}
-              : (await parseDocs(docs)(docQRL, params, res.locals)) ?? []
+              ? parseProjection(
+                  docQRL.projection ?? ({} as any),
+                  (await parseDoc(docs[0])(docQRL, params, res.locals)) ?? {}
+                )
+              : parseProjection(
+                  docQRL.projection ?? ({} as any),
+                  await parseDocs(docs)(docQRL, params, res.locals)
+                ) ?? []
           );
       } else if (method === 'update') {
         /**
@@ -263,7 +270,12 @@ export function restPost({
 
         return res
           .status(200)
-          .json(await parseDocs(docs)(docQRL, params, res.locals));
+          .json(
+            parseProjection(
+              docQRL.projection ?? ({} as any),
+              await parseDocs(docs)(docQRL, params, res.locals)
+            )
+          );
       } else if (method === 'insert') {
         let beforeSaveCallback: CloudTriggerCallback = true;
 
@@ -447,11 +459,7 @@ export function restPost({
           }
           return res
             .status(405)
-            .json(
-              err?.code
-                ? err
-                : new EleganteError(ErrorCode.REST_POST_ERROR, err as object)
-            );
+            .json(new EleganteError(ErrorCode.REST_POST_ERROR, err as object));
         });
       } else if (collectionName === '_User' && method === 'signIn') {
         /**
@@ -467,11 +475,7 @@ export function restPost({
     } catch (err: any) {
       return res
         .status(405)
-        .json(
-          err?.code
-            ? err
-            : new EleganteError(ErrorCode.REST_POST_ERROR, err as object)
-        );
+        .json(new EleganteError(ErrorCode.REST_POST_ERROR, err as object));
     }
   };
 }

@@ -119,8 +119,7 @@ export async function createIndexes({
 }
 
 export function createFindCursor<T extends Document>(docQRL: DocQRL) {
-  const { collection$, options, filter, sort, projection, limit, skip } =
-    docQRL;
+  const { collection$, options, filter, sort, limit, skip } = docQRL;
   const { allowDiskUse } = (options as FindOptions) || {};
 
   /**
@@ -137,7 +136,7 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
   const f = parseFilter(filter);
   log('createFindCursor', 'parseFilter result', f);
   const cursor = collection$.find<T>(f, {
-    projection,
+    // projection, // skipping Mongo's projection in favor of Elegant's one
     sort: sortAny,
     ...options,
   });
