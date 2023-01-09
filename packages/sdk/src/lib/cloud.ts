@@ -15,7 +15,10 @@ import { isServer, LocalStorage } from './utils';
 
 export async function runFunction<T = Document>(
   name: string,
-  doc?: Document
+  doc?: Document,
+  options?: {
+    headers?: Record<string, string>;
+  }
 ): Promise<T> {
   if (!EleganteClient.params.apiKey) {
     throw new EleganteError(ErrorCode.INVALID_API_KEY, 'API key required');
@@ -31,6 +34,7 @@ export async function runFunction<T = Document>(
   const headers = {
     [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
       EleganteClient.params.apiKey,
+    ...options?.headers,
   };
 
   if (!isServer()) {

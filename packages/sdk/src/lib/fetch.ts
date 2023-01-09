@@ -28,7 +28,7 @@ export async function fetch<T = any>(
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,
-      ...(isServer()
+      ...(isServer() && !options?.headers?.['user-agent']
         ? {
             'user-agent': `Elegante/${Version}; +https://elegante.dev`,
           }
