@@ -9,10 +9,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Application } from 'express';
-import {
-  Db,
-  MongoClient,
-} from 'mongodb';
+import { Db, MongoClient } from 'mongodb';
 
 import {
   Document,
@@ -113,7 +110,7 @@ export async function createIndexes({
   } catch (err) {
     throw new EleganteError(
       ErrorCode.INDEX_CREATION_FAILED,
-      `Elegante couldn't create indexes on startup`
+      err as unknown as any
     );
   }
 }
