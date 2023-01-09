@@ -240,12 +240,11 @@ function createFunction(options: CloudFunctionOptions): void {
         console.time(`function duration: ${name}`);
       }
       try {
-        const result = await fn({ req, res, session: res.locals['session'] });
+        await fn({ req, res, session: res.locals['session'] });
         // @todo save statistic to db when we have Elegante Models
         if (EleganteServer.params.debug) {
           console.timeEnd(`function duration: ${name}`);
         }
-        res.status(200).send(result);
       } catch (err) {
         res.status(500).send(err);
         if (EleganteServer.params.debug) {

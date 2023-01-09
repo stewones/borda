@@ -1,4 +1,5 @@
 {
+  "tsImportSorter.configuration.formatExports": true,
   "tsImportSorter.configuration.autoFormat": "onSave",
   "tsImportSorter.configuration.exclude": [
     "node_modules",
