@@ -99,7 +99,7 @@ export function createAction<T = any>(
   return (payload?: T) => {
     return {
       type,
-      payload: payload ?? ({} as T),
+      payload: payload as T,
     };
   };
 }
