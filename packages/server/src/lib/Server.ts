@@ -186,7 +186,7 @@ export function createPipeline<TSchema extends Document = Document>(bridge: {
     ...(!isEmpty(filter) ? [{ $match: parseFilter(filter) }] : []),
     ...parseFilter(pipeline ?? []),
     ...(!isEmpty(sort) ? [{ $sort: sort }] : []),
-    ...(!isEmpty(projection) ? [{ $project: projection }] : []),
+    // ...(!isEmpty(projection) ? [{ $project: projection }] : []), // skipping Mongo's projection in favor of Elegant's one
     ...(typeof limit === 'number' ? [{ $limit: limit }] : []),
     ...(typeof skip === 'number' ? [{ $skip: skip }] : []),
   ];
