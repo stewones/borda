@@ -259,7 +259,7 @@ function memorize<T>(source: Observable<T>, options: FastOptions) {
         }
 
         if (!isEqual(state, current)) {
-          setDocState(key, current, { saveCache: false });
+          setDocState(key, current, { persist: false });
           log('state.set', key, state, current);
         }
 

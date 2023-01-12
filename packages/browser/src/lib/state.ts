@@ -16,7 +16,7 @@ import { log } from './log';
 import { $docReset, $docSet, $docUnset, dispatch } from './redux';
 
 export interface SetStateOptions {
-  saveCache?: boolean;
+  persist?: boolean;
 }
 
 export interface UnsetStateOptions {
@@ -87,7 +87,7 @@ export function getDocState<T = any>(key?: string): T {
 export function setDocState(
   key: string,
   value: any,
-  options: SetStateOptions = { saveCache: true }
+  options: SetStateOptions = { persist: true }
 ) {
   if (!EleganteBrowser.store) {
     throw new Error(
@@ -102,7 +102,7 @@ export function setDocState(
     })
   );
 
-  if (options.saveCache) {
+  if (options.persist) {
     log('setDocState.cache', key, value);
     LocalStorage.set(key, value);
   }
