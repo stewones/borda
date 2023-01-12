@@ -229,10 +229,6 @@ function memorize<T>(source: Observable<T>, options: FastOptions) {
 
     source.subscribe({
       next: (current) => {
-        if (!state || !cache || !isEqual(state, cache)) {
-          observer.next(current);
-        }
-
         if (state) {
           log(
             'state.status',
@@ -265,6 +261,10 @@ function memorize<T>(source: Observable<T>, options: FastOptions) {
         if (!isEqual(state, current)) {
           setDocState(key, current, { saveCache: false });
           log('state.set', key, state, current);
+        }
+
+        if (!isEqual(current, cache)) {
+          observer.next(current);
         }
       },
       error: (error) => observer.error(error),
