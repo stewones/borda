@@ -79,9 +79,9 @@ export function getDocState<T = any>(key?: string): T {
   const currentState = EleganteBrowser.store.getState();
 
   if (key) {
-    return get(currentState, `$doc.${key}`);
+    return get(currentState, '$doc')[key];
   }
-  return get(currentState, `$doc`);
+  return get(currentState, '$doc');
 }
 
 export function setDocState(
