@@ -139,7 +139,10 @@ interface UserExtended extends User {
 }
 
 export class PublicUserModel extends ActiveRecord<UserExtended> {
-  constructor(record?: Partial<UserExtended>, options: ActiveParams = {}) {
+  constructor(
+    record?: Partial<UserExtended>,
+    options: ActiveParams<UserExtended> = {}
+  ) {
     /**
      * custom identifier query
      */

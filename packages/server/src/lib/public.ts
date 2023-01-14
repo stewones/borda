@@ -87,6 +87,8 @@ export function createServer(options: Partial<ServerParams>): Application {
     );
   }
 
+  Cache.clock();
+
   return app;
 }
 
@@ -127,23 +129,6 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
     connections.set(ws, metadata);
 
     const { headers } = incoming;
-
-    // {
-    //   host: 'localhost:1338',
-    //   connection: 'Upgrade',
-    //   pragma: 'no-cache',
-    //   'cache-control': 'no-cache',
-    //   'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
-    //   upgrade: 'websocket',
-    //   origin: 'http://localhost:4200',
-    //   'sec-websocket-version': '13',
-    //   'accept-encoding': 'gzip, deflate, br',
-    //   'accept-language': 'en-US,en;q=0.9',
-    //   cookie: 'g_state={"i_l":0}; inl={"token":"r:3d57eeade3e43d13476cc1fbbb932040","avatar":""}',
-    //   'sec-websocket-key': 'qkd6T8tGnbu8ZRKfvr7dsg==',
-    //   'sec-websocket-extensions': 'permessage-deflate; client_max_window_bits',
-    //   'sec-websocket-protocol': '🔑, token'
-    // }
 
     // extract websocket protocols from headers
     const protocols = headers['sec-websocket-protocol'];

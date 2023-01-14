@@ -41,12 +41,32 @@ export abstract class Cache {
     cache = false;
   }
 
+  /**
+   * a running clock to automatically invalidate cache based on the TTL
+   * this helps to clean up memory and avoid service disruption by memory leaks
+   */
+  public static clock(): void {
+    if (!Cache.enabled) return;
+    const documentCacheTTL = EleganteServer.params.documentCacheTTL;
+
+    const now = Date.now();
+
+    for (const [key, value] of memo) {
+      if (value.expires < now) {
+        log('cache removed', key);
+        memo.delete(key);
+      }
+    }
+
+    setTimeout(Cache.clock, documentCacheTTL);
+  }
+
   public static invalidate(collection: string, objectId: string): void {
     if (!Cache.enabled) return;
     collection = InternalCollectionName[collection] ?? collection;
     const key = `doc:${collection}:${objectId}`;
     if (Cache.has(key)) {
-      log('cache removed', key);
+      log('cache invalidated', key);
       Cache.delete(key);
     }
   }
