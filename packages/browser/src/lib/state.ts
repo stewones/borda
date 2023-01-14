@@ -6,14 +6,24 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import watch from 'redux-watch';
 import { Observable } from 'rxjs';
-import { get, cloneDeep, LocalStorage } from '@elegante/sdk';
+
+import {
+  cloneDeep,
+  Document,
+  get,
+  LocalStorage,
+} from '@elegante/sdk';
+
 import { EleganteBrowser } from './Browser';
 import { log } from './log';
-import { $docReset, $docSet, $docUnset, dispatch } from './redux';
+import {
+  $docReset,
+  $docSet,
+  $docUnset,
+  dispatch,
+} from './redux';
 
 export interface SetStateOptions {
   persist?: boolean;
@@ -32,7 +42,7 @@ export interface ListenerOptions {
   copy: boolean;
 }
 
-export interface StateContext<T = any> {
+export interface StateContext<T = Document> {
   path: string;
   prev: T;
   next: T;
@@ -47,7 +57,7 @@ export interface StateContext<T = any> {
  * @param {string} [path]
  * @returns {*}  {T}
  */
-export function getState<T = any>(path?: string): T {
+export function getState<T = Document>(path?: string): T {
   if (!EleganteBrowser.store) {
     throw new Error(
       'unable to find any store. to use getState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
@@ -84,9 +94,9 @@ export function getDocState<T = any>(key?: string): T {
   return get(currentState, '$doc');
 }
 
-export function setDocState(
+export function setDocState<T = Document>(
   key: string,
-  value: any,
+  value: T,
   options: SetStateOptions = { persist: true }
 ) {
   if (!EleganteBrowser.store) {
@@ -166,15 +176,16 @@ export function resetDocState(
  *   }]
  * @returns {*}  {Observable<T>}
  */
-export function connect<T = any>(
+export function connect<T = Document>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   this: any,
   path: string,
   options: Partial<ListenerOptions> = {
-    $doc: false,
     context: false,
+    $doc: false,
     copy: false,
   }
-) {
+): Observable<T> {
   if (!EleganteBrowser.store) {
     throw new Error(
       'unable to find any store. to use connect make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
@@ -198,7 +209,7 @@ export function connect<T = any>(
 
   const o = new Observable<T>((observer) => {
     const storeInstance = EleganteBrowser.store;
-    const storeValue = options.copy
+    const storeValue: T = options.copy
       ? cloneDeep(get(storeInstance.getState(), path))
       : get(storeInstance.getState(), path);
 
@@ -215,7 +226,7 @@ export function connect<T = any>(
         path,
         prev: storeValue,
         next: storeValue,
-      } as any);
+      } as T);
     } else {
       observer.next(storeValue);
     }
@@ -239,7 +250,7 @@ export function connect<T = any>(
             path,
             prev,
             next: nextValue,
-          } as any);
+          } as T);
         } else {
           observer.next(nextValue);
         }

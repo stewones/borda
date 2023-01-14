@@ -9,11 +9,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import 'reflect-metadata';
 
-import { Document, LocalStorage, isEqual } from '@elegante/sdk';
 import { Observable } from 'rxjs';
-import { log } from './log';
+
+import {
+  Document,
+  isEqual,
+  LocalStorage,
+} from '@elegante/sdk';
+
 import { EleganteBrowser } from './Browser';
-import { getDocState, setDocState } from './state';
+import { log } from './log';
+import {
+  getDocState,
+  setDocState,
+} from './state';
+
 interface FastOptions {
   key: string;
 }

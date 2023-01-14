@@ -7,10 +7,14 @@
  * You might need to authenticate with NPM before running this script.
  */
 
-import { readCachedProjectGraph } from '@nrwl/devkit';
-import { execSync } from 'child_process';
-import { readFileSync, writeFileSync } from 'fs';
 import chalk from 'chalk';
+import { execSync } from 'child_process';
+import {
+  readFileSync,
+  writeFileSync,
+} from 'fs';
+
+import { readCachedProjectGraph } from '@nrwl/devkit';
 
 function invariant(condition, message) {
   if (!condition) {
@@ -73,6 +77,14 @@ try {
   const original = JSON.parse(readFileSync(originalPath).toString());
   original.version = v;
   writeFileSync(originalPath, JSON.stringify(json, null, 2));
+
+  // update @elegante/server/sdk/src/package.json
+  if (name === 'server') {
+    const sdkPath = `../../../dist/packages/server/sdk/src/package.json`;
+    const sdkJson = JSON.parse(readFileSync(sdkPath).toString());
+    sdkJson.main = `./index.js`; // not sure why but the build is writing this as index.cjs which doesn't exist inside the package
+    writeFileSync(sdkPath, JSON.stringify(sdkJson, null, 2));
+  }
 } catch (e) {
   console.error(
     chalk.bold.red(`Error reading package.json file from library build output.`)
