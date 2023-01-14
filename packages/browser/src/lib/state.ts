@@ -48,6 +48,8 @@ export interface StateContext<T = Document> {
   next: T;
 }
 
+export type StateDocument = Document | Document[] | string | number;
+
 /**
  * Synchronously grab a piece of data from state controlled by custom reducers.
  * The path is a string with dot notation. If path isn't specified, the whole state is returned.
@@ -57,7 +59,7 @@ export interface StateContext<T = Document> {
  * @param {string} [path]
  * @returns {*}  {T}
  */
-export function getState<T = Document>(path?: string): T {
+export function getState<T = StateDocument>(path?: string): T {
   if (!EleganteBrowser.store) {
     throw new Error(
       'unable to find any store. to use getState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
@@ -79,7 +81,7 @@ export function getState<T = Document>(path?: string): T {
  * @param {string} [key]
  * @returns {*}  {T}
  */
-export function getDocState<T = any>(key?: string): T {
+export function getDocState<T = StateDocument>(key?: string): T {
   if (!EleganteBrowser.store) {
     throw new Error(
       'unable to find any store. to use getDocState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
@@ -94,7 +96,7 @@ export function getDocState<T = any>(key?: string): T {
   return get(currentState, '$doc');
 }
 
-export function setDocState<T = Document>(
+export function setDocState<T = StateDocument>(
   key: string,
   value: T,
   options: SetStateOptions = { persist: true }

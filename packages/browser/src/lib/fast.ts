@@ -5,7 +5,6 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://elegante.dev/license
  */
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import 'reflect-metadata';
 
@@ -22,6 +21,7 @@ import { log } from './log';
 import {
   getDocState,
   setDocState,
+  StateDocument,
 } from './state';
 
 interface FastOptions {
@@ -210,7 +210,10 @@ export function Fast(key?: any, options?: any) {
   };
 }
 
-function memorize<T>(source: Observable<T>, options: FastOptions) {
+function memorize<T = StateDocument>(
+  source: Observable<T>,
+  options: FastOptions
+) {
   if (!EleganteBrowser.store) {
     throw new Error(
       'unable to find any store. to use the fast decorator make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
@@ -226,7 +229,7 @@ function memorize<T>(source: Observable<T>, options: FastOptions) {
   }
 
   return new Observable<T>((observer) => {
-    const state = getDocState(key);
+    const state = getDocState<T>(key);
     const cache = LocalStorage.get(key);
 
     if (state) {
