@@ -17,7 +17,7 @@ import {
 
 console.time('startup');
 
-const debug = true;
+const debug = false;
 const documentCacheTTL =
   parseFloat(process.env.ELEGANTE_DB_CACHE_TTL ?? '0') || 1 * 1000 * 60 * 60;
 

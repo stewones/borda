@@ -16,19 +16,15 @@ export declare interface Document {
 }
 
 export type DocumentResponse<T extends Document> = number | void | T | T[];
+export interface DocumentExtraOptions {
+  context?: Record<string, any>;
+  inspect?: boolean;
+}
 export type DocumentOptions =
-  | {
-      context?: Record<string, any>;
-    }
-  | (FindOptions & {
-      context?: Record<string, any>;
-    })
-  | (AggregateOptions & {
-      context?: Record<string, any>;
-    })
-  | (ManyInsertOptions & {
-      context?: Record<string, any>;
-    });
+  | DocumentExtraOptions
+  | (FindOptions & DocumentExtraOptions)
+  | (AggregateOptions & DocumentExtraOptions)
+  | (ManyInsertOptions & DocumentExtraOptions);
 
 /**
  * learn more
@@ -195,9 +191,7 @@ export declare interface Query<TSchema extends Document = Document> {
   /**
    * find documents using mongo-like queries
    */
-  find(
-    options?: FindOptions & { context?: Record<string, any> }
-  ): Promise<TSchema[]>;
+  find(options?: FindOptions & DocumentExtraOptions): Promise<TSchema[]>;
 
   /**
    * find a document using mongo-like queries
@@ -206,28 +200,19 @@ export declare interface Query<TSchema extends Document = Document> {
   findOne(objectId: string): Promise<TSchema>;
   findOne(
     objectId: string,
-    options?: FindOptions & {
-      context?: Record<string, any>;
-    }
+    options?: FindOptions & DocumentExtraOptions
   ): Promise<TSchema>;
-  findOne(options?: { context?: Record<string, any> }): Promise<TSchema>;
+  findOne(options?: DocumentExtraOptions): Promise<TSchema>;
 
   /**
    * update a document using mongo-like queries
    * or direclty by passing its objectId
    */
-  update(
-    doc: TSchema,
-    options?: {
-      context?: Record<string, any>;
-    }
-  ): Promise<void>;
+  update(doc: TSchema, options?: DocumentExtraOptions): Promise<void>;
   update(
     objectId: string,
     doc: TSchema,
-    options?: {
-      context?: Record<string, any>;
-    }
+    options?: DocumentExtraOptions
   ): Promise<void>;
 
   /**
@@ -235,9 +220,7 @@ export declare interface Query<TSchema extends Document = Document> {
    */
   insert(
     doc: Partial<TSchema>,
-    options?: {
-      context?: Record<string, any>;
-    }
+    options?: DocumentExtraOptions
   ): Promise<TSchema>;
 
   /**
@@ -247,37 +230,26 @@ export declare interface Query<TSchema extends Document = Document> {
    */
   insertMany(
     docs: Partial<TSchema[]>,
-    options?: ManyInsertOptions<TSchema>
+    options?: ManyInsertOptions<TSchema> & DocumentExtraOptions
   ): Promise<ManyInsertResponse<TSchema>>;
 
   /**
    * delete a document using mongo-like queries
    * or direclty by passing its objectId
    */
-  delete(options?: { context?: Record<string, any> }): Promise<void>;
-  delete(
-    objectId: string,
-    options?: {
-      context?: Record<string, any>;
-    }
-  ): Promise<void>;
+  delete(options?: DocumentExtraOptions): Promise<void>;
+  delete(objectId: string, options?: DocumentExtraOptions): Promise<void>;
 
   /**
    * count documents using mongo-like queries
    */
-  count(
-    options?: FindOptions & {
-      context?: Record<string, any>;
-    }
-  ): Promise<number>;
+  count(options?: FindOptions & DocumentExtraOptions): Promise<number>;
 
   /**
    * aggregate documents using mongo-like queries
    */
   aggregate(
-    options?: AggregateOptions & {
-      context?: Record<string, any>;
-    }
+    options?: AggregateOptions & DocumentExtraOptions
   ): Promise<TSchema[]>;
 
   /**

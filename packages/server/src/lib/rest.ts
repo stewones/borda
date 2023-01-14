@@ -8,20 +8,20 @@
 
 import express, { Application } from 'express';
 
-import { ServerParams } from './Server';
 import { restDelete } from './restDelete';
 import { restDeleteMe } from './restDeleteMe';
 import { restGet } from './restGet';
 import { restGetMe } from './restGetMe';
 import { restPost } from './restPost';
 import { restPut } from './restPut';
-
 import {
   routeEnsureApiKey,
-  routeUnlock,
   routeEnsureApiSecret,
   routeEnsureAuth,
+  routeInspect,
+  routeUnlock,
 } from './route';
+import { ServerParams } from './Server';
 
 export function rest({
   app,
@@ -44,6 +44,9 @@ export function rest({
       params,
     }),
     routeUnlock({
+      params,
+    }),
+    routeInspect({
       params,
     })
   );

@@ -41,7 +41,6 @@ import {
   parseDocForInsertion,
   parseDocs,
 } from './parseDoc';
-import { parseFilter } from './parseFilter';
 import { parseProjection } from './parseProjection';
 import {
   DocQRL,
@@ -111,6 +110,7 @@ export function restPost({
 
       const docQRLFrom: DocQRLFrom = {
         ...req.body,
+        res,
         collection: collectionName,
       };
 
@@ -141,7 +141,7 @@ export function restPost({
         /**
          * update
          */
-        const docBefore = await collection$.findOne(parseFilter(filter), {
+        const docBefore = await collection$.findOne(filter || {}, {
           readPreference: 'primary',
         });
 
@@ -259,7 +259,7 @@ export function restPost({
          * count
          * @todo run beforeCount and afterCount triggers
          */
-        const total = await collection$.countDocuments(parseFilter(filter));
+        const total = await collection$.countDocuments(filter || {});
         return res.status(200).json(total);
       } else if (method === 'aggregate') {
         /**
@@ -271,10 +271,15 @@ export function restPost({
         return res
           .status(200)
           .json(
-            parseProjection(
-              docQRL.projection ?? ({} as any),
-              await parseDocs(docs)(docQRL, params, res.locals)
-            )
+            Array.isArray(docs)
+              ? parseProjection(
+                  docQRL.projection ?? ({} as any),
+                  await parseDocs(docs)(docQRL, params, res.locals)
+                ) ?? []
+              : parseProjection(
+                  docQRL.projection ?? ({} as any),
+                  await parseDoc(docs)(docQRL, params, res.locals)
+                )
           );
       } else if (method === 'insert') {
         let beforeSaveCallback: CloudTriggerCallback = true;
@@ -513,7 +518,7 @@ async function postUpdate(docQRL: DocQRL, res: Response) {
   }
 
   const cursor = await collection$.findOneAndUpdate(
-    parseFilter(filter),
+    filter || {},
     {
       $set: doc,
     },
@@ -529,7 +534,7 @@ async function postDelete(query: DocQRL) {
   const { filter, collection$ } = query;
 
   const cursor = await collection$.findOneAndUpdate(
-    parseFilter(filter),
+    filter || {},
     { $set: { _expires_at: new Date() } },
     {
       returnDocument: 'after',
@@ -543,22 +548,12 @@ async function postDelete(query: DocQRL) {
 }
 
 async function postAggregate(query: DocQRL) {
-  const {
-    collection$,
-    pipeline,
-    projection,
-    filter,
-    limit,
-    skip,
-    sort,
-    options,
-  } = query;
+  const { collection$, pipeline, filter, limit, skip, sort, options } = query;
 
   const docs: Document[] = [];
   const pipe = createPipeline<Document>({
     filter: filter ?? {},
     pipeline: pipeline ?? ([] as any),
-    projection: projection ?? ({} as any),
     limit: limit ?? 10000,
     skip: skip ?? 0,
     sort: sort ?? {},

@@ -8,20 +8,24 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { NextFunction, Request, Response } from 'express';
+import {
+  NextFunction,
+  Request,
+  Response,
+} from 'express';
 
 import {
-  query,
-  InternalHeaders,
-  Session,
   EleganteError,
   ErrorCode,
+  InternalHeaders,
   isEmpty,
+  query,
+  Session,
 } from '@elegante/sdk';
 
+import { Cache } from './Cache';
 import { getCloudFunction } from './Cloud';
 import { ServerParams } from './Server';
-import { Cache } from './Cache';
 import { isUnlocked } from './utils/isUnlocked';
 
 export const routeEnsureApiKey =
@@ -75,6 +79,19 @@ export const routeUnlock =
     );
     if (apiSecret === params.apiSecret) {
       res.locals['unlocked'] = true;
+    }
+    return next();
+  };
+
+export const routeInspect =
+  ({ params }: { params: ServerParams }) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const apiInspect = req.header(
+      `${params.serverHeaderPrefix}-${InternalHeaders['apiInspect']}`
+    );
+
+    if (apiInspect) {
+      res.locals['inspect'] = true;
     }
     return next();
   };

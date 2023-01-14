@@ -1,28 +1,14 @@
 import {
-  Action,
-  createAction,
-  createReducer,
-  dispatch,
-  connect,
-  load,
-  fast,
-  Fast,
-  from,
-  getDocState,
-  getState,
-  resetDocState,
-  setDocState,
-  unsetDocState,
-} from '@elegante/browser';
+  of,
+  Subscription,
+} from 'rxjs';
 
 import { CommonModule } from '@angular/common';
-
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
 } from '@angular/core';
-
 import {
   FormControl,
   FormGroup,
@@ -31,21 +17,35 @@ import {
 } from '@angular/forms';
 
 import {
-  init,
-  query,
-  Auth,
-  Session,
-  runFunction,
-  User,
-  ping,
-  LocalStorage,
-  Record,
-  ActiveRecord,
+  Action,
+  connect,
+  createAction,
+  createReducer,
+  dispatch,
+  fast,
+  Fast,
+  from,
+  getDocState,
+  getState,
+  load,
+  resetDocState,
+  setDocState,
+  unsetDocState,
+} from '@elegante/browser';
+import {
   ActiveParams,
+  ActiveRecord,
+  Auth,
   cleanArray,
+  init,
+  LocalStorage,
+  ping,
+  query,
+  Record,
+  runFunction,
+  Session,
+  User,
 } from '@elegante/sdk';
-
-import { of, Subscription } from 'rxjs';
 
 console.time('startup');
 
@@ -346,11 +346,18 @@ export class AppComponent {
           })
           .pipeline([
             {
+              $match: {
+                updatedAt: {
+                  $exists: true,
+                },
+              },
+            },
+            {
               $sort: { createdAt: 1 },
             },
           ])
           .limit(10)
-          .aggregate({ allowDiskUse: true })
+          .aggregate({ allowDiskUse: true, inspect: true })
       )
     : of([]);
 

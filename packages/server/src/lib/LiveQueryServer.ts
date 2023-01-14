@@ -98,7 +98,6 @@ export function handleOn(
         createPipeline<Document>({
           filter: filter ?? ({} as any),
           pipeline: pipeline ?? ([] as any),
-          projection: projection ?? ({} as any),
         })
       ),
     ],
@@ -229,7 +228,6 @@ export async function handleOnce(
     createPipeline<Document>({
       filter: filter ?? {},
       pipeline: pipeline ?? ([] as any),
-      projection: projection ?? ({} as any),
       limit: limit ?? 10000,
       skip: skip ?? 0,
       sort: sort ?? {},

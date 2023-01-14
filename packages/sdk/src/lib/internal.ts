@@ -11,6 +11,7 @@ export const InternalHeaders = {
   apiKey: 'Api-Key',
   apiMethod: 'Api-Method',
   apiToken: 'Api-Token',
+  apiInspect: 'Api-Inspect',
 };
 
 export const InternalCollectionName: {

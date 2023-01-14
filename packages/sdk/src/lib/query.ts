@@ -289,12 +289,20 @@ export function query<TSchema extends Document = Document>(collection: string) {
         unlock,
       } = bridge.params;
 
+      const { inspect } = options;
+
       const headers = {
         [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
           EleganteClient.params.apiKey,
         [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
           method,
       };
+
+      if (inspect) {
+        headers[
+          `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiInspect']}`
+        ] = 'true';
+      }
 
       if (unlock) {
         headers[

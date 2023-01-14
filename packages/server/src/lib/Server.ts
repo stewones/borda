@@ -9,7 +9,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Application } from 'express';
-import { Db, MongoClient } from 'mongodb';
+import {
+  Db,
+  MongoClient,
+} from 'mongodb';
 
 import {
   Document,
@@ -19,16 +22,14 @@ import {
   ErrorCode,
   Filter,
   FindOptions,
-  InternalFieldName,
   isEmpty,
-  log,
   pointer,
+  print,
   query,
   Sort,
 } from '@elegante/sdk';
 
 import { invalidateCache } from './Cache';
-import { parseFilter } from './parseFilter';
 import { DocQRL } from './parseQuery';
 
 interface ServerProtocol {
@@ -119,22 +120,8 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
   const { collection$, options, filter, sort, limit, skip } = docQRL;
   const { allowDiskUse } = (options as FindOptions) || {};
 
-  /**
-   * decode sort
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sortAny: any = sort;
-  for (const fieldName in sortAny) {
-    if (InternalFieldName[fieldName]) {
-      sortAny[InternalFieldName[fieldName]] = sortAny[fieldName];
-      delete sortAny[fieldName];
-    }
-  }
-  const f = parseFilter(filter);
-  log('createFindCursor', 'parseFilter result', f);
-  const cursor = collection$.find<T>(f, {
-    // projection, // skipping Mongo's projection in favor of Elegant's one
-    sort: sortAny,
+  const cursor = collection$.find<T>(filter || {}, {
+    sort,
     ...options,
   });
 
@@ -162,9 +149,6 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
  * @param {{
  *   filter: Filter<TSchema>;
  *   pipeline: Document[];
- *   projection: {
- *     [key in keyof TSchema]: number;
- *   };
  *   sort?: Sort;
  *   limit?: number;
  *   skip?: number;
@@ -174,19 +158,15 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
 export function createPipeline<TSchema extends Document = Document>(bridge: {
   filter: Filter<TSchema>;
   pipeline?: DocumentPipeline<TSchema>;
-  projection?: {
-    [key in keyof TSchema]: number;
-  };
   sort?: Sort;
   limit?: number;
   skip?: number;
 }) {
-  const { filter, pipeline, sort, projection, limit, skip } = bridge;
+  const { filter, pipeline, sort, limit, skip } = bridge;
   return [
-    ...(!isEmpty(filter) ? [{ $match: parseFilter(filter) }] : []),
-    ...parseFilter(pipeline ?? []),
+    ...(!isEmpty(filter) ? [{ $match: filter }] : []),
+    ...(pipeline ?? []),
     ...(!isEmpty(sort) ? [{ $sort: sort }] : []),
-    // ...(!isEmpty(projection) ? [{ $project: projection }] : []), // skipping Mongo's projection in favor of Elegant's one
     ...(typeof limit === 'number' ? [{ $limit: limit }] : []),
     ...(typeof skip === 'number' ? [{ $skip: skip }] : []),
   ];
@@ -283,4 +263,17 @@ export async function ensureSessionInvalidation(_db: Db) {
           // it's fine if the session is already deleted or doesn't exist
         });
     });
+}
+
+export function logInspection(docQRL: DocQRL) {
+  const { locals } = docQRL.res || {};
+  const { inspect } = locals || {};
+  if (!inspect) return;
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { collection$, res, ...rest } = docQRL;
+  print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
+  print('~~~~~~~~ QUERY INSPECTION ~~~~~~~~~');
+  print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
+  print(JSON.stringify(rest, null, 2));
 }
