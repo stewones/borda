@@ -30,9 +30,11 @@ import { restPostFind } from './restPostFind';
 import { restPostInsert } from './restPostInsert';
 import { restPostInsertMany } from './restPostInsertMany';
 import { restPostRemove } from './restPostRemove';
+import { restPostRemoveMany } from './restPostRemoveMany';
 import { restPostSignIn } from './restPostSignIn';
 import { restPostSignUp } from './restPostSignUp';
 import { restPostUpdate } from './restPostUpdate';
+import { restPostUpdateMany } from './restPostUpdateMany';
 import { ServerParams } from './Server';
 import { isUnlocked } from './utils/isUnlocked';
 
@@ -87,6 +89,7 @@ export function restPost({
       const docQRLFrom: DocQRLFrom = {
         ...req.body,
         res,
+        method,
         collection: collectionName,
       };
 
@@ -105,8 +108,19 @@ export function restPost({
           res,
           docQRL,
         });
+      } else if (method === 'updateMany') {
+        return restPostUpdateMany({
+          res,
+          docQRL,
+        });
       } else if (method === 'remove') {
         return restPostRemove({
+          req,
+          res,
+          docQRL,
+        });
+      } else if (method === 'removeMany') {
+        return restPostRemoveMany({
           req,
           res,
           docQRL,

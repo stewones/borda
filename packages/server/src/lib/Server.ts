@@ -50,8 +50,7 @@ export interface ServerParams {
   /**
    * Default to 1h for document time-to-live.
    * it means that some internal queries will hit memory and be invalidated on every hour.
-   * *unless* related docs are updated/deleted in the database, then its cache is invalidated right away.
-   * this is so we don't need to be hitting database every time we need to get a document.
+   * *unless* related docs are updated/deleted in the database, in this case cache is invalidated right away.
    */
   documentCacheTTL?: number;
 }
@@ -68,6 +67,20 @@ export const EleganteServer: ServerProtocol = {
     ...ServerDefaultParams,
   },
 } as ServerProtocol;
+
+export function logInspection(docQRL: DocQRL) {
+  const { locals } = docQRL.res || {};
+
+  const { inspect } = locals || {};
+  if (!inspect) return;
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { collection$, res, ...rest } = docQRL;
+  print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
+  print('~~~~~~~~ QUERY INSPECTION ~~~~~~~~~');
+  print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
+  print(JSON.stringify(rest, null, 2));
+}
 
 export async function mongoConnect({ params }: { params: ServerParams }) {
   try {
@@ -99,9 +112,9 @@ export async function createIndexes({
         /**
          * Create `_expires_at` index used for soft deletes.
          * We don't actually delete a document, we update its _expires_at field with the current `Date`.
-         * Then mongo will automatically in fact delete this document once the TTL is reached.
-         * Project-wide, we should never directly delete a document if we want to keep its reference.
-         * The reasoning is due to hooks like `afterDelete` where we need the document to be available for linking back.
+         * Then mongo will automatically delete this document once the TTL is reached.
+         * Project-wide we should never directly delete a document if we want to keep its reference.
+         * The reasoning is due to hooks like `afterDelete` where we need the document to be available for linking it back to the user.
          */
         await db
           .collection(collection.name)
@@ -116,62 +129,6 @@ export async function createIndexes({
   }
 }
 
-export function createFindCursor<T extends Document>(docQRL: DocQRL) {
-  const { collection$, options, filter, sort, limit, skip } = docQRL;
-  const { allowDiskUse } = (options as FindOptions) || {};
-
-  const cursor = collection$.find<T>(filter || {}, {
-    sort,
-    ...options,
-  });
-
-  if (allowDiskUse) {
-    cursor.allowDiskUse(true);
-  }
-
-  if (limit) {
-    cursor.limit(limit);
-  }
-
-  if (skip) {
-    cursor.skip(skip);
-  }
-
-  return cursor;
-}
-
-/**
- * allowed operators for watch (query.on())
- * see https://www.mongodb.com/docs/manual/reference/method/Mongo.watch/#mongodb-method-Mongo.watch
- *
- * @export
- * @template TSchema
- * @param {{
- *   filter: Filter<TSchema>;
- *   pipeline: Document[];
- *   sort?: Sort;
- *   limit?: number;
- *   skip?: number;
- * }} bridge
- * @returns {*}
- */
-export function createPipeline<TSchema extends Document = Document>(bridge: {
-  filter: Filter<TSchema>;
-  pipeline?: DocumentPipeline<TSchema>;
-  sort?: Sort;
-  limit?: number;
-  skip?: number;
-}) {
-  const { filter, pipeline, sort, limit, skip } = bridge;
-  return [
-    ...(!isEmpty(filter) ? [{ $match: filter }] : []),
-    ...(pipeline ?? []),
-    ...(!isEmpty(sort) ? [{ $sort: sort }] : []),
-    ...(typeof limit === 'number' ? [{ $limit: limit }] : []),
-    ...(typeof skip === 'number' ? [{ $skip: skip }] : []),
-  ];
-}
-
 export async function ensureCacheInvalidation(db: Db) {
   if (!EleganteServer.params.documentCacheTTL) return;
   const collections = db.listCollections();
@@ -182,7 +139,7 @@ export async function ensureCacheInvalidation(db: Db) {
       !collectionInfo.name.startsWith('system.')
     ) {
       /**
-       * listen to collection changes to invalidate the server cache (memoized queries)
+       * listen to collection changes so we can invalidate the memoized queries
        */
       const collection = EleganteServer.db.collection(collectionInfo.name);
       collection
@@ -215,12 +172,11 @@ export async function ensureCacheInvalidation(db: Db) {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function ensureSessionInvalidation(_db: Db) {
+export async function ensureSessionInvalidation(db: Db) {
   /**
    * listen to user deletions to invalidate all user sessions
    */
-  const collection = EleganteServer.db.collection('_User');
+  const collection = db.collection('_User');
   collection
     .watch(
       [
@@ -265,15 +221,43 @@ export async function ensureSessionInvalidation(_db: Db) {
     });
 }
 
-export function logInspection(docQRL: DocQRL) {
-  const { locals } = docQRL.res || {};
-  const { inspect } = locals || {};
-  if (!inspect) return;
+export function createFindCursor<T extends Document>(docQRL: DocQRL) {
+  const { collection$, options, filter, sort, limit, skip } = docQRL;
+  const { allowDiskUse } = (options as FindOptions) || {};
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { collection$, res, ...rest } = docQRL;
-  print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
-  print('~~~~~~~~ QUERY INSPECTION ~~~~~~~~~');
-  print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
-  print(JSON.stringify(rest, null, 2));
+  const cursor = collection$.find<T>(filter || {}, {
+    sort,
+    ...options,
+  });
+
+  if (allowDiskUse) {
+    cursor.allowDiskUse(true);
+  }
+
+  if (limit) {
+    cursor.limit(limit);
+  }
+
+  if (skip) {
+    cursor.skip(skip);
+  }
+
+  return cursor;
+}
+
+export function createPipeline<TSchema extends Document = Document>(bridge: {
+  filter: Filter<TSchema>;
+  pipeline?: DocumentPipeline<TSchema>;
+  sort?: Sort;
+  limit?: number;
+  skip?: number;
+}) {
+  const { filter, pipeline, sort, limit, skip } = bridge;
+  return [
+    ...(!isEmpty(filter) ? [{ $match: filter }] : []),
+    ...(pipeline ?? []),
+    ...(!isEmpty(sort) ? [{ $sort: sort }] : []),
+    ...(typeof limit === 'number' ? [{ $limit: limit }] : []),
+    ...(typeof skip === 'number' ? [{ $skip: skip }] : []),
+  ];
 }

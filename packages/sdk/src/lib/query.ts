@@ -40,6 +40,7 @@ import {
   DocumentQuery,
   DocumentResponse,
   ManyInsertResponse,
+  ManyUpdateResponse,
   Query,
 } from './types/query';
 import {
@@ -195,6 +196,14 @@ export function query<TSchema extends Document = Document>(collection: string) {
       ) as Promise<void>;
     },
 
+    updateMany: (doc, options?) => {
+      return bridge.run(
+        'updateMany',
+        options ?? {},
+        doc ?? {}
+      ) as Promise<ManyUpdateResponse>;
+    },
+
     insert: (doc, options?) => {
       return bridge.run('insert', options ?? {}, doc) as Promise<TSchema>;
     },
@@ -218,6 +227,10 @@ export function query<TSchema extends Document = Document>(collection: string) {
         // objectId
         typeof objectIdOrOptions === 'string' ? objectIdOrOptions : undefined
       ) as Promise<void>;
+    },
+
+    deleteMany: (options) => {
+      return bridge.run('removeMany', options) as Promise<ManyUpdateResponse>;
     },
 
     count: (options) => {
@@ -290,7 +303,6 @@ export function query<TSchema extends Document = Document>(collection: string) {
       } = bridge.params;
 
       const { inspect } = options;
-
       const headers = {
         [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
           EleganteClient.params.apiKey,

@@ -21,6 +21,7 @@ import {
   Sort,
 } from './types';
 import {
+  cloneDeep,
   isEmpty,
   isServer,
   unset,
@@ -102,6 +103,11 @@ export interface ActiveParams<T = any> {
    * whether or not to exclude expired documents by default
    */
   excludeExpiredDocs?: boolean;
+
+  /**
+   * inspect queries in the server
+   */
+  inspect?: boolean;
 }
 
 export class ActiveRecord<Doc extends Record> {
@@ -200,8 +206,9 @@ export class ActiveRecord<Doc extends Record> {
 
   public async fetch() {
     return this.query
-      .findOne(this.objectId, {
+      .findOne({
         context: this.params.context,
+        inspect: this.params.inspect,
       })
       .then((doc) => {
         Object.assign(this.doc, doc);
@@ -217,17 +224,33 @@ export class ActiveRecord<Doc extends Record> {
       });
   }
 
-  public async save() {
+  public async save(): Promise<Doc> {
     if (this.objectId) {
       return this.query
         .update(this.objectId, await this.beforeDocumentSave(this.doc), {
           context: this.params.context,
+          inspect: this.params.inspect,
         })
         .then(() => this.getRawValue());
     } else {
+      if (!isEmpty(this.params.by)) {
+        const doc = cloneDeep(this.doc);
+        await this.fetch();
+        if (this.hit) {
+          this.doc = { ...this.doc, ...doc };
+          return this.query
+            .update(this.objectId, await this.beforeDocumentSave(this.doc), {
+              context: this.params.context,
+              inspect: this.params.inspect,
+            })
+            .then(() => this.getRawValue());
+        }
+      }
+
       return this.query
         .insert(await this.beforeDocumentSave(this.doc), {
           context: this.params.context,
+          inspect: this.params.inspect,
         })
         .then((doc) => {
           this.doc = doc;
@@ -243,6 +266,7 @@ export class ActiveRecord<Doc extends Record> {
     }
     return this.query.delete(this.objectId, {
       context: this.params.context,
+      inspect: this.params.inspect,
     });
   }
 

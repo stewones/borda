@@ -114,8 +114,10 @@ export declare type QueryMethod =
   | 'insert'
   | 'insertMany'
   | 'update'
+  | 'updateMany'
   | 'put'
   | 'remove'
+  | 'removeMany'
   | 'delete'
 
   /**
@@ -214,6 +216,10 @@ export declare interface Query<TSchema extends Document = Document> {
     doc: TSchema,
     options?: DocumentExtraOptions
   ): Promise<void>;
+  updateMany(
+    doc: TSchema,
+    options?: DocumentExtraOptions
+  ): Promise<ManyUpdateResponse>;
 
   /**
    * insert a document
@@ -230,7 +236,7 @@ export declare interface Query<TSchema extends Document = Document> {
    */
   insertMany(
     docs: Partial<TSchema[]>,
-    options?: ManyInsertOptions<TSchema> & DocumentExtraOptions
+    options?: DocumentExtraOptions
   ): Promise<ManyInsertResponse<TSchema>>;
 
   /**
@@ -239,6 +245,7 @@ export declare interface Query<TSchema extends Document = Document> {
    */
   delete(options?: DocumentExtraOptions): Promise<void>;
   delete(objectId: string, options?: DocumentExtraOptions): Promise<void>;
+  deleteMany(options?: DocumentExtraOptions): Promise<ManyUpdateResponse>;
 
   /**
    * count documents using mongo-like queries
@@ -260,7 +267,14 @@ export declare interface Query<TSchema extends Document = Document> {
     options?: DocumentOptions,
     docOrDocs?: Partial<TSchema | TSchema[]>,
     objectId?: string
-  ): Promise<number | TSchema | TSchema[] | ManyInsertResponse<TSchema> | void>;
+  ): Promise<
+    | number
+    | TSchema
+    | TSchema[]
+    | ManyInsertResponse<TSchema>
+    | ManyUpdateResponse
+    | void
+  >;
 
   /**
    * live queries
@@ -294,7 +308,25 @@ export interface ManyInsertResponse<TSchema> {
   };
 }
 
+export declare interface ManyUpdateResponse {
+  /** Indicates whether this write result was acknowledged. If not, then all other members of this result will be undefined */
+  acknowledged: boolean;
+  /** The number of documents that matched the filter */
+  matchedCount: number;
+  /** The number of documents that were modified */
+  modifiedCount: number;
+  /** The number of documents that were upserted */
+  upsertedCount: number;
+  /** The identifier of the inserted document if an upsert took place */
+  upsertedId: ObjectId;
+}
+
 export interface ManyInsertOptions<TSchema extends Document = Document> {
+  writeConcern: TSchema;
+  ordered: boolean;
+}
+
+export interface ManyDeleteOptions<TSchema extends Document = Document> {
   writeConcern: TSchema;
   ordered: boolean;
 }
