@@ -46,7 +46,8 @@ export function restPut({
       const { objectId, collectionName } = req.params;
 
       /**
-       * can't update to any of the reserved collections if not unlocked
+       * query against to any of the reserved collections
+       * if not unlocked should be strictly forbidden
        */
       const reservedCollections = [
         ...Object.keys(InternalCollectionName),

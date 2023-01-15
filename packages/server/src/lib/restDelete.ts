@@ -9,19 +9,26 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
+  Request,
+  Response,
+} from 'express';
+
+import {
+  Document,
   EleganteError,
   ErrorCode,
-  InternalCollectionName,
-  Document,
   ExternalCollectionName,
+  InternalCollectionName,
 } from '@elegante/sdk';
 
-import { Request, Response } from 'express';
-import { getCloudTrigger } from './Cloud';
-import { EleganteServer, ServerParams } from './Server';
 import { invalidateCache } from './Cache';
+import { getCloudTrigger } from './Cloud';
 import { DocQRL } from './parseQuery';
 import { parseResponse } from './parseResponse';
+import {
+  EleganteServer,
+  ServerParams,
+} from './Server';
 import { isUnlocked } from './utils/isUnlocked';
 
 export function restDelete({
@@ -39,7 +46,8 @@ export function restDelete({
       );
 
       /**
-       * can't delete to any of the reserved collections if not unlocked
+       * query against to any of the reserved collections
+       * if not unlocked should be strictly forbidden
        */
       const reservedCollections = [
         ...Object.keys(InternalCollectionName),

@@ -5,7 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://elegante.dev/license
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import {
   Request,
   Response,
@@ -59,7 +59,8 @@ export function restPost({
       }
 
       /**
-       * can't find to any of the reserved collections if not unlocked
+       * query against to any of the reserved collections
+       * if not unlocked should be strictly forbidden
        */
       const reservedCollections = [
         ...Object.keys(InternalCollectionName),
@@ -146,7 +147,7 @@ export function restPost({
           'Method not found'
         );
       }
-    } catch (err: any) {
+    } catch (err) {
       return res
         .status(405)
         .json(new EleganteError(ErrorCode.REST_POST_ERROR, err as object));

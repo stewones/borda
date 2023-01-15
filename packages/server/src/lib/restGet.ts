@@ -38,7 +38,8 @@ export function restGet({
       const { collectionName, objectId } = req.params;
 
       /**
-       * can't delete to any of the reserved collections if not unlocked
+       * query against to any of the reserved collections
+       * if not unlocked should be strictly forbidden
        */
       const reservedCollections = [
         ...Object.keys(InternalCollectionName),
