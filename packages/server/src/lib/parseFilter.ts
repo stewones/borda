@@ -17,6 +17,9 @@ import {
   isServer,
 } from '@elegante/sdk';
 
+/**
+ * used to parse queries by `filter` or `pipeline`
+ */
 export function parseFilter(obj: any | any[]): any | any[] {
   if (!isServer())
     throw new EleganteError(
@@ -88,6 +91,15 @@ export function parseFilter(obj: any | any[]): any | any[] {
         }
         if (foundPointer) {
           obj['_p_' + field] = value;
+          delete obj[field];
+        }
+      }
+
+      /**
+       * deal with empty $and and $or
+       */
+      if (['$and', '$or'].includes(field)) {
+        if (Array.isArray(value) && !value.length) {
           delete obj[field];
         }
       }
