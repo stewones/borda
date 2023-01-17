@@ -63,11 +63,15 @@ export async function restPostInsertMany({
 
     docQRL.docs.map((d) => {
       const doc = parseDocForInsertion(d);
+
+      if (docQRL?.options?.insert?.updatedAt !== false) {
+        doc['_updated_at'] = d['_updated_at'] ?? new Date();
+      }
+
       docs.push({
         ...doc,
         _id: doc._id ?? newObjectId(),
         _created_at: doc._created_at ?? new Date(),
-        _updated_at: doc._updated_at ?? new Date(),
       });
     });
 

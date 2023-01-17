@@ -108,6 +108,13 @@ export interface ActiveParams<T = any> {
    * inspect queries in the server
    */
   inspect?: boolean;
+
+  /**
+   * operations
+   */
+  insert?: {
+    updatedAt?: boolean;
+  };
 }
 
 export class ActiveRecord<Doc extends Record> {
@@ -251,6 +258,7 @@ export class ActiveRecord<Doc extends Record> {
         .insert(await this.beforeDocumentSave(this.doc), {
           context: this.params.context,
           inspect: this.params.inspect,
+          insert: this.params.insert ?? {},
         })
         .then((doc) => {
           this.doc = doc;

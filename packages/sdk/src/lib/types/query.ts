@@ -19,6 +19,9 @@ export type DocumentResponse<T extends Document> = number | void | T | T[];
 export interface DocumentExtraOptions {
   context?: Record<string, any>;
   inspect?: boolean;
+  insert?: {
+    updatedAt?: boolean;
+  };
 }
 export type DocumentOptions =
   | DocumentExtraOptions

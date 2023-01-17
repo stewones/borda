@@ -66,8 +66,12 @@ export async function restPostInsert({
       ...d,
       _id: d._id ?? newObjectId(),
       _created_at: d._created_at ?? new Date(),
-      _updated_at: d._updated_at ?? new Date(),
     };
+
+    if (docQRL?.options?.insert?.updatedAt !== false) {
+      doc['_updated_at'] = d._updated_at ?? new Date();
+    }
+
     const cursor = await collection$.insertOne(doc);
 
     if (cursor.acknowledged) {
