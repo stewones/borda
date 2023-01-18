@@ -10,22 +10,26 @@ import 'reflect-metadata';
 
 import { Observable } from 'rxjs';
 
-import {
-  Document,
-  isEqual,
-  LocalStorage,
-} from '@elegante/sdk';
+import { Document, get, isEqual, LocalStorage } from '@elegante/sdk';
 
 import { EleganteBrowser } from './Browser';
 import { log } from './log';
-import {
-  getDocState,
-  setDocState,
-  StateDocument,
-} from './state';
+import { getDocState, setDocState, StateDocument } from './state';
 
 interface FastOptions {
+  /**
+   * memoized data identifier
+   */
   key: string;
+  /**
+   * define a custom path used to extract data before memoization
+   */
+  path?: string;
+  /**
+   * define the response mode
+   * @default 'straight'
+   */
+  mode?: 'straight' | 'detailed';
 }
 
 /**
@@ -210,6 +214,15 @@ export function Fast(key?: any, options?: any) {
   };
 }
 
+/**
+ * memorize an observable in memory and disk
+ *
+ * @template T
+ * @param {Observable<T>} source
+ * @param {FastOptions} options
+ * @returns {*}
+ */
+
 function memorize<T = StateDocument>(
   source: Observable<T>,
   options: FastOptions
@@ -221,6 +234,7 @@ function memorize<T = StateDocument>(
   }
 
   const key = options.key || Reflect.getMetadata('key', source);
+  const { path } = options;
 
   if (!key) {
     throw new Error(
@@ -234,50 +248,59 @@ function memorize<T = StateDocument>(
 
     if (state) {
       log('state.get', key, cache);
-      observer.next(state);
+      observer.next(
+        options?.mode === 'detailed'
+          ? ({
+              hit: 'state',
+              value: state,
+            } as T)
+          : state
+      );
     } else if (cache) {
       log('cache.get', key, cache);
-      observer.next(cache);
+      observer.next(
+        options?.mode === 'detailed'
+          ? ({
+              hit: 'cache',
+              value: cache,
+            } as T)
+          : cache
+      );
     }
 
     source.subscribe({
       next: (current) => {
-        if (state) {
-          log(
-            'state.status',
-            key,
-            'isEqual',
-            isEqual(state, current),
-            'state',
-            state,
-            'current',
-            current
+        let value: T | T[] | string | number = current;
+        /**
+         * checks if the current value is an array and iterate over it
+         * to extract the value of the path
+         */
+        if (Array.isArray(current)) {
+          value = current.map((item) => get(item, path ?? ''));
+        } else if (!Array.isArray(current) && typeof current === 'object') {
+          value = get(current, path ?? '');
+        }
+
+        if (!isEqual(cache, value)) {
+          LocalStorage.set(key, value);
+          log('cache.set', key, value);
+        }
+
+        if (!isEqual(state, value)) {
+          setDocState(key, value, { persist: false });
+          log('state.set', key, value);
+        }
+
+        if (!isEqual(value, cache)) {
+          observer.next(
+            options?.mode === 'detailed'
+              ? ({
+                  hit: 'network',
+                  key,
+                  value,
+                } as T)
+              : (value as T)
           );
-        } else if (cache) {
-          log(
-            'cache.status',
-            key,
-            'isEqual',
-            isEqual(cache, current),
-            'cache',
-            cache,
-            'current',
-            current
-          );
-        }
-
-        if (!isEqual(cache, current)) {
-          LocalStorage.set(key, current);
-          log('cache.set', key, cache, current);
-        }
-
-        if (!isEqual(state, current)) {
-          setDocState(key, current, { persist: false });
-          log('state.set', key, state, current);
-        }
-
-        if (!isEqual(current, cache)) {
-          observer.next(current);
         }
       },
       error: (error) => observer.error(error),
