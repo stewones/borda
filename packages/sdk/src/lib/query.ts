@@ -9,31 +9,14 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import 'reflect-metadata';
-
-import {
-  finalize,
-  Observable,
-} from 'rxjs';
+import { finalize, Observable } from 'rxjs';
 
 import { EleganteClient } from './Client';
-import {
-  EleganteError,
-  ErrorCode,
-} from './Error';
-import {
-  fetch,
-  HttpMethod,
-} from './fetch';
-import {
-  InternalFieldName,
-  InternalHeaders,
-} from './internal';
+import { EleganteError, ErrorCode } from './Error';
+import { fetch, HttpMethod } from './fetch';
+import { InternalFieldName, InternalHeaders } from './internal';
 import { log } from './log';
-import {
-  DocumentLiveQuery,
-  LiveQueryMessage,
-} from './types';
+import { DocumentLiveQuery, LiveQueryMessage } from './types';
 import {
   ChangeStreamOptions,
   Document,
@@ -43,18 +26,8 @@ import {
   ManyUpdateResponse,
   Query,
 } from './types/query';
-import {
-  cleanKey,
-  isBoolean,
-  isEmpty,
-  isServer,
-  LocalStorage,
-} from './utils';
-import {
-  getUrl,
-  WebSocketFactory,
-  webSocketServer,
-} from './websocket';
+import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
+import { getUrl, WebSocketFactory, webSocketServer } from './websocket';
 
 export function query<TSchema extends Document = Document>(collection: string) {
   const bridge: Query<TSchema> = {
@@ -357,7 +330,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
         docs,
       };
 
-      const promise = fetch<DocumentResponse<TSchema>>(
+      const source = fetch<DocumentResponse<TSchema>>(
         `${EleganteClient.params.serverURL}/${bridge.params['collection']}${
           ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
         }`,
@@ -372,11 +345,13 @@ export function query<TSchema extends Document = Document>(collection: string) {
 
       Reflect.defineMetadata(
         'key',
-        cleanKey({ collection: bridge.params['collection'], ...docQuery }),
-        promise
+        cleanKey({
+          collection: bridge.params['collection'],
+          ...docQuery,
+        }),
+        source
       );
-
-      return promise;
+      return source;
     },
 
     on: (event, options?: ChangeStreamOptions) => {
@@ -413,85 +388,83 @@ export function query<TSchema extends Document = Document>(collection: string) {
         method: 'on',
       };
 
-      const observable = new Observable<LiveQueryMessage<TSchema>>(
-        (observer) => {
-          if (!EleganteClient.params.serverURL) {
-            throw new EleganteError(
-              ErrorCode.SERVER_URL_UNDEFINED,
-              'serverURL is not defined on client'
-            );
-          }
-
-          const socketURLPathname = `/${bridge.params['collection']}`;
-          const socketURL = getUrl() + socketURLPathname;
-
-          const webSocket: WebSocketFactory = {
-            onOpen: (ws, ev) => {
-              wss = ws;
-              wssConnected = true;
-              log('on', event, bridge.params['collection'], bridge.params);
-            },
-
-            onError: (ws, err) => {
-              log('error', 'on', event, err, bridge.params['collection']);
-            },
-
-            onConnect: (ws) => {
-              // send query to the server
-              ws.send(JSON.stringify(body));
-            },
-
-            onMessage: (ws, message) => {
-              const data = message.data;
-              try {
-                observer.next(JSON.parse(data));
-              } catch (err) {
-                log('on', event, bridge.params['collection'], 'error', err);
-                ws.close();
-              }
-            },
-
-            onClose: (ws, ev) => {
-              if (wssFinished || ev?.code === 1008) {
-                wss.close();
-                observer.error(
-                  new EleganteError(
-                    ErrorCode.LIVE_QUERY_SOCKET_CLOSE,
-                    ev.reason || ''
-                  )
-                );
-                return;
-              }
-              if (wssConnected) {
-                wssConnected = false;
-                log(
-                  'on',
-                  event,
-                  bridge.params['collection'],
-                  'disconnected',
-                  ev.reason,
-                  bridge.params
-                );
-              }
-              setTimeout(() => {
-                log(
-                  'on',
-                  event,
-                  bridge.params['collection'],
-                  'trying to reconnect',
-                  bridge.params
-                );
-                webSocketServer(socketURL)(webSocket);
-              }, 1 * 500);
-            },
-          };
-
-          /**
-           * connect to the server
-           */
-          webSocketServer(socketURL)(webSocket);
+      const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
+        if (!EleganteClient.params.serverURL) {
+          throw new EleganteError(
+            ErrorCode.SERVER_URL_UNDEFINED,
+            'serverURL is not defined on client'
+          );
         }
-      ).pipe(
+
+        const socketURLPathname = `/${bridge.params['collection']}`;
+        const socketURL = getUrl() + socketURLPathname;
+
+        const webSocket: WebSocketFactory = {
+          onOpen: (ws, ev) => {
+            wss = ws;
+            wssConnected = true;
+            log('on', event, bridge.params['collection'], bridge.params);
+          },
+
+          onError: (ws, err) => {
+            log('error', 'on', event, err, bridge.params['collection']);
+          },
+
+          onConnect: (ws) => {
+            // send query to the server
+            ws.send(JSON.stringify(body));
+          },
+
+          onMessage: (ws, message) => {
+            const data = message.data;
+            try {
+              observer.next(JSON.parse(data));
+            } catch (err) {
+              log('on', event, bridge.params['collection'], 'error', err);
+              ws.close();
+            }
+          },
+
+          onClose: (ws, ev) => {
+            if (wssFinished || ev?.code === 1008) {
+              wss.close();
+              observer.error(
+                new EleganteError(
+                  ErrorCode.LIVE_QUERY_SOCKET_CLOSE,
+                  ev.reason || ''
+                )
+              );
+              return;
+            }
+            if (wssConnected) {
+              wssConnected = false;
+              log(
+                'on',
+                event,
+                bridge.params['collection'],
+                'disconnected',
+                ev.reason,
+                bridge.params
+              );
+            }
+            setTimeout(() => {
+              log(
+                'on',
+                event,
+                bridge.params['collection'],
+                'trying to reconnect',
+                bridge.params
+              );
+              webSocketServer(socketURL)(webSocket);
+            }, 1 * 500);
+          },
+        };
+
+        /**
+         * connect to the server
+         */
+        webSocketServer(socketURL)(webSocket);
+      }).pipe(
         finalize(() => {
           log('on', event, 'unsubscribed', bridge.params);
           wssFinished = true;
@@ -499,8 +472,8 @@ export function query<TSchema extends Document = Document>(collection: string) {
         })
       );
 
-      Reflect.defineMetadata('key', cleanKey(body), observable);
-      return observable;
+      Reflect.defineMetadata('key', cleanKey(body), source);
+      return source;
     },
 
     once: () => {

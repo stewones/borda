@@ -6,8 +6,6 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-import 'reflect-metadata';
-
 import { EleganteClient } from './Client';
 import { EleganteError, ErrorCode } from './Error';
 import { fetch } from './fetch';
@@ -15,13 +13,13 @@ import { InternalHeaders } from './internal';
 import { Document } from './types/query';
 import { cleanKey, isServer, LocalStorage } from './utils';
 
-export async function runFunction<T = Document>(
+export function runFunction<T extends Document = Document>(
   name: string,
   doc?: Document,
   options?: {
     headers?: Record<string, string>;
   }
-): Promise<T> {
+) {
   if (!EleganteClient.params.apiKey) {
     throw new EleganteError(ErrorCode.INVALID_API_KEY, 'API key required');
   }
@@ -56,7 +54,7 @@ export async function runFunction<T = Document>(
     }
   }
 
-  const promise = fetch<T>(
+  const source = fetch<T>(
     `${EleganteClient.params.serverURL}/functions/${name}`,
     {
       method: 'POST',
@@ -65,12 +63,12 @@ export async function runFunction<T = Document>(
     }
   );
 
-  Reflect.defineMetadata('key', cleanKey({ fn: name, ...doc }), promise);
+  Reflect.defineMetadata('key', cleanKey({ function: name, ...doc }), source);
 
-  return promise;
+  return source;
 }
 
-export async function runJob<T = Document>(
+export function runJob<T extends Document = Document>(
   name: string,
   doc?: Document
 ): Promise<T> {
@@ -99,13 +97,13 @@ export async function runJob<T = Document>(
       EleganteClient.params.apiSecret,
   };
 
-  const promise = fetch<T>(`${EleganteClient.params.serverURL}/jobs/${name}`, {
+  const source = fetch<T>(`${EleganteClient.params.serverURL}/jobs/${name}`, {
     method: 'POST',
     headers,
     body: doc,
   });
 
-  Reflect.defineMetadata('key', cleanKey({ job: name, ...doc }), promise);
+  Reflect.defineMetadata('key', cleanKey({ job: name, ...doc }), source);
 
-  return promise;
+  return source;
 }

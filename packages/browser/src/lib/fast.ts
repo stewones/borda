@@ -6,7 +6,6 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import 'reflect-metadata';
 
 import { defer as deferRXJS, Observable } from 'rxjs';
 

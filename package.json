@@ -53,6 +53,7 @@
     "nx": "15.2.1",
     "prettier": "^2.6.2",
     "redux-watch": "^1.2.0",
+    "reflect-metadata": "^0.1.13",
     "rollup-plugin-typescript2": "^0.34.1",
     "rxjs": "^7.8.0",
     "ts-jest": "28.0.5",

@@ -15,8 +15,16 @@ import { isEmpty } from './isEmpty';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function cleanKey(json: any): string {
   for (const key in json) {
-    if (isEmpty(json[key])) {
-      delete json[key];
+    if (typeof json[key] === 'object') {
+      cleanKey(json[key]);
+    } else {
+      if (
+        typeof json[key] !== 'number' &&
+        typeof json[key] !== 'string' &&
+        isEmpty(json[key])
+      ) {
+        delete json[key];
+      }
     }
   }
 
