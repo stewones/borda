@@ -7,19 +7,32 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { defer as deferRXJS, Observable } from 'rxjs';
+import {
+  defer as deferRXJS,
+  Observable,
+} from 'rxjs';
 
-import { Document, get, isEqual, LocalStorage } from '@elegante/sdk';
+import {
+  Document,
+  get,
+  isEqual,
+  isOnline,
+  LocalStorage,
+} from '@elegante/sdk';
 
 import { EleganteBrowser } from './Browser';
 import { log } from './log';
-import { getDocState, setDocState, StateDocument } from './state';
+import {
+  getDocState,
+  setDocState,
+  StateDocument,
+} from './state';
 
 export interface FastOptions {
   /**
    * memoized data identifier
    */
-  key: string;
+  key?: string;
   /**
    * define a custom path used to extract data before memoization
    */
@@ -294,17 +307,17 @@ function memorize<T = StateDocument>(
           value = get(current, path ?? '');
         }
 
-        if (!isEqual(cache, value)) {
+        if (!isEqual(cache, value) && isOnline()) {
           LocalStorage.set(key, value);
           log('cache.set', key, value);
         }
 
-        if (!isEqual(state, value)) {
+        if (!isEqual(state, value) && isOnline()) {
           setDocState(key, value, { persist: false });
           log('state.set', key, value);
         }
 
-        if (!isEqual(value, cache)) {
+        if (!isEqual(value, cache) && isOnline()) {
           observer.next(
             options?.mode === 'detailed'
               ? ({
