@@ -8,7 +8,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import 'reflect-metadata';
 
-import { Observable } from 'rxjs';
+import { defer as deferRXJS, Observable } from 'rxjs';
 
 import { Document, get, isEqual, LocalStorage } from '@elegante/sdk';
 
@@ -16,7 +16,7 @@ import { EleganteBrowser } from './Browser';
 import { log } from './log';
 import { getDocState, setDocState, StateDocument } from './state';
 
-interface FastOptions {
+export interface FastOptions {
   /**
    * memoized data identifier
    */
@@ -30,6 +30,18 @@ interface FastOptions {
    * @default 'straight'
    */
   mode?: 'straight' | 'detailed';
+}
+
+export function from<T = void>(source: Promise<T>): Observable<T> {
+  const key = Reflect.getMetadata('key', source);
+
+  const def = deferRXJS(() => source);
+
+  if (key) {
+    Reflect.defineMetadata('key', key, def);
+  }
+
+  return def;
 }
 
 /**
@@ -253,6 +265,7 @@ function memorize<T = StateDocument>(
           ? ({
               hit: 'state',
               value: state,
+              key,
             } as T)
           : state
       );
@@ -263,6 +276,7 @@ function memorize<T = StateDocument>(
           ? ({
               hit: 'cache',
               value: cache,
+              key,
             } as T)
           : cache
       );
@@ -302,6 +316,12 @@ function memorize<T = StateDocument>(
               : (value as T)
           );
         }
+
+        /**
+         * kill the subscription.
+         * useful when you want to compose and get to known the last value of fast's stream
+         */
+        observer.complete();
       },
       error: (error) => observer.error(error),
     });

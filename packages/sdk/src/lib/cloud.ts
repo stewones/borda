@@ -6,12 +6,14 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
+import 'reflect-metadata';
+
 import { EleganteClient } from './Client';
 import { EleganteError, ErrorCode } from './Error';
-import { InternalHeaders } from './internal';
 import { fetch } from './fetch';
+import { InternalHeaders } from './internal';
 import { Document } from './types/query';
-import { isServer, LocalStorage } from './utils';
+import { cleanKey, isServer, LocalStorage } from './utils';
 
 export async function runFunction<T = Document>(
   name: string,
@@ -54,11 +56,18 @@ export async function runFunction<T = Document>(
     }
   }
 
-  return fetch<T>(`${EleganteClient.params.serverURL}/functions/${name}`, {
-    method: 'POST',
-    headers,
-    body: doc,
-  });
+  const promise = fetch<T>(
+    `${EleganteClient.params.serverURL}/functions/${name}`,
+    {
+      method: 'POST',
+      headers,
+      body: doc,
+    }
+  );
+
+  Reflect.defineMetadata('key', cleanKey({ fn: name, ...doc }), promise);
+
+  return promise;
 }
 
 export async function runJob<T = Document>(
@@ -90,9 +99,13 @@ export async function runJob<T = Document>(
       EleganteClient.params.apiSecret,
   };
 
-  return fetch<T>(`${EleganteClient.params.serverURL}/jobs/${name}`, {
+  const promise = fetch<T>(`${EleganteClient.params.serverURL}/jobs/${name}`, {
     method: 'POST',
     headers,
     body: doc,
   });
+
+  Reflect.defineMetadata('key', cleanKey({ job: name, ...doc }), promise);
+
+  return promise;
 }

@@ -2,7 +2,7 @@
   "name": "@elegante/browser",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
-  "version": "0.0.37",
+  "version": "0.0.38",
   "type": "module",
   "dependencies": {
     "reflect-metadata": "0.1.13"
