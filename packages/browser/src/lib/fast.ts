@@ -32,7 +32,7 @@ export interface FastOptions {
   mode?: 'straight' | 'detailed';
 }
 
-export function from<T = void>(source: Promise<T>): Observable<T> {
+export function from<T = Document>(source: Promise<T>): Observable<T> {
   const key = Reflect.getMetadata('key', source);
 
   const def = deferRXJS(() => source);
