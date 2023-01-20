@@ -34,6 +34,7 @@ import { restPostRemoveMany } from './restPostRemoveMany';
 import { restPostSignIn } from './restPostSignIn';
 import { restPostSignUp } from './restPostSignUp';
 import { restPostUpdate } from './restPostUpdate';
+import { restPostUpdateEmail } from './restPostUpdateEmail';
 import { restPostUpdateMany } from './restPostUpdateMany';
 import { ServerParams } from './Server';
 import { isUnlocked } from './utils/isUnlocked';
@@ -70,7 +71,7 @@ export function restPost({
       ];
 
       if (
-        !['signIn', 'signUp'].includes(method) &&
+        !['signIn', 'signUp', 'updateEmail'].includes(method) &&
         !isUnlocked(res.locals) &&
         reservedCollections.includes(collectionName)
       ) {
@@ -152,6 +153,11 @@ export function restPost({
         });
       } else if (collectionName === '_User' && method === 'signIn') {
         return restPostSignIn({
+          res,
+          docQRL,
+        });
+      } else if (collectionName === '_User' && method === 'updateEmail') {
+        return restPostUpdateEmail({
           res,
           docQRL,
         });

@@ -127,7 +127,8 @@ export declare type QueryMethod =
    * user specifics related
    */
   | 'signUp'
-  | 'signIn';
+  | 'signIn'
+  | 'updateEmail';
 
 export interface QRLParams<TSchema extends Document = Document> {
   collection: string;

@@ -303,6 +303,24 @@ export class PublicUserModel extends ActiveRecord<UserExtended> {
         <pre>{{ cool$ | async | json }}</pre>
       </code>
     </ng-container>
+
+    <br />
+
+    <h2>Change User Email</h2>
+    <form [formGroup]="changeEmailForm" (ngSubmit)="changeEmail()">
+      <label for="email">new email: </label>
+      <input id="email" type="text" formControlName="email" />
+      <label for="password">current password: </label>
+      <input id="password" type="text" formControlName="password" />
+      <button type="submit" [disabled]="changeEmailForm.invalid">
+        Change Email
+      </button>
+    </form>
+
+    <hr />
+    Error: {{ (changeEmailError | json) ?? '' }}
+    <hr />
+    <br />
   `,
 })
 export class AppComponent {
@@ -325,8 +343,14 @@ export class AppComponent {
     password: new FormControl(''),
   });
 
+  changeEmailForm = new FormGroup({
+    email: new FormControl(''),
+    password: new FormControl(''),
+  });
+
   signInError: any;
   signUpError: any;
+  changeEmailError: any;
 
   session$ = connect.bind(this)<Session>('session');
   cool$ = connect.bind(this)<any>('cool');
@@ -526,6 +550,25 @@ export class AppComponent {
 
     Auth.signOut().catch((err) => {});
     resetState();
+  }
+
+  async changeEmail() {
+    const { email, password } = this.changeEmailForm.getRawValue();
+    try {
+      const response = await Auth.updateEmail(
+        email as string,
+        password as string
+      );
+
+      this.changeEmailError = undefined;
+      this.cdr.markForCheck();
+
+      dispatch(sessionSet(response));
+    } catch (err: any) {
+      console.error(err);
+      this.changeEmailError = err.message ? err.message : err;
+      this.cdr.markForCheck();
+    }
   }
 
   deleteUser(objectId: string) {

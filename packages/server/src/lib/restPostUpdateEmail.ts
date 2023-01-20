@@ -11,9 +11,9 @@ import {
 
 import { DocQRL } from './parseQuery';
 import { createSession } from './public';
-import { hash } from './utils/password';
+import { compare } from './utils/password';
 
-export async function restPostSignUp({
+export async function restPostUpdateEmail({
   res,
   docQRL,
 }: {
@@ -22,16 +22,15 @@ export async function restPostSignUp({
 }) {
   const { projection, include, exclude, doc } = docQRL;
 
-  const { name, email, password } = doc ?? {};
+  const { email, password } = doc ?? {};
+
+  const { session } = res.locals;
+  const { user } = session;
 
   /**
    * validation chain
    */
-  if (!name) {
-    return res
-      .status(400)
-      .json(new EleganteError(ErrorCode.AUTH_NAME_REQUIRED, 'Name required'));
-  } else if (!validateEmail(email)) {
+  if (!validateEmail(email)) {
     return res
       .status(400)
       .json(
@@ -48,7 +47,7 @@ export async function restPostSignUp({
       );
   }
 
-  const checkUserExists = await query<User>('User')
+  const checkIfEmailExists = await query<User>('User')
     .unlock()
     .projection({ email: 1 })
     .filter({
@@ -61,25 +60,16 @@ export async function restPostSignUp({
     })
     .findOne();
 
-  if (!isEmpty(checkUserExists)) {
+  if (!isEmpty(checkIfEmailExists)) {
     return res
-      .status(404)
+      .status(400)
       .json(
         new EleganteError(
           ErrorCode.AUTH_EMAIL_ALREADY_EXISTS,
-          'This email is already in use'
+          'This email already exists'
         )
       );
   }
-
-  const newUser = await query<User>('User')
-    .unlock()
-    .insert({
-      ...doc,
-      name,
-      email: email.toLowerCase(),
-      password: await hash(password),
-    });
 
   const currentUser = await query<User>('User')
     .unlock()
@@ -87,6 +77,7 @@ export async function restPostSignUp({
       !isEmpty(projection)
         ? {
             ...projection,
+            password: 1,
           }
         : // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ({} as any)
@@ -94,14 +85,45 @@ export async function restPostSignUp({
     .include(include ?? [])
     .exclude(exclude ?? [])
     .filter({
-      objectId: newUser.objectId,
+      email: {
+        $eq: user.email,
+      },
       expiresAt: {
         $exists: false,
       },
     })
     .findOne();
 
-  const session = await createSession(currentUser);
+  if (isEmpty(currentUser)) {
+    return res
+      .status(404)
+      .json(
+        new EleganteError(
+          ErrorCode.AUTH_EMAIL_NOT_FOUND,
+          `This email doesn't exist`
+        )
+      );
+  }
 
-  return res.status(201).json(session);
+  if (!(await compare(password, currentUser.password ?? ''))) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(
+          ErrorCode.AUTH_PASSWORD_INCORRECT,
+          'password incorrect'
+        )
+      );
+  }
+
+  await query('User').unlock().update(currentUser.objectId, {
+    email: email.toLowerCase(),
+  });
+
+  const newSession = await createSession({
+    ...currentUser,
+    email: email.toLowerCase(),
+  });
+
+  return res.status(201).json(newSession);
 }
