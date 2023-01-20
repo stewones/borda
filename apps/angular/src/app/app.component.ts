@@ -306,7 +306,7 @@ export class PublicUserModel extends ActiveRecord<UserExtended> {
 
     <br />
 
-    <h2>Change User Email</h2>
+    <h2>Change Current User Email</h2>
     <form [formGroup]="changeEmailForm" (ngSubmit)="changeEmail()">
       <label for="email">new email: </label>
       <input id="email" type="text" formControlName="email" />
@@ -320,6 +320,7 @@ export class PublicUserModel extends ActiveRecord<UserExtended> {
     <hr />
     Error: {{ (changeEmailError | json) ?? '' }}
     <hr />
+    Session: {{ session$ | async | json }}
     <br />
   `,
 })
@@ -414,6 +415,12 @@ export class AppComponent {
      * load a public list of users
      */
     this.loadPublicUsers();
+
+    //
+
+    query('PublicUser')
+      .find()
+      .then((r) => console.log('find', r));
   }
 
   async subscribe() {

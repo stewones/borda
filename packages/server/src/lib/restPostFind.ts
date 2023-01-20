@@ -15,6 +15,7 @@ import {
   createFindCursor,
   ServerParams,
 } from './Server';
+import { isUnlocked } from './utils/isUnlocked';
 
 export async function restPostFind({
   docQRL,
@@ -27,6 +28,25 @@ export async function restPostFind({
   method: QueryMethod;
   params: ServerParams;
 }) {
+  /**
+   * apply a default limit if not set and only *if* locals env is not unlocked
+   * also ensures that the limit being passed is not greater than the max one defined in the server instance
+   */
+  const maxDocsPerQuery = params.queryMaxDocLimit ?? 50;
+
+  if (!docQRL.limit && !isUnlocked(res.locals)) {
+    docQRL.limit = maxDocsPerQuery;
+  } else if (
+    docQRL.limit &&
+    docQRL.limit > maxDocsPerQuery &&
+    !isUnlocked(res.locals)
+  ) {
+    docQRL.limit = maxDocsPerQuery;
+  }
+
+  /**
+   * all good to proceed with the query
+   */
   const docs: Document[] = [];
   const cursor = createFindCursor(docQRL);
   await cursor.forEach((doc) => {

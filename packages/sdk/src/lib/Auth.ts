@@ -113,6 +113,10 @@ export abstract class Auth {
     token: string,
     options?: Pick<SignOptions, 'saveToken'>
   ) {
+    if (isServer()) {
+      throw new Error('become is not supported on server.');
+    }
+
     const headers = {
       [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         EleganteClient.params.apiKey,
@@ -131,7 +135,11 @@ export abstract class Auth {
     password: string,
     options?: SignOptions
   ) {
-    let token = null;
+    if (isServer()) {
+      throw new Error(
+        'email update via Auth SDK is not supported on server. use the `query` api with `unlock` instead.'
+      );
+    }
 
     const headers = {
       [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
@@ -140,27 +148,19 @@ export abstract class Auth {
         'updateEmail',
     };
 
-    if (!isServer()) {
-      token = LocalStorage.get(
-        `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+    const token = LocalStorage.get(
+      `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+    );
+
+    if (!token) {
+      throw new Error(
+        `token is required to update user's email. did you sign in before?`
       );
     }
 
-    if (token) {
-      headers[
-        `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-      ] = token;
-    }
-
-    if (!isServer() && !token) {
-      throw new Error('token is required on client. did you sign in before?');
-    }
-
-    if (isServer() && EleganteClient.params.apiSecret) {
-      headers[
-        `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
-      ] = EleganteClient.params.apiSecret;
-    }
+    headers[
+      `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+    ] = token;
 
     return fetch<Session>(`${EleganteClient.params.serverURL}/User`, {
       method: 'POST',

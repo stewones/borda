@@ -50,14 +50,23 @@ export interface ServerParams {
   /**
    * Default to 1h for document time-to-live.
    * it means that some internal queries will hit memory and be invalidated on every hour.
-   * *unless* related docs are updated/deleted in the database, in this case cache is invalidated right away.
+   * _unless_ related docs are updated/deleted in the database, in this case cache is invalidated right away.
    */
   documentCacheTTL?: number;
+  /**
+   * when the `query.limit(...)` is not set, this setting will be applied.
+   * to deactivate this setting, just set `query.unlock()` in your query
+   * please note that unlocking queries is only available in the server-side.
+   *
+   * Default to 50 docs per query
+   */
+  queryMaxDocLimit?: number;
 }
 
 export const ServerDefaultParams: Partial<ServerParams> = {
   serverHeaderPrefix: 'X-Elegante',
   documentCacheTTL: 1000 * 60 * 60,
+  queryMaxDocLimit: 50,
 };
 
 export const EleganteServer: ServerProtocol = {
