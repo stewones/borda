@@ -98,7 +98,7 @@ export async function mongoConnect({ params }: { params: ServerParams }) {
     return client.db();
   } catch (err) {
     return Promise.reject(
-      new EleganteError(ErrorCode.CONNECTION_FAILED, err as object)
+      new EleganteError(ErrorCode.DATABASE_CONNECTION_FAILED, err as object)
     );
   }
 }
@@ -132,7 +132,7 @@ export async function createIndexes({
     }
   } catch (err) {
     throw new EleganteError(
-      ErrorCode.INDEX_CREATION_FAILED,
+      ErrorCode.SERVER_INDEX_CREATION_FAILED,
       err as unknown as any
     );
   }

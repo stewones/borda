@@ -66,7 +66,7 @@ export async function restPostUpdateEmail({
       .json(
         new EleganteError(
           ErrorCode.AUTH_EMAIL_ALREADY_EXISTS,
-          'This email already exists'
+          'This email is already in use'
         )
       );
   }
@@ -78,6 +78,7 @@ export async function restPostUpdateEmail({
         ? {
             ...projection,
             password: 1,
+            objectId: 1,
           }
         : // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ({} as any)

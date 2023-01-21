@@ -53,7 +53,7 @@ export function restGet({
           .status(405)
           .json(
             new EleganteError(
-              ErrorCode.COLLECTION_NOT_ALLOWED,
+              ErrorCode.QUERY_NOT_ALLOWED,
               `You can't execute the operation 'get' on '${
                 ExternalCollectionName[collectionName] ?? collectionName
               }' because it's a reserved collection`

@@ -38,7 +38,9 @@ export const routeEnsureApiKey =
     if (!req.header(apiKeyHeaderKey?.toLowerCase())) {
       return res
         .status(400)
-        .json(new EleganteError(ErrorCode.INVALID_API_KEY, 'API key required'));
+        .json(
+          new EleganteError(ErrorCode.AUTH_INVALID_API_KEY, 'API key required')
+        );
     }
 
     const apiKey = req.header(apiKeyHeaderKey);
@@ -168,6 +170,5 @@ export const routeEnsureAuth =
       res.status(401).json(err);
       return;
     }
-
     return next();
   };

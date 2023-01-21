@@ -7,11 +7,18 @@
  */
 
 import { EleganteClient } from './Client';
-import { EleganteError, ErrorCode } from './Error';
+import {
+  EleganteError,
+  ErrorCode,
+} from './Error';
 import { fetch } from './fetch';
 import { InternalHeaders } from './internal';
 import { Document } from './types/query';
-import { cleanKey, isServer, LocalStorage } from './utils';
+import {
+  cleanKey,
+  isServer,
+  LocalStorage,
+} from './utils';
 
 export function runFunction<T extends Document = Document>(
   name: string,
@@ -21,7 +28,7 @@ export function runFunction<T extends Document = Document>(
   }
 ) {
   if (!EleganteClient.params.apiKey) {
-    throw new EleganteError(ErrorCode.INVALID_API_KEY, 'API key required');
+    throw new EleganteError(ErrorCode.AUTH_INVALID_API_KEY, 'API key required');
   }
 
   if (!EleganteClient.params.serverURL) {
@@ -73,7 +80,7 @@ export function runJob<T extends Document = Document>(
   doc?: Document
 ): Promise<T> {
   if (!EleganteClient.params.apiKey) {
-    throw new EleganteError(ErrorCode.INVALID_API_KEY, 'API key required');
+    throw new EleganteError(ErrorCode.AUTH_INVALID_API_KEY, 'API key required');
   }
 
   if (!EleganteClient.params.apiSecret) {

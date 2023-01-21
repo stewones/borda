@@ -45,7 +45,7 @@ export function restPost({
 }: {
   params: ServerParams;
 }): (req: Request, res: Response) => void {
-  return async (req: Request, res: Response) => {
+  return (req: Request, res: Response) => {
     try {
       const collectionName =
         InternalCollectionName[req.params['collectionName']] ??

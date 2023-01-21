@@ -61,7 +61,7 @@ export function restDelete({
           .status(405)
           .json(
             new EleganteError(
-              ErrorCode.COLLECTION_NOT_ALLOWED,
+              ErrorCode.QUERY_NOT_ALLOWED,
               `You can't execute the operation 'delete' on '${
                 ExternalCollectionName[collectionName] ?? collectionName
               }' because it's a reserved collection`

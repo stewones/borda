@@ -8,42 +8,44 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import WebSocket from 'ws';
 import express, { Application } from 'express';
-
-import { Subject } from 'rxjs';
-import { Db } from 'mongodb';
 import { IncomingMessage } from 'http';
+import { Db } from 'mongodb';
+import { Subject } from 'rxjs';
+import WebSocket from 'ws';
 
 import {
   DocumentLiveQuery,
   EleganteError,
   ErrorCode,
+  init,
   InternalCollectionName,
+  InternalHeaders,
   log,
+  pointer,
   print,
   query,
-  pointer,
-  init,
-  User,
   Session,
-  InternalHeaders,
+  User,
 } from '@elegante/sdk';
 
-import {
-  ServerParams,
-  EleganteServer,
-  mongoConnect,
-  createIndexes,
-  ensureSessionInvalidation,
-  ensureCacheInvalidation,
-} from './Server';
-
-import { handleOn, handleOnce, LiveQueryServerParams } from './LiveQueryServer';
 import { Cache } from './Cache';
+import {
+  handleOn,
+  handleOnce,
+  LiveQueryServerParams,
+} from './LiveQueryServer';
 import { rest } from './rest';
-import { Version } from './Version';
+import {
+  createIndexes,
+  EleganteServer,
+  ensureCacheInvalidation,
+  ensureSessionInvalidation,
+  mongoConnect,
+  ServerParams,
+} from './Server';
 import { newToken } from './utils';
+import { Version } from './Version';
 
 export abstract class ServerEvents {
   public static onDatabaseConnect = new Subject<{ db: Db }>();
@@ -141,7 +143,9 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
       /**
        * throw an error log so we can know if someone is trying to connect to the live query server
        */
-      print(new EleganteError(ErrorCode.INVALID_API_KEY, 'Invalid API Key'));
+      print(
+        new EleganteError(ErrorCode.AUTH_INVALID_API_KEY, 'Invalid API Key')
+      );
       ws.close();
       return wss.close(); // close connection
     }
@@ -190,7 +194,7 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
       if (!collections.includes(collection)) {
         print(
           new EleganteError(
-            ErrorCode.COLLECTION_NOT_ALLOWED,
+            ErrorCode.QUERY_NOT_ALLOWED,
             'Collection not allowed'
           )
         );

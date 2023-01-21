@@ -6,11 +6,14 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-import { InternalCollectionName } from './internal';
+import {
+  EleganteError,
+  ErrorCode,
+} from './Error';
 import { ExternalCollectionName } from './external';
+import { InternalCollectionName } from './internal';
 import { Document } from './types/query';
 import { isPointer } from './utils';
-import { EleganteError, ErrorCode } from './Error';
 
 /**
  * A string representation of a pointer
@@ -41,14 +44,14 @@ export function pointer<T = Document>(
     `Invalid pointer (${JSON.stringify(object)}) for collection ${collection}`
   );
 
-  throw new EleganteError(ErrorCode.INVALID_POINTER, 'Invalid pointer');
+  throw new EleganteError(ErrorCode.QUERY_INVALID_POINTER, 'Invalid pointer');
 }
 
 export function pointerObjectFrom(value: string) {
   if (!isPointer(value)) {
     console.trace(`Invalid pointer (${value})`);
     throw new EleganteError(
-      ErrorCode.INVALID_POINTER,
+      ErrorCode.QUERY_INVALID_POINTER,
       'Invalid string pointer'
     );
   }

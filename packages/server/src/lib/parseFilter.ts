@@ -23,7 +23,7 @@ import {
 export function parseFilter(obj: any | any[]): any | any[] {
   if (!isServer())
     throw new EleganteError(
-      ErrorCode.FILTER_ONLY_SERVER,
+      ErrorCode.QUERY_FILTER_SERVER_ONLY,
       'we should only parse filters in the server'
     );
 

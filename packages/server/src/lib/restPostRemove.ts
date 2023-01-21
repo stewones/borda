@@ -24,6 +24,7 @@ export async function restPostRemove({
   docQRL: DocQRL;
 }) {
   const { collection, filter, collection$ } = docQRL;
+
   const cursor = await collection$.findOneAndUpdate(
     filter || {},
     { $set: { _expires_at: new Date() } },
@@ -53,14 +54,18 @@ export async function restPostRemove({
     }
 
     invalidateCache(collection, afterDeletePayload.before);
+
     return res.status(200).json({});
   }
-  return res
-    .status(404)
-    .json(
-      new EleganteError(
-        ErrorCode.REST_DOCUMENT_NOT_FOUND,
-        `could not remove ${collection} document`
-      )
-    );
+  if (!cursor.ok) {
+    return res
+      .status(404)
+      .json(
+        new EleganteError(
+          ErrorCode.REST_DOCUMENT_NOT_FOUND,
+          `could not remove ${collection} document.`
+        )
+      );
+  }
+  return res.status(200).json({});
 }

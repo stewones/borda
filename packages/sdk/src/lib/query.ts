@@ -267,7 +267,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
 
       if (!bridge.params['collection']) {
         throw new EleganteError(
-          ErrorCode.COLLECTION_REQUIRED,
+          ErrorCode.QUERY_REQUIRED_COLLECTION_NAME,
           'a collection name is required'
         );
       }
@@ -275,7 +275,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
       if (['update', 'remove'].includes(method)) {
         if (isEmpty(bridge.params['filter'])) {
           throw new EleganteError(
-            ErrorCode.FILTER_REQUIRED_FOR_DOC_MUTATION,
+            ErrorCode.QUERY_FILTER_REQUIRED,
             'a filter is required for doc mutation. ie: update and delete'
           );
         }
@@ -283,7 +283,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
 
       if (!isEmpty(bridge.params['pipeline']) && method !== 'aggregate') {
         throw new EleganteError(
-          ErrorCode.PIPELINE_ONLY_FOR_AGGREGATE,
+          ErrorCode.QUERY_PIPELINE_AGGREGATE_ONLY,
           `pipeline can only be used for aggregate. you're trying to use "${method}()"`
         );
       }
@@ -597,7 +597,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
   // we should keep it as singular
   if (collection.endsWith('s')) {
     throw new EleganteError(
-      ErrorCode.COLLECTION_NAME_SHOULD_BE_SINGULAR,
+      ErrorCode.QUERY_SINGULAR_COLLECTION_NAME,
       `collection name should be singular. ie: 'User' instead of 'Users'`
     );
   }
@@ -605,7 +605,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
   // ensure collection name is in TitleCase
   if (collection !== collection[0].toUpperCase() + collection.slice(1)) {
     throw new EleganteError(
-      ErrorCode.COLLECTION_NAME_SHOULD_BE_TITLE_CASE,
+      ErrorCode.QUERY_TITLE_CASE_COLLECTION_NAME,
       `collection name should be TitleCase. ie: 'User' instead of 'user'`
     );
   }

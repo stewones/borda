@@ -108,8 +108,8 @@ export declare type QueryMethod =
   | 'find'
   | 'findOne'
   | 'get'
-  | 'aggregate'
   | 'count'
+  | 'aggregate'
 
   /**
    * data mutation
@@ -126,9 +126,10 @@ export declare type QueryMethod =
   /**
    * user specifics related
    */
-  | 'signUp'
   | 'signIn'
-  | 'updateEmail';
+  | 'signUp'
+  | 'updateEmail'
+  | 'updatePassword';
 
 export interface QRLParams<TSchema extends Document = Document> {
   collection: string;
