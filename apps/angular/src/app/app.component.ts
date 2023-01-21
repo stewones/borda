@@ -415,12 +415,6 @@ export class AppComponent {
      * load a public list of users
      */
     this.loadPublicUsers();
-
-    //
-
-    query('PublicUser')
-      .find()
-      .then((r) => console.log('find', r));
   }
 
   async subscribe() {

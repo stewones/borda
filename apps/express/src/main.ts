@@ -157,11 +157,6 @@ ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
       console.log('memory', memoryUsage());
     })
     .catch((err) => print(err));
-
-  query('PublicUser')
-    .unlock()
-    .find()
-    .then((r) => console.log('find', r.length));
 });
 
 /*
