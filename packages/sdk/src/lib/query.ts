@@ -561,7 +561,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
           },
 
           onMessage: (ws, message) => {
-            ws.close(); // this is a one time query
+            ws.close(); // this is a one-time query
             const data = message.data ?? '';
 
             try {
@@ -592,8 +592,8 @@ export function query<TSchema extends Document = Document>(collection: string) {
     },
   };
 
-  // ensure collection name doesn't ends with "s" because
-  // it's already means plural and for good architecture practices
+  // ensure collection name doesn't end with "s" because
+  // it's already means plural and for good db hygiene
   // we should keep it as singular
   if (collection.endsWith('s')) {
     throw new EleganteError(
@@ -602,7 +602,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
     );
   }
 
-  // ensure collection name is TitleCase
+  // ensure collection name is in TitleCase
   if (collection !== collection[0].toUpperCase() + collection.slice(1)) {
     throw new EleganteError(
       ErrorCode.COLLECTION_NAME_SHOULD_BE_TITLE_CASE,
