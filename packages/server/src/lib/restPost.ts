@@ -36,6 +36,7 @@ import { restPostSignUp } from './restPostSignUp';
 import { restPostUpdate } from './restPostUpdate';
 import { restPostUpdateEmail } from './restPostUpdateEmail';
 import { restPostUpdateMany } from './restPostUpdateMany';
+import { restPostUpdatePassword } from './restPostUpdatePassword';
 import { ServerParams } from './Server';
 import { isUnlocked } from './utils/isUnlocked';
 
@@ -71,7 +72,9 @@ export function restPost({
       ];
 
       if (
-        !['signIn', 'signUp', 'updateEmail'].includes(method) &&
+        !['signIn', 'signUp', 'updateEmail', 'updatePassword'].includes(
+          method
+        ) &&
         !isUnlocked(res.locals) &&
         reservedCollections.includes(collectionName)
       ) {
@@ -79,7 +82,7 @@ export function restPost({
           .status(405)
           .json(
             new EleganteError(
-              ErrorCode.COLLECTION_NOT_ALLOWED,
+              ErrorCode.QUERY_NOT_ALLOWED,
               `You can't execute the operation '${method}' on '${
                 ExternalCollectionName[collectionName] ?? collectionName
               }' because it's a reserved collection`
@@ -158,6 +161,11 @@ export function restPost({
         });
       } else if (collectionName === '_User' && method === 'updateEmail') {
         return restPostUpdateEmail({
+          res,
+          docQRL,
+        });
+      } else if (collectionName === '_User' && method === 'updatePassword') {
+        return restPostUpdatePassword({
           res,
           docQRL,
         });

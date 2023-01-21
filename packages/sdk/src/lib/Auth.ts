@@ -154,7 +154,7 @@ export abstract class Auth {
 
     if (!token) {
       throw new Error(
-        `token is required to update user's email. did you sign in before?`
+        `A token is required to update user's email. Did you sign in before?`
       );
     }
 
@@ -169,6 +169,50 @@ export abstract class Auth {
         doc: {
           email: newEmail,
           password: password,
+        },
+      },
+    }).then((session) => saveSessionToken(session, options ?? {}));
+  }
+
+  public static updatePassword(
+    currentPassword: string,
+    newPassword: string,
+    options?: SignOptions
+  ) {
+    if (isServer()) {
+      throw new Error(
+        'password update via Auth SDK is not supported on server. use the `query` api with `unlock` instead.'
+      );
+    }
+
+    const headers = {
+      [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
+        EleganteClient.params.apiKey,
+      [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
+        'updatePassword',
+    };
+
+    const token = LocalStorage.get(
+      `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+    );
+
+    if (!token) {
+      throw new Error(
+        `A token is required to update user's password. Did you sign in before?`
+      );
+    }
+
+    headers[
+      `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+    ] = token;
+
+    return fetch<Session>(`${EleganteClient.params.serverURL}/User`, {
+      method: 'POST',
+      headers,
+      body: {
+        doc: {
+          currentPassword,
+          newPassword,
         },
       },
     }).then((session) => saveSessionToken(session, options ?? {}));

@@ -11,7 +11,10 @@ import {
 
 import { DocQRL } from './parseQuery';
 import { createSession } from './public';
-import { hash } from './utils/password';
+import {
+  hash,
+  validate,
+} from './utils/password';
 
 export async function restPostSignUp({
   res,
@@ -42,9 +45,20 @@ export async function restPostSignUp({
       .status(400)
       .json(
         new EleganteError(
-          ErrorCode.AUTH_PASSWORD_INCORRECT,
+          ErrorCode.AUTH_PASSWORD_REQUIRED,
           'password incorrect'
         )
+      );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const valid = (await validate(password, { details: true })) as any[];
+  const validation = valid.map((v) => v.message);
+  if (validation.length > 0) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(ErrorCode.AUTH_PASSWORD_INCORRECT, validation[0])
       );
   }
 
@@ -87,6 +101,7 @@ export async function restPostSignUp({
       !isEmpty(projection)
         ? {
             ...projection,
+            objectId: 1,
           }
         : // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ({} as any)

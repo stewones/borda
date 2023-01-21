@@ -49,6 +49,7 @@ export async function restPostSignIn({
         ? {
             ...projection,
             password: 1,
+            objectId: 1,
           }
         : // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ({} as any)

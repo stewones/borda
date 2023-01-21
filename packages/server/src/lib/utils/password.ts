@@ -9,6 +9,7 @@
 // Tools for encrypting and decrypting passwords.
 // Basically promise-friendly wrappers for bcrypt.
 import * as bcrypt from 'bcryptjs';
+import PasswordValidator from 'password-validator';
 
 // Returns a promise for a hashed password string.
 export function hash(password: string) {
@@ -23,4 +24,32 @@ export async function compare(password: string, hashedPassword: string) {
     return Promise.resolve(false);
   }
   return bcrypt.compare(password, hashedPassword);
+}
+
+export async function validate(
+  password: string,
+  options?: {
+    list?: boolean;
+    details?: boolean;
+  }
+) {
+  const schema = new PasswordValidator();
+  schema
+    .is()
+    .min(8, 'Password must have a minimum length of 8 chars')
+    .is()
+    .max(64, 'Password must have a maximum length of 64 chars')
+    .has()
+    .uppercase(undefined, 'Password should have uppercase letters')
+    .has()
+    .lowercase(undefined, 'Password should have lowercase letters')
+    .has()
+    .digits(2, 'Password must have at least 2 digits')
+    .has()
+    .not()
+    .spaces(undefined, 'Password must not have spaces')
+    .is()
+    .not()
+    .oneOf(['Passw0rd', 'Password123']); // Blacklist these values (can be expanded to a setting in the future)
+  return schema.validate(password, options);
 }

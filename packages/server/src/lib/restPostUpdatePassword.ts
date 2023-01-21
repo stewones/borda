@@ -1,0 +1,124 @@
+import { Response } from 'express';
+
+import {
+  EleganteError,
+  ErrorCode,
+  isEmpty,
+  query,
+  User,
+} from '@elegante/sdk';
+
+import { DocQRL } from './parseQuery';
+import { createSession } from './public';
+import {
+  compare,
+  hash,
+  validate,
+} from './utils/password';
+
+export async function restPostUpdatePassword({
+  res,
+  docQRL,
+}: {
+  docQRL: DocQRL;
+  res: Response;
+}) {
+  const { projection, include, exclude, doc } = docQRL;
+
+  const { currentPassword, newPassword } = doc ?? {};
+
+  const { session } = res.locals;
+  const { user } = session;
+
+  /**
+   * validation chain
+   */
+  if (!currentPassword || !newPassword) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(ErrorCode.AUTH_PASSWORD_REQUIRED, 'password required')
+      );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const valid = (await validate(newPassword, { details: true })) as any[];
+  const validation = valid.map((v) => v.message);
+  if (validation.length > 0) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(ErrorCode.AUTH_PASSWORD_INCORRECT, validation[0])
+      );
+  }
+
+  const currentUser = await query<User>('User')
+    .unlock()
+    .projection(
+      !isEmpty(projection)
+        ? {
+            ...projection,
+            password: 1,
+            objectId: 1,
+          }
+        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ({} as any)
+    )
+    .include(include ?? [])
+    .exclude(exclude ?? [])
+    .filter({
+      email: {
+        $eq: user.email,
+      },
+      expiresAt: {
+        $exists: false,
+      },
+    })
+    .findOne();
+
+  if (isEmpty(currentUser)) {
+    return res
+      .status(404)
+      .json(
+        new EleganteError(
+          ErrorCode.AUTH_USER_NOT_FOUND,
+          `This user doesn't exist`
+        )
+      );
+  }
+
+  if (!(await compare(currentPassword, currentUser.password ?? ''))) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(
+          ErrorCode.AUTH_PASSWORD_INCORRECT,
+          'current password is incorrect'
+        )
+      );
+  }
+
+  if (await compare(newPassword, currentUser.password ?? '')) {
+    return res
+      .status(400)
+      .json(
+        new EleganteError(
+          ErrorCode.AUTH_PASSWORD_ALREADY_EXISTS,
+          'new password must be different from the current password'
+        )
+      );
+  }
+
+  await query('User')
+    .unlock()
+    .update(currentUser.objectId, {
+      password: await hash(newPassword),
+    });
+
+  const newSession = await createSession({
+    ...currentUser,
+    email: currentUser.email,
+  });
+
+  return res.status(201).json(newSession);
+}

@@ -15,6 +15,7 @@ Cloud.addFunction(
             name: 1,
             email: 1,
             createdAt: 1,
+            objectId: 1,
           })
           .sort({ updatedAt: -1 })
           .limit(1000)

@@ -322,6 +322,29 @@ export class PublicUserModel extends ActiveRecord<UserExtended> {
     <hr />
     Session: {{ session$ | async | json }}
     <br />
+    <br />
+    <h2>Change Current User Password</h2>
+    <form [formGroup]="changePasswordForm" (ngSubmit)="changePassword()">
+      <label for="currentPassword">current password: </label>
+      <input
+        id="currentPassword"
+        type="text"
+        formControlName="currentPassword"
+      />
+
+      <label for="newPassword">new password: </label>
+      <input id="newPassword" type="text" formControlName="newPassword" />
+
+      <button type="submit" [disabled]="changePasswordForm.invalid">
+        Change Password
+      </button>
+    </form>
+
+    <hr />
+    Error: {{ (changePasswordError | json) ?? '' }}
+    <hr />
+    Session: {{ session$ | async | json }}
+    <br />
   `,
 })
 export class AppComponent {
@@ -349,9 +372,15 @@ export class AppComponent {
     password: new FormControl(''),
   });
 
+  changePasswordForm = new FormGroup({
+    currentPassword: new FormControl(''),
+    newPassword: new FormControl(''),
+  });
+
   signInError: any;
   signUpError: any;
   changeEmailError: any;
+  changePasswordError: any;
 
   session$ = connect.bind(this)<Session>('session');
   cool$ = connect.bind(this)<any>('cool');
@@ -568,6 +597,26 @@ export class AppComponent {
     } catch (err: any) {
       console.error(err);
       this.changeEmailError = err.message ? err.message : err;
+      this.cdr.markForCheck();
+    }
+  }
+
+  async changePassword() {
+    const { currentPassword, newPassword } =
+      this.changePasswordForm.getRawValue();
+    try {
+      const response = await Auth.updatePassword(
+        currentPassword as string,
+        newPassword as string
+      );
+
+      this.changePasswordError = undefined;
+      this.cdr.markForCheck();
+
+      dispatch(sessionSet(response));
+    } catch (err: any) {
+      console.error(err);
+      this.changePasswordError = err.message ? err.message : err;
       this.cdr.markForCheck();
     }
   }
