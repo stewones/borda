@@ -5,9 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://elegante.dev/license
  */
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
 import express, { Application } from 'express';
 import { IncomingMessage } from 'http';
 import { Db } from 'mongodb';
@@ -15,6 +13,8 @@ import { Subject } from 'rxjs';
 import WebSocket from 'ws';
 
 import {
+  DefaultEmailPasswordResetTemplate,
+  DefaultEmailProvider,
   DocumentLiveQuery,
   EleganteError,
   ErrorCode,
@@ -60,6 +60,45 @@ export function createServer(options: Partial<ServerParams>): Application {
 
   EleganteServer.params = { ...EleganteServer.params, ...options };
   const { params } = EleganteServer;
+
+  /**
+   * set default plugins
+   */
+  const emailPasswordResetTemplate = params.plugins?.find(
+    (it) => it['EmailPasswordResetTemplate' as keyof typeof it]
+  );
+
+  const emailProviderPlugin = params.plugins?.find(
+    (it) => it['EmailProvider' as keyof typeof it]
+  );
+
+  if (!emailProviderPlugin) {
+    params.plugins = [
+      ...(params.plugins ?? []),
+      {
+        name: 'EmailProvider',
+        version: '0.0.0',
+        EmailProvider() {
+          // implement your own email provider
+          // follow the interface defined in the DefaultEmailProvider
+          return DefaultEmailProvider();
+        },
+      },
+    ];
+  }
+
+  if (!emailPasswordResetTemplate) {
+    params.plugins = [
+      ...(params.plugins ?? []),
+      {
+        name: 'EmailPasswordResetTemplate',
+        version: '0.0.0',
+        EmailPasswordResetTemplate({ token, user, baseUrl }) {
+          return DefaultEmailPasswordResetTemplate({ token, user, baseUrl });
+        },
+      },
+    ];
+  }
 
   init(params);
   rest({

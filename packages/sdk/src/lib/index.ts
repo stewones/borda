@@ -22,6 +22,7 @@ export * from './log';
 export * from './ping';
 export * from './Plugin';
 export * from './pointer';
+export * from './Provider';
 export * from './pubsub';
 export * from './query';
 export * from './Version';

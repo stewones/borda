@@ -7,6 +7,7 @@
  */
 
 import { Subject } from 'rxjs';
+
 import { ElegantePlugin } from './Plugin';
 
 export interface ClientProtocol {

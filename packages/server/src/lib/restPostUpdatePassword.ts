@@ -6,6 +6,7 @@ import {
   isEmpty,
   pointer,
   query,
+  Session,
   User,
 } from '@elegante/sdk';
 
@@ -147,6 +148,17 @@ export async function restPostUpdatePassword({
       password: newPasswordHashed,
       type: 'history',
     });
+
+  // invalidate all sessions
+  const sessions = await query<Session>('Session')
+    .unlock()
+    .filter({
+      user: pointer('User', currentUser.objectId),
+    })
+    .find();
+  for (const session of sessions) {
+    await query('Session').unlock().delete(session.objectId);
+  }
 
   const newSession = await createSession({
     ...currentUser,

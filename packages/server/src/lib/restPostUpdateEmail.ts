@@ -4,7 +4,9 @@ import {
   EleganteError,
   ErrorCode,
   isEmpty,
+  pointer,
   query,
+  Session,
   User,
   validateEmail,
 } from '@elegante/sdk';
@@ -120,6 +122,17 @@ export async function restPostUpdateEmail({
   await query('User').unlock().update(currentUser.objectId, {
     email: email.toLowerCase(),
   });
+
+  // invalidate all sessions
+  const sessions = await query<Session>('Session')
+    .unlock()
+    .filter({
+      user: pointer('User', currentUser.objectId),
+    })
+    .find();
+  for (const session of sessions) {
+    await query('Session').unlock().delete(session.objectId);
+  }
 
   const newSession = await createSession({
     ...currentUser,

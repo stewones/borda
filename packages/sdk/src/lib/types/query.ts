@@ -129,7 +129,9 @@ export declare type QueryMethod =
   | 'signIn'
   | 'signUp'
   | 'updateEmail'
-  | 'updatePassword';
+  | 'updatePassword'
+  | 'passwordForgot'
+  | 'passwordReset';
 
 export interface QRLParams<TSchema extends Document = Document> {
   collection: string;

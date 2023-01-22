@@ -12,6 +12,7 @@ export const InternalHeaders = {
   apiMethod: 'Api-Method',
   apiToken: 'Api-Token',
   apiInspect: 'Api-Inspect',
+  apiTimeZone: 'Api-TimeZone',
 };
 
 export const InternalCollectionName: {
@@ -19,7 +20,8 @@ export const InternalCollectionName: {
 } = {
   User: '_User',
   Session: '_Session',
-  Job: '_Job', // @todo save job stats (idea: ship an example of a job to cleanup jobs :D so meta)
+  Password: '_Password',
+  // Job: '_Job', // @todo save job stats (idea: ship an example of a job to cleanup jobs :D so meta)
 };
 
 export const InternalFieldName: {

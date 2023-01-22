@@ -217,6 +217,31 @@ export abstract class Auth {
       },
     }).then((session) => saveSessionToken(session, options ?? {}));
   }
+
+  public static forgotPassword(email: string, tz?: string) {
+    const headers = {
+      [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
+        EleganteClient.params.apiKey,
+      [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
+        'passwordForgot',
+    };
+
+    if (!isServer() || tz) {
+      headers[
+        `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiTimeZone']}`
+      ] = tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+
+    return fetch<Session>(`${EleganteClient.params.serverURL}/User`, {
+      method: 'POST',
+      headers,
+      body: {
+        doc: {
+          email,
+        },
+      },
+    });
+  }
 }
 
 function saveSessionToken(session: Session, options: SignOptions) {

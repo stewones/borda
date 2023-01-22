@@ -345,6 +345,21 @@ export class PublicUserModel extends ActiveRecord<UserExtended> {
     <hr />
     Session: {{ session$ | async | json }}
     <br />
+
+    <br />
+    <h2>User Forgot Password</h2>
+    <form [formGroup]="forgotPasswordForm" (ngSubmit)="forgotPassword()">
+      <label for="email">email: </label>
+      <input id="email" type="text" formControlName="email" />
+
+      <button type="submit" [disabled]="forgotPasswordForm.invalid">
+        Send Password Reset Email
+      </button>
+    </form>
+
+    <hr />
+    Error: {{ (forgotPasswordError | json) ?? '' }}
+    <br />
   `,
 })
 export class AppComponent {
@@ -377,10 +392,15 @@ export class AppComponent {
     newPassword: new FormControl(''),
   });
 
+  forgotPasswordForm = new FormGroup({
+    email: new FormControl(''),
+  });
+
   signInError: any;
   signUpError: any;
   changeEmailError: any;
   changePasswordError: any;
+  forgotPasswordError: any;
 
   session$ = connect.bind(this)<Session>('session');
   cool$ = connect.bind(this)<any>('cool');
@@ -617,6 +637,22 @@ export class AppComponent {
     } catch (err: any) {
       console.error(err);
       this.changePasswordError = err.message ? err.message : err;
+      this.cdr.markForCheck();
+    }
+  }
+
+  async forgotPassword() {
+    const { email } = this.forgotPasswordForm.getRawValue();
+    try {
+      await Auth.forgotPassword(email as string);
+
+      this.forgotPasswordError = undefined;
+      this.cdr.markForCheck();
+
+      alert('check your server logs for the reset password code');
+    } catch (err: any) {
+      console.error(err);
+      this.forgotPasswordError = err.message ? err.message : err;
       this.cdr.markForCheck();
     }
   }

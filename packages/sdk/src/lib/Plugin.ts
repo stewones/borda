@@ -8,13 +8,22 @@
 
 import { ActiveParams } from './Active';
 import { EleganteClient } from './Client';
+import {
+  EmailPasswordResetParams,
+  EmailPasswordResetParamsCallback,
+  EmailProvider,
+} from './Provider';
 import { Document } from './types/query';
+
+export type ElegantePlugin = ClientPlugin | ServerPlugin;
 
 export type PluginHook =
   | 'ActiveRecordBeforeDocumentSave'
-  | 'ActiveRecordOnDocumentRead';
+  | 'ActiveRecordOnDocumentRead'
+  | 'EmailProvider'
+  | 'EmailPasswordResetTemplate';
 
-export interface ElegantePlugin {
+export interface ClientPlugin {
   name: string;
   version: string;
 
@@ -28,11 +37,27 @@ export interface ElegantePlugin {
   }) => void;
 }
 
-export const getPluginHook = (hook: PluginHook) => {
-  let fn = null;
-  EleganteClient.params.plugins?.find((plugin) => {
-    if (plugin[hook]) fn = plugin[hook];
+export interface ServerPlugin {
+  name: string;
+  version: string;
+  EmailProvider?: () => EmailProvider;
+  EmailPasswordResetTemplate?: (
+    params: EmailPasswordResetParams
+  ) => EmailPasswordResetParamsCallback;
+}
+
+export function getPluginHook<T = undefined, Y = T>(
+  hook: PluginHook
+): (params?: T) => Y {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let fn = (_params?: T) => undefined;
+  EleganteClient.params.plugins?.find((plugin: ElegantePlugin) => {
+    const ph = plugin[hook as keyof ElegantePlugin];
+
+    if (ph && typeof ph === 'function') {
+      fn = ph;
+    }
   });
 
-  return fn;
-};
+  return fn as (params?: T) => Y;
+}

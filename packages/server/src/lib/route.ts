@@ -115,7 +115,7 @@ export const routeEnsureAuth =
 
     const isUserSpecialRoutes =
       req.params['collectionName'] === 'User' &&
-      ['signUp', 'signIn'].includes(method);
+      ['signUp', 'signIn', 'passwordForgot', 'passwordReset'].includes(method);
 
     const isSpecialRoutes = isUserSpecialRoutes;
     const isLocked = !isUnlocked(res.locals);
