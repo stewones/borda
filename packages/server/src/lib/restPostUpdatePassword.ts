@@ -4,6 +4,7 @@ import {
   EleganteError,
   ErrorCode,
   isEmpty,
+  pointer,
   query,
   User,
 } from '@elegante/sdk';
@@ -24,9 +25,7 @@ export async function restPostUpdatePassword({
   res: Response;
 }) {
   const { projection, include, exclude, doc } = docQRL;
-
   const { currentPassword, newPassword } = doc ?? {};
-
   const { session } = res.locals;
   const { user } = session;
 
@@ -109,10 +108,44 @@ export async function restPostUpdatePassword({
       );
   }
 
-  await query('User')
+  const newPasswordHashed = await hash(newPassword);
+
+  // check for password history
+  const passwordHistory = await query<{ password: string }>('Password')
     .unlock()
-    .update(currentUser.objectId, {
-      password: await hash(newPassword),
+    .filter({
+      user: pointer('User', currentUser.objectId),
+      type: 'history',
+    })
+    .limit(5)
+    .sort({ createdAt: -1 })
+    .find();
+
+  for (const history of passwordHistory) {
+    if (await compare(newPassword, history.password)) {
+      return res
+        .status(400)
+        .json(
+          new EleganteError(
+            ErrorCode.AUTH_PASSWORD_ALREADY_EXISTS,
+            'The new password must be different from the last used ones.'
+          )
+        );
+    }
+  }
+
+  // update user's password
+  await query('User').unlock().update(currentUser.objectId, {
+    password: newPasswordHashed,
+  });
+
+  // include to password history
+  await query('Password')
+    .unlock()
+    .insert({
+      user: pointer('User', currentUser.objectId),
+      password: newPasswordHashed,
+      type: 'history',
     });
 
   const newSession = await createSession({
