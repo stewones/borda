@@ -243,6 +243,17 @@ export function query<TSchema extends Document = Document>(collection: string) {
      * doc retrieval
      */
     run: (method, options, docOrDocs?, objectId?) => {
+      if (
+        bridge.params.filter &&
+        bridge.params.filter['expiresAt'] &&
+        isEmpty(bridge.params.filter['expiresAt'])
+      ) {
+        const f = bridge.params.filter as Document;
+        f['expiresAt'] = {
+          $exists: false,
+        };
+      }
+
       let doc: Document = {};
       let docs: Document[] = [];
       if (docOrDocs && Array.isArray(docOrDocs)) {

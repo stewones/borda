@@ -139,11 +139,8 @@ export class ActiveRecord<Doc extends Record> {
      * but it can be disabled with the option `excludeExpiredDocs`
      */
     if (params.excludeExpiredDocs !== false && !filter.expiresAt) {
-      filter = {
-        ...filter,
-        expiresAt: {
-          $exists: false,
-        },
+      filter['expiresAt'] = {
+        $exists: false,
       };
     }
 
