@@ -269,9 +269,7 @@ function memorize<T = StateDocument>(
   const { path } = options;
 
   if (!key) {
-    throw new Error(
-      'A key need to be provided in order to make your source Fast'
-    );
+    log('A key need to be provided in order to make your source Fast');
   }
 
   return new Observable<T>((observer) => {
