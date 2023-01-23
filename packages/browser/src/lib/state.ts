@@ -26,14 +26,26 @@ import {
 } from './redux';
 
 export interface SetStateOptions {
+  /**
+   * whether or not to persist the state in local storage
+   * default: true
+   */
   persist?: boolean;
 }
 
 export interface UnsetStateOptions {
-  removeCache?: boolean;
+  /**
+   * whether or not to also clean local storage
+   * default: true
+   */
+  persist?: boolean;
 }
-export interface ResetStateOptions {
-  clearLocalStorage?: boolean;
+export interface ResetDocStateOptions {
+  /**
+   * whether or not to also clean local storage
+   * default: true
+   */
+  persist?: boolean;
 }
 
 export interface ListenerOptions {
@@ -123,7 +135,7 @@ export function setDocState<T = StateDocument>(
 
 export function unsetDocState(
   key: string,
-  options: UnsetStateOptions = { removeCache: true }
+  options: UnsetStateOptions = { persist: true }
 ) {
   if (!EleganteBrowser.store) {
     throw new Error(
@@ -135,7 +147,7 @@ export function unsetDocState(
       key,
     })
   );
-  if (options.removeCache) {
+  if (options.persist) {
     LocalStorage.unset(key);
   }
 }
@@ -145,7 +157,7 @@ export function unsetDocState(
  * To reset custom reducers, you must implement your own reset action and `dispatch(myResetAction())`
  */
 export function resetDocState(
-  options: ResetStateOptions = { clearLocalStorage: true }
+  options: ResetDocStateOptions = { persist: true }
 ) {
   if (!EleganteBrowser.store) {
     throw new Error(
@@ -154,7 +166,7 @@ export function resetDocState(
   }
 
   dispatch($docReset());
-  if (options.clearLocalStorage) {
+  if (options.persist) {
     LocalStorage.clear();
   }
 }
@@ -202,7 +214,7 @@ export function connect<T = Document>(
   // eslint-disable-next-line @typescript-eslint/no-this-alias
   const that = this;
 
-  if (EleganteBrowser.debug && that && that.constructor) {
+  if (EleganteBrowser.params.debug && that && that.constructor) {
     if (!that.cdr) {
       throw new Error(
         'Unable to find ChangeDetectorRef in your component. If you want to make sure that your component reflects state changes automatically, make sure to import { ChangeDetectorRef } from @angular/core and instantiate it in your constructor as `private cdr: ChangeDetectorRef`'

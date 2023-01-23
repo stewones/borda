@@ -28,6 +28,10 @@ import {
   StateDocument,
 } from './state';
 
+function isDifferent(prev: any, next: any) {
+  return !isEqual(prev, next);
+}
+
 export interface FastOptions {
   /**
    * memoized data identifier
@@ -42,6 +46,10 @@ export interface FastOptions {
    * @default 'straight'
    */
   mode?: 'straight' | 'detailed';
+  /**
+   * define a custom differ function
+   */
+  differ?: (prev: any, next: any) => boolean;
 }
 
 export function from<T = Document>(source: Promise<T>): Observable<T> {
@@ -295,29 +303,32 @@ function memorize<T = StateDocument>(
     }
 
     source.subscribe({
-      next: (current) => {
-        let value: T | T[] | string | number = current;
+      next: (next) => {
+        const differ =
+          options?.differ ??
+          EleganteBrowser.params?.fast?.differ ??
+          isDifferent;
+
+        let value: T | T[] | string | number = next;
+
         /**
-         * checks if the current value is an array and iterate over it
+         * checks if the next value is an array and iterate over it
          * to extract the value of the path
          */
-        if (Array.isArray(current)) {
-          value = current.map((item) => get(item, path ?? ''));
-        } else if (!Array.isArray(current) && typeof current === 'object') {
-          value = get(current, path ?? '');
+        if (Array.isArray(next)) {
+          value = next.map((item) => get(item, path ?? ''));
+        } else if (!Array.isArray(next) && typeof next === 'object') {
+          value = get(next, path ?? '');
         }
 
-        if (!isEqual(cache, value) && isOnline()) {
-          LocalStorage.set(key, value);
-          log('cache.set', key, value);
-        }
-
-        if (!isEqual(state, value) && isOnline()) {
+        if (differ(state, value) && isOnline()) {
           setDocState(key, value, { persist: false });
           log('state.set', key, value);
         }
 
-        if (!isEqual(value, cache) && isOnline()) {
+        if (differ(cache, value) && isOnline()) {
+          LocalStorage.set(key, value);
+          log('cache.set', key, value);
           observer.next(
             options?.mode === 'detailed'
               ? ({

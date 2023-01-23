@@ -38,7 +38,9 @@ import {
   Auth,
   cleanArray,
   init,
+  isEqual,
   LocalStorage,
+  log,
   ping,
   query,
   Record,
@@ -100,6 +102,16 @@ load({
         },
       }
     ),
+  },
+  fast: {
+    differ: (prev, next) => {
+      /**
+       * implement a custom differ function to compare state changes
+       * this controls wheter the stream should emit a new value or not
+       */
+      log('global `fast` differ', prev, next);
+      return !isEqual(prev, next);
+    },
   },
 });
 
@@ -700,6 +712,6 @@ export class AppComponent {
     const name = `${Math.random().toString(36).substring(2, 15)}`;
     const user = new PublicUserModel({ email, name });
     await user.save();
-    console.log(user.getRawValue());
+    console.log('createRandomUser()', user.getRawValue());
   }
 }

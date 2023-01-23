@@ -284,8 +284,8 @@ export class ActiveRecord<Doc extends Record> {
 
     const hook: any = getPluginHook('ActiveRecordBeforeDocumentSave');
 
-    if (hook) {
-      obj = await hook({ doc: obj, params: this.params });
+    if (hook()) {
+      obj = await hook()({ doc: obj, params: this.params });
     }
 
     return obj;
@@ -294,8 +294,8 @@ export class ActiveRecord<Doc extends Record> {
   private onDocumentRead(obj: Doc) {
     const hook: any = getPluginHook('ActiveRecordOnDocumentRead');
 
-    if (hook) {
-      obj = hook({ doc: obj, params: this.params });
+    if (hook()) {
+      obj = hook()({ doc: obj, params: this.params });
     }
 
     return obj;

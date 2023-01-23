@@ -5,24 +5,29 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://elegante.dev/license
  */
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { EnhancedStore } from '@reduxjs/toolkit';
+
+import { FastOptions } from './fast';
 
 export interface BrowserParams {
   debug?: boolean;
   reducers?: any;
+  fast?: Pick<FastOptions, 'mode' | 'differ'>;
 }
 
 export interface BrowserProtocol {
-  debug: boolean;
   store: EnhancedStore;
-  reducers: any;
+  params: BrowserParams;
 }
 
 export const EleganteBrowser: BrowserProtocol = {
-  debug: true,
-  reducers: {},
   store: null as any,
+  params: {
+    debug: true,
+    reducers: {},
+    fast: {
+      mode: 'straight',
+    },
+  } as BrowserParams,
 };

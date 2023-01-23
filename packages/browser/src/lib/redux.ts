@@ -9,15 +9,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import produce from 'immer';
+
 import {
-  configureStore,
+  AnyAction,
   combineReducers,
-  StoreEnhancer,
   ConfigureEnhancersCallback,
+  configureStore,
   DeepPartial,
   EnhancedStore,
-  AnyAction,
+  StoreEnhancer,
 } from '@reduxjs/toolkit';
+
 import { EleganteBrowser } from './Browser';
 
 export interface Action<T = any> {
@@ -169,7 +171,7 @@ export function createStore<S = any>(params: {
   enhancers?: StoreEnhancer[] | ConfigureEnhancersCallback;
 }): EnhancedStore {
   const { reducers, preloadedState, enhancers, debug } = params;
-  const d = debug ?? EleganteBrowser.debug;
+  const d = debug ?? EleganteBrowser.params.debug;
 
   const store = configureStore({
     devTools: d
