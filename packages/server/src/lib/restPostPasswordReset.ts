@@ -8,33 +8,29 @@ import {
   pointer,
   query,
   Session,
-  User,
 } from '@elegante/sdk';
 
 import { DocQRL } from './parseQuery';
-import { createSession } from './public';
 import {
   compare,
   hash,
   validate,
 } from './utils/password';
 
-export async function restPostUpdatePassword({
+export async function restPostPasswordReset({
   res,
   docQRL,
 }: {
   docQRL: DocQRL;
   res: Response;
 }) {
-  const { projection, include, exclude, doc } = docQRL;
-  const { currentPassword, newPassword } = doc ?? {};
-  const { session } = res.locals;
-  const { user } = session;
+  const { doc } = docQRL;
+  const { token, password } = doc ?? {};
 
   /**
    * validation chain
    */
-  if (!currentPassword || !newPassword) {
+  if (!password) {
     return res
       .status(400)
       .json(
@@ -43,7 +39,7 @@ export async function restPostUpdatePassword({
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const valid = (await validate(newPassword, { details: true })) as any[];
+  const valid = (await validate(password, { details: true })) as any[];
   const validation = valid.map((v) => v.message);
   if (validation.length > 0) {
     return res
@@ -53,70 +49,33 @@ export async function restPostUpdatePassword({
       );
   }
 
-  const currentUser = await query<User>('User')
+  const p = await query<Password>('Password')
     .unlock()
-    .projection(
-      !isEmpty(projection)
-        ? {
-            ...projection,
-            password: 1,
-            objectId: 1,
-          }
-        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ({} as any)
-    )
-    .include(include ?? [])
-    .exclude(exclude ?? [])
+    .include(['user'])
     .filter({
-      email: {
-        $eq: user.email,
-      },
-      expiresAt: {
-        $exists: false,
-      },
+      type: 'forgot',
+      token,
     })
     .findOne();
 
-  if (isEmpty(currentUser)) {
-    return res
-      .status(404)
-      .json(
-        new EleganteError(
-          ErrorCode.AUTH_USER_NOT_FOUND,
-          `This user doesn't exist`
-        )
-      );
-  }
-
-  if (!(await compare(currentPassword, currentUser.password ?? ''))) {
+  if (isEmpty(p)) {
     return res
       .status(400)
       .json(
         new EleganteError(
-          ErrorCode.AUTH_PASSWORD_INCORRECT,
-          'current password is incorrect'
+          ErrorCode.AUTH_PASSWORD_TOKEN_INCORRECT,
+          'Invalid token. Please try again with a new password reset link.'
         )
       );
   }
 
-  if (await compare(newPassword, currentUser.password ?? '')) {
-    return res
-      .status(400)
-      .json(
-        new EleganteError(
-          ErrorCode.AUTH_PASSWORD_ALREADY_EXISTS,
-          'new password must be different from the current password'
-        )
-      );
-  }
-
-  const newPasswordHashed = await hash(newPassword);
+  const { user } = p;
 
   // check for password history
   const passwordHistory = await query<Password>('Password')
     .unlock()
     .filter({
-      user: pointer('User', currentUser.objectId),
+      user: pointer('User', user.objectId),
       type: 'history',
     })
     .limit(5)
@@ -124,7 +83,7 @@ export async function restPostUpdatePassword({
     .find();
 
   for (const history of passwordHistory) {
-    if (await compare(newPassword, history.password ?? '')) {
+    if (await compare(password, history.password ?? '')) {
       return res
         .status(400)
         .json(
@@ -137,7 +96,8 @@ export async function restPostUpdatePassword({
   }
 
   // update user's password
-  await query('User').unlock().update(currentUser.objectId, {
+  const newPasswordHashed = await hash(password);
+  await query('User').unlock().update(user.objectId, {
     password: newPasswordHashed,
   });
 
@@ -145,7 +105,7 @@ export async function restPostUpdatePassword({
   await query<Password>('Password')
     .unlock()
     .insert({
-      user: pointer('User', currentUser.objectId),
+      user: pointer('User', user.objectId),
       password: newPasswordHashed,
       type: 'history',
       expiresAt: new Date(
@@ -157,17 +117,12 @@ export async function restPostUpdatePassword({
   const sessions = await query<Session>('Session')
     .unlock()
     .filter({
-      user: pointer('User', currentUser.objectId),
+      user: pointer('User', user.objectId),
     })
     .find();
   for (const session of sessions) {
     await query('Session').unlock().delete(session.objectId);
   }
 
-  const newSession = await createSession({
-    ...currentUser,
-    email: currentUser.email,
-  });
-
-  return res.status(201).json(newSession);
+  return res.status(201).send();
 }

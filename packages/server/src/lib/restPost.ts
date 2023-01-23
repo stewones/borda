@@ -30,6 +30,7 @@ import { restPostFind } from './restPostFind';
 import { restPostInsert } from './restPostInsert';
 import { restPostInsertMany } from './restPostInsertMany';
 import { restPostPasswordForgot } from './restPostPasswordForgot';
+import { restPostPasswordReset } from './restPostPasswordReset';
 import { restPostRemove } from './restPostRemove';
 import { restPostRemoveMany } from './restPostRemoveMany';
 import { restPostSignIn } from './restPostSignIn';
@@ -177,6 +178,11 @@ export function restPost({
         });
       } else if (collectionName === '_User' && method === 'passwordForgot') {
         return restPostPasswordForgot({
+          res,
+          docQRL,
+        });
+      } else if (collectionName === '_User' && method === 'passwordReset') {
+        return restPostPasswordReset({
           res,
           docQRL,
         });

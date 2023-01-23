@@ -2,15 +2,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 
-import {
-  init,
-  print,
-  ping,
-  query,
-  DefaultEmailProvider,
-  getPluginHook,
-  EmailProvider,
-} from '@elegante/sdk';
+import { init, print, ping } from '@elegante/sdk';
 import {
   createLiveQueryServer,
   createServer,
@@ -79,47 +71,46 @@ const elegante = createServer({
    */
   debug,
   documentCacheTTL,
-  plugins: [
-    {
-      name: 'MyCustomEmailProvider',
-      version: '0.0.0',
-      EmailProvider() {
-        // implement your own email provider
-        // by following the interface below
-        return {
-          send(params: { to: string; subject: string; html: string }) {
-            print(`
-              -------------------
-              Email Provider Test
-              -------------------
-              # to: ${params.to}
-              # subject: ${params.subject}
-              # html: ${params.html}
-            `);
-            return Promise.resolve();
-          },
-        };
-      },
-    },
-    {
-      name: 'MyCustomEmailPasswordResetTemplate',
-      version: '0.0.0',
-      EmailPasswordResetTemplate({ token, user, baseUrl }) {
-        return {
-          subject: 'Custom Password Reset',
-          html: `
-              <p>Hello ${user.name},</p>
-              <p>Here is your password reset link:</p>
-              <p>${baseUrl}/password/reset?token=${token}</p>
-              <br />
-              <br />
-              <p>Best,</p>
-              <p>Elegante.</p>
-          `,
-        };
-      },
-    },
-  ],
+  // uncomment to implement your own plugins
+  // plugins: [
+  //   {
+  //     name: 'MyCustomEmailProvider',
+  //     version: '0.0.0',
+  //     EmailProvider() {
+  //       return {
+  //         send(params: { to: string; subject: string; html: string }) {
+  //           print(`
+  //             -------------------
+  //             Email Provider Test
+  //             -------------------
+  //             # to: ${params.to}
+  //             # subject: ${params.subject}
+  //             # html: ${params.html}
+  //           `);
+  //           return Promise.resolve();
+  //         },
+  //       };
+  //     },
+  //   },
+  //   {
+  //     name: 'MyCustomEmailPasswordResetTemplate',
+  //     version: '0.0.0',
+  //     EmailPasswordResetTemplate({ token, user, baseUrl }) {
+  //       return {
+  //         subject: 'Custom Password Reset',
+  //         html: `
+  //             <p>Hello ${user.name},</p>
+  //             <p>Here is your password reset link:</p>
+  //             <p>${baseUrl}/password/reset?token=${token}</p>
+  //             <br />
+  //             <br />
+  //             <p>Best,</p>
+  //             <p>Elegante.</p>
+  //         `,
+  //       };
+  //     },
+  //   },
+  // ],
 });
 
 /**
@@ -132,6 +123,17 @@ const server = express();
  */
 server.use(cors());
 server.options('*', cors());
+
+/**
+ * parse json and url
+ */
+server.use(express.json({ limit: '1mb' }));
+server.use(
+  express.urlencoded({
+    extended: true,
+    limit: '1mb',
+  })
+);
 
 /**
  * tell express to mount elegante server on the `/server` path.
@@ -210,12 +212,3 @@ ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
     })
     .catch((err) => print(err));
 });
-
-/*
-{
-  "rss": "177.54 MB -> Resident Set Size - total memory allocated for the process execution",
-  "heapTotal": "102.3 MB -> total size of the allocated heap",
-  "heapUsed": "94.3 MB -> actual memory used during the execution",
-  "external": "3.03 MB -> V8 external memory"
-}
-*/

@@ -8,6 +8,7 @@ import {
   ErrorCode,
   getPluginHook,
   isEmpty,
+  Password,
   pointer,
   query,
   User,
@@ -26,7 +27,7 @@ export async function restPostPasswordForgot({
   res: Response;
 }) {
   const { projection, include, exclude, doc } = docQRL;
-  const { email, tz } = doc ?? {};
+  const { email } = doc ?? {};
 
   /**
    * validation chain
@@ -68,22 +69,15 @@ export async function restPostPasswordForgot({
   }
 
   // include to password history
-  const p = await query<{
-    user: User;
-    token: string;
-    type: 'forgot' | 'history';
-    expiresAt: string;
-    email: string;
-    tz: string;
-  }>('Password')
+  const t = newToken();
+  await query<Password>('Password')
     .unlock()
     .insert({
       user: pointer('User', currentUser.objectId),
       type: 'forgot',
-      token: newToken(),
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // expires in 1h
+      token: t,
       email,
-      tz,
     });
 
   // send email
@@ -101,7 +95,7 @@ export async function restPostPasswordForgot({
 
   const emailTemplate = EmailPasswordResetTemplate({
     user: currentUser,
-    token: p.token,
+    token: t,
     baseUrl,
   });
 

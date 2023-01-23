@@ -218,7 +218,7 @@ export abstract class Auth {
     }).then((session) => saveSessionToken(session, options ?? {}));
   }
 
-  public static forgotPassword(email: string, tz?: string) {
+  public static forgotPassword(email: string) {
     const headers = {
       [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         EleganteClient.params.apiKey,
@@ -226,18 +226,32 @@ export abstract class Auth {
         'passwordForgot',
     };
 
-    if (!isServer() || tz) {
-      headers[
-        `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiTimeZone']}`
-      ] = tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    }
-
-    return fetch<Session>(`${EleganteClient.params.serverURL}/User`, {
+    return fetch<void>(`${EleganteClient.params.serverURL}/User`, {
       method: 'POST',
       headers,
       body: {
         doc: {
           email,
+        },
+      },
+    });
+  }
+
+  public static resetPassword(token: string, password: string) {
+    const headers = {
+      [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
+        EleganteClient.params.apiKey,
+      [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
+        'passwordReset',
+    };
+
+    return fetch(`${EleganteClient.params.serverURL}/User`, {
+      method: 'POST',
+      headers,
+      body: {
+        doc: {
+          token,
+          password,
         },
       },
     });
