@@ -359,7 +359,7 @@ function memorize<T = StateDocument>(
         /**
          * kill the subscription.
          * useful when you want to compose and get to known
-         * the last value of fast's stream
+         * the last value of the fast's stream
          */
         observer.complete();
       },
