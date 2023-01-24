@@ -60,8 +60,15 @@ export interface StateContext<T = Document> {
   next: T;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type StateDocument = Document | Document[] | string | number | any;
+export type StateDocument =
+  | Document
+  | Document[]
+  | string
+  | number
+  | null
+  | undefined
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | any;
 
 /**
  * Synchronously grab a piece of data from state controlled by custom reducers.

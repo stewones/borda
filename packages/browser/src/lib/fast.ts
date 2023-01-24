@@ -269,34 +269,39 @@ function memorize<T = StateDocument>(
   const { path } = options;
 
   if (!key) {
-    log('A key need to be provided in order to make your source Fast');
+    throw new Error(
+      'A key need to be provided in order to make your source Fast'
+    );
   }
 
   return new Observable<T>((observer) => {
     const state = getDocState<T>(key);
     const cache = LocalStorage.get(key);
+    let prev: any = null;
 
     if (state) {
-      log('state.get', key, cache);
+      prev = state;
+      log('state.get', key, prev);
       observer.next(
         options?.mode === 'detailed'
           ? ({
               hit: 'state',
-              value: state,
+              value: prev,
               key,
             } as T)
-          : state
+          : prev
       );
     } else if (cache) {
-      log('cache.get', key, cache);
+      prev = cache;
+      log('cache.get', key, prev);
       observer.next(
         options?.mode === 'detailed'
           ? ({
               hit: 'cache',
-              value: cache,
+              value: prev,
               key,
             } as T)
-          : cache
+          : prev
       );
     }
 
@@ -319,14 +324,27 @@ function memorize<T = StateDocument>(
           value = get(next, path ?? '');
         }
 
+        /**
+         * update doc state
+         */
         if (differ(state, value) && isOnline()) {
           setDocState(key, value, { persist: false });
           log('state.set', key, value);
         }
 
+        /**
+         * update cache state
+         */
         if (differ(cache, value) && isOnline()) {
           LocalStorage.set(key, value);
           log('cache.set', key, value);
+        }
+
+        /**
+         * emit a new value down to the stream only if
+         * the prev value is different from the next one
+         */
+        if (differ(prev, value) && isOnline()) {
           observer.next(
             options?.mode === 'detailed'
               ? ({
@@ -340,7 +358,8 @@ function memorize<T = StateDocument>(
 
         /**
          * kill the subscription.
-         * useful when you want to compose and get to known the last value of fast's stream
+         * useful when you want to compose and get to known
+         * the last value of fast's stream
          */
         observer.complete();
       },
