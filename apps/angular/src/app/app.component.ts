@@ -55,6 +55,7 @@ init({
   apiKey: '**elegante**',
   serverURL: 'http://localhost:1337/server',
   debug: true,
+  validateSession: false,
 });
 
 load({

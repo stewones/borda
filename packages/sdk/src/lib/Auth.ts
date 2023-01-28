@@ -10,6 +10,7 @@ import { fetch } from './fetch';
 import { InternalHeaders } from './internal';
 import { Session } from './types';
 import {
+  isBoolean,
   isServer,
   LocalStorage,
 } from './utils';
@@ -22,9 +23,13 @@ interface SignOptions {
   exclude?: string[];
   projection?: Record<string, number>;
   /**
-   * extra
+   * whether to save the token to local storage
    */
   saveToken?: boolean;
+  /**
+   * whether to validate the session with the server
+   */
+  validateSession?: boolean;
 }
 
 export abstract class Auth {
@@ -46,7 +51,10 @@ export abstract class Auth {
           password,
         },
       },
-    }).then((session) => saveSessionToken(session, options ?? {}));
+    }).then((session) => {
+      saveSessionToken(session.token, options ?? {});
+      return session;
+    });
   }
 
   public static signUp(
@@ -72,7 +80,10 @@ export abstract class Auth {
       body: {
         doc: from,
       },
-    }).then((session) => saveSessionToken(session, options ?? {}));
+    }).then((session) => {
+      saveSessionToken(session.token, options ?? {});
+      return session;
+    });
   }
 
   public static signOut(token?: string) {
@@ -111,7 +122,7 @@ export abstract class Auth {
 
   public static become(
     token: string,
-    options?: Pick<SignOptions, 'saveToken'>
+    options?: Pick<SignOptions, 'saveToken' | 'validateSession'>
   ) {
     if (isServer()) {
       throw new Error('become is not supported on server.');
@@ -124,10 +135,21 @@ export abstract class Auth {
         token,
     };
 
-    return fetch<Session>(`${EleganteClient.params.serverURL}/me`, {
-      method: 'GET',
-      headers,
-    }).then((session) => saveSessionToken(session, options ?? {}));
+    const shouldValidate = isBoolean(options?.validateSession)
+      ? options?.validateSession
+      : true;
+
+    return shouldValidate
+      ? fetch<Session>(`${EleganteClient.params.serverURL}/me`, {
+          method: 'GET',
+          headers,
+        }).then((session) => {
+          saveSessionToken(session.token, options ?? {});
+          return session;
+        })
+      : Promise.resolve().then(() => {
+          saveSessionToken(token, options ?? {});
+        });
   }
 
   public static updateEmail(
@@ -171,7 +193,10 @@ export abstract class Auth {
           password: password,
         },
       },
-    }).then((session) => saveSessionToken(session, options ?? {}));
+    }).then((session) => {
+      saveSessionToken(session.token, options ?? {});
+      return session;
+    });
   }
 
   public static updatePassword(
@@ -215,7 +240,10 @@ export abstract class Auth {
           newPassword,
         },
       },
-    }).then((session) => saveSessionToken(session, options ?? {}));
+    }).then((session) => {
+      saveSessionToken(session.token, options ?? {});
+      return session;
+    });
   }
 
   public static forgotPassword(email: string) {
@@ -258,8 +286,7 @@ export abstract class Auth {
   }
 }
 
-function saveSessionToken(session: Session, options: SignOptions) {
-  const { token } = session;
+function saveSessionToken(token: string, options: SignOptions) {
   const persist = options?.saveToken ?? true;
 
   if (persist && token && !isServer()) {
@@ -268,5 +295,4 @@ function saveSessionToken(session: Session, options: SignOptions) {
       token
     );
   }
-  return session;
 }

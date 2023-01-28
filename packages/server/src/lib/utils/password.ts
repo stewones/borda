@@ -6,18 +6,19 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-// Tools for encrypting and decrypting passwords.
-// Basically promise-friendly wrappers for bcrypt.
 import * as bcrypt from 'bcryptjs';
 import PasswordValidator from 'password-validator';
 
-// Returns a promise for a hashed password string.
+/**
+ * Returns a promise for a hashed password string
+ */
 export function hash(password: string) {
   return bcrypt.hash(password, 10);
 }
 
-// Returns a promise for whether this password compares to equal this
-// hashed password.
+/**
+ * Returns a promise for whether this password compares to equal this hashed password
+ */
 export async function compare(password: string, hashedPassword: string) {
   // Cannot bcrypt compare when one is undefined
   if (!password || !hashedPassword) {
@@ -26,6 +27,9 @@ export async function compare(password: string, hashedPassword: string) {
   return bcrypt.compare(password, hashedPassword);
 }
 
+/**
+ * Password validation
+ */
 export async function validate(
   password: string,
   options?: {
@@ -35,6 +39,8 @@ export async function validate(
 ) {
   const schema = new PasswordValidator();
   schema
+    .has()
+    .symbols(1, 'Password should have at least one symbol')
     .is()
     .min(8, 'Password must have a minimum length of 8 chars')
     .is()

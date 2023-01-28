@@ -31,10 +31,12 @@ export interface ClientParams {
   liveQueryServerURL?: string;
   debug?: boolean;
   plugins?: ElegantePlugin[];
+  validateSession?: boolean;
 }
 
 export const ClientDefaultParams: Partial<ClientParams> = {
   serverHeaderPrefix: 'X-Elegante',
+  validateSession: true,
   debug: true,
   plugins: [],
 };

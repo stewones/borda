@@ -7,13 +7,22 @@
  */
 
 import { Auth } from './Auth';
-import { EleganteError, ErrorCode } from './Error';
+import {
+  ClientDefaultParams,
+  ClientParams,
+  EleganteClient,
+} from './Client';
+import {
+  EleganteError,
+  ErrorCode,
+} from './Error';
 import { InternalHeaders } from './internal';
 import { log } from './log';
-import { isServer, LocalStorage } from './utils';
+import {
+  isServer,
+  LocalStorage,
+} from './utils';
 import { Version } from './Version';
-
-import { EleganteClient, ClientDefaultParams, ClientParams } from './Client';
 
 /**
  * configure a new elegante client
@@ -39,7 +48,7 @@ export async function init(options: ClientParams) {
     ...options,
   });
 
-  if (!isServer()) {
+  if (!isServer() && params.validateSession) {
     if (params.apiSecret) {
       throw new EleganteError(
         ErrorCode.SERVER_SECRET_EXPOSED,
@@ -54,7 +63,7 @@ export async function init(options: ClientParams) {
     if (token) {
       return Auth.become(token);
     }
-
-    return Promise.resolve();
   }
+
+  return Promise.resolve();
 }
