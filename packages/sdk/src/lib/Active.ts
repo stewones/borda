@@ -146,8 +146,10 @@ export class ActiveRecord<Doc extends Record> {
 
     if (typeof record === 'string') {
       this.objectId = record;
+      filter['objectId'] = record;
       this.query = query<Doc>(this.collection)
         .unlock(isServer())
+        .filter(filter)
         .include(params.include ?? [])
         .exclude(params.exclude ?? [])
         .projection(params.projection ?? ({} as any));
@@ -284,8 +286,8 @@ export class ActiveRecord<Doc extends Record> {
 
     const hook: any = getPluginHook('ActiveRecordBeforeDocumentSave');
 
-    if (hook()) {
-      obj = await hook()({ doc: obj, params: this.params });
+    if (hook) {
+      obj = await hook({ doc: obj, params: this.params });
     }
 
     return obj;
@@ -294,8 +296,8 @@ export class ActiveRecord<Doc extends Record> {
   private onDocumentRead(obj: Doc) {
     const hook: any = getPluginHook('ActiveRecordOnDocumentRead');
 
-    if (hook()) {
-      obj = hook()({ doc: obj, params: this.params });
+    if (hook) {
+      obj = hook({ doc: obj, params: this.params });
     }
 
     return obj;

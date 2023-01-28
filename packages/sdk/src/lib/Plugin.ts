@@ -48,9 +48,9 @@ export interface ServerPlugin {
 
 export function getPluginHook<T = undefined, Y = T>(
   hook: PluginHook
-): (params?: T) => Y {
+): ((params?: T) => Y) | undefined {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  let fn = (_params?: T) => undefined;
+  let fn = undefined;
   EleganteClient.params.plugins?.find((plugin: ElegantePlugin) => {
     const ph = plugin[hook as keyof ElegantePlugin];
 
@@ -59,5 +59,5 @@ export function getPluginHook<T = undefined, Y = T>(
     }
   });
 
-  return fn as (params?: T) => Y;
+  return fn;
 }
