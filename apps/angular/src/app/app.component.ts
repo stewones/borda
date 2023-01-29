@@ -373,6 +373,10 @@ export class PublicUserModel extends ActiveRecord<UserExtended> {
     <hr />
     Error: {{ (forgotPasswordError | json) ?? '' }}
     <br />
+    <!-- 
+    <button (click)="loadLotsOfDataIntoLocalStorage()">
+      Load Lots of Data into Local Storage
+    </button> -->
   `,
 })
 export class AppComponent {
@@ -714,5 +718,22 @@ export class AppComponent {
     const user = new PublicUserModel({ email, name });
     await user.save();
     console.log('createRandomUser()', user.getRawValue());
+  }
+
+  async loadLotsOfDataIntoLocalStorage() {
+    const data = [];
+    for (let i = 0; i < 9999; i++) {
+      data.push({
+        id: i,
+        name: `name ${i}`,
+        email: `email ${i}`,
+      });
+    }
+    LocalStorage.set('lotsOfData', [
+      ...(LocalStorage.get('lotsOfData') || []),
+      ...data,
+    ]);
+    console.log(`loaded ${data.length} items into localStorage`);
+    console.log(await LocalStorage.estimate());
   }
 }

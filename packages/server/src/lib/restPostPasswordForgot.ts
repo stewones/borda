@@ -81,11 +81,15 @@ export async function restPostPasswordForgot({
     });
 
   // send email
-  const EmailProviderPlugin = getPluginHook<EmailProvider>('EmailProvider');
+  const EmailProviderPlugin = getPluginHook<EmailProvider>('EmailProvider') as (
+    params?: EmailProvider | undefined
+  ) => EmailProvider;
   const EmailPasswordResetTemplate = getPluginHook<
     EmailPasswordResetParams,
     EmailPasswordResetParamsCallback
-  >('EmailPasswordResetTemplate');
+  >('EmailPasswordResetTemplate') as (
+    params?: EmailPasswordResetParams | undefined
+  ) => EmailPasswordResetParamsCallback;
 
   const { params } = EleganteServer;
 

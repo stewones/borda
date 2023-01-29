@@ -60,10 +60,11 @@ export async function restPostUpdate({
     ) {
       docQRL.doc = beforeSaveCallback.doc;
     }
+    const d = parseDocForInsertion(docQRL.doc);
 
     const doc: Document = {
-      ...parseDocForInsertion(docQRL.doc),
-      _updated_at: new Date(),
+      ...d,
+      _updated_at: d._updated_at ?? new Date(),
     };
 
     /**

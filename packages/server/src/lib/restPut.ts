@@ -112,10 +112,10 @@ export function restPut({
       ) {
         document = beforeSaveCallback.doc;
       }
-
+      const d = parseDocForInsertion(document);
       document = {
-        ...parseDocForInsertion(document),
-        _updated_at: new Date(),
+        ...d,
+        _updated_at: d._updated_at ?? new Date(),
       };
 
       /**
