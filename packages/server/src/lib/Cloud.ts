@@ -8,9 +8,17 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Request, Response } from 'express';
+import {
+  Request,
+  Response,
+} from 'express';
 
-import { Document, InternalCollectionName, Session, User } from '@elegante/sdk';
+import {
+  Document,
+  InternalCollectionName,
+  Session,
+  User,
+} from '@elegante/sdk';
 
 import { DocQRL } from './parseQuery';
 import { routeEnsureAuth } from './route';
@@ -262,15 +270,18 @@ function createJob(
 ): void {
   const { app } = EleganteServer;
   app.post(`/jobs/${options.name}`, async (req: Request, res: Response) => {
-    console.time(`job duration: ${options.name}`);
+    if (EleganteServer.params.debug)
+      console.time(`job duration: ${options.name}`);
     try {
       res.status(200).send('🚀');
-      const r = await fn({ req }); // @todo save result to db when we have Elegante Models
-      console.timeEnd(`job duration: ${options.name}`);
+      await fn({ req }); // @todo save result to db when we have Elegante Models
+      if (EleganteServer.params.debug)
+        console.timeEnd(`job duration: ${options.name}`);
     } catch (err) {
       // @todo save error to db when we have Elegante Models
       res.status(500).send(err);
-      console.timeEnd(`job duration: ${options.name}`);
+      if (EleganteServer.params.debug)
+        console.timeEnd(`job duration: ${options.name}`);
     }
   });
 }

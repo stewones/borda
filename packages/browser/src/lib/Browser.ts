@@ -13,7 +13,7 @@ import { FastOptions } from './fast';
 export interface BrowserParams {
   debug?: boolean;
   reducers?: any;
-  fast?: Pick<FastOptions, 'mode' | 'differ'>;
+  fast?: Pick<FastOptions, 'mode' | 'differ' | 'mutable'>;
 }
 
 export interface BrowserProtocol {

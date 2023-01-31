@@ -13,8 +13,10 @@ import {
 } from 'rxjs';
 
 import {
+  cloneDeep,
   Document,
   get,
+  isBoolean,
   isEqual,
   isOnline,
   LocalStorage,
@@ -50,6 +52,10 @@ export interface FastOptions {
    * define a custom differ function
    */
   differ?: (prev: any, next: any) => boolean;
+  /**
+   * define if data can be mutated. default to false.
+   */
+  mutable?: boolean;
 }
 
 export function from<T = Document>(source: Promise<T>): Observable<T> {
@@ -265,6 +271,12 @@ function memorize<T = StateDocument>(
     );
   }
 
+  const mutable = isBoolean(options.mutable)
+    ? options.mutable
+    : isBoolean(EleganteBrowser.params.fast?.mutable)
+    ? EleganteBrowser.params.fast?.mutable
+    : false;
+
   const key = options.key || Reflect.getMetadata('key', source);
   const { path } = options;
 
@@ -282,26 +294,28 @@ function memorize<T = StateDocument>(
     if (state) {
       prev = state;
       log('state.get', key, prev);
+      const response = mutable ? cloneDeep(prev) : prev;
       observer.next(
         options?.mode === 'detailed'
           ? ({
               hit: 'state',
-              value: prev,
+              value: response,
               key,
             } as T)
-          : prev
+          : response
       );
     } else if (cache) {
       prev = cache;
       log('cache.get', key, prev);
+      const response = mutable ? cloneDeep(prev) : prev;
       observer.next(
         options?.mode === 'detailed'
           ? ({
               hit: 'cache',
-              value: prev,
+              value: response,
               key,
             } as T)
-          : prev
+          : response
       );
     }
 
@@ -345,14 +359,15 @@ function memorize<T = StateDocument>(
          * the prev value is different from the next one
          */
         if (differ(prev, value) && isOnline()) {
+          const response = mutable ? cloneDeep(value) : value;
           observer.next(
             options?.mode === 'detailed'
               ? ({
                   hit: 'network',
                   key,
-                  value,
+                  response,
                 } as T)
-              : (value as T)
+              : (response as T)
           );
         }
 
