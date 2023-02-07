@@ -8,10 +8,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import {
-  Request,
-  Response,
-} from 'express';
+import { Request, Response } from 'express';
 
 import {
   Document,
@@ -26,10 +23,7 @@ import {
 } from '@elegante/sdk';
 
 import { invalidateCache } from './Cache';
-import {
-  CloudTriggerCallback,
-  getCloudTrigger,
-} from './Cloud';
+import { CloudTriggerCallback, getCloudTrigger } from './Cloud';
 import { parseDocForInsertion } from './parseDoc';
 import { parseQuery } from './parseQuery';
 import { parseResponse } from './parseResponse';
@@ -70,6 +64,8 @@ export function restPut({
           );
       }
       const docQRL = parseQuery({
+        res,
+        method: 'put',
         doc: req.body.doc,
         collection: collectionName,
         options: req.body.options,
@@ -112,10 +108,10 @@ export function restPut({
       ) {
         document = beforeSaveCallback.doc;
       }
+
       const d = parseDocForInsertion(document);
       document = {
         ...d,
-        _updated_at: d._updated_at ?? new Date(),
       };
 
       /**
@@ -127,10 +123,16 @@ export function restPut({
         ...Object.keys(ExternalFieldName),
       ];
 
+      // blocked access to reserved fields
       if (!isUnlocked(res.locals)) {
         reservedFields.forEach((field) => {
           delete document[field];
         });
+      }
+
+      if (docQRL?.options?.update?.updatedAt !== false) {
+        document['_updated_at'] =
+          d._updated_at && isUnlocked(res.locals) ? d._updated_at : new Date();
       }
 
       const cursor = await collection$.findOneAndUpdate(

@@ -1,7 +1,4 @@
-import {
-  Request,
-  Response,
-} from 'express';
+import { Request, Response } from 'express';
 
 import {
   Document,
@@ -11,10 +8,7 @@ import {
   objectFieldsUpdated,
 } from '@elegante/sdk';
 
-import {
-  CloudTriggerCallback,
-  getCloudTrigger,
-} from './Cloud';
+import { CloudTriggerCallback, getCloudTrigger } from './Cloud';
 import { parseDocForInsertion } from './parseDoc';
 import { DocQRL } from './parseQuery';
 import { parseResponse } from './parseResponse';
@@ -65,7 +59,8 @@ export async function restPostInsert({
     const doc: Document = {
       ...d,
       _id: d._id ?? newObjectId(),
-      _created_at: d._created_at ?? new Date(),
+      _created_at:
+        d._created_at && isUnlocked(res.locals) ? d._created_at : new Date(),
     };
 
     if (docQRL?.options?.insert?.updatedAt !== false) {

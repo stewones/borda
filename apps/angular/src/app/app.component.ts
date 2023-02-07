@@ -1,7 +1,4 @@
-import {
-  of,
-  Subscription,
-} from 'rxjs';
+import { of, Subscription } from 'rxjs';
 
 import { CommonModule } from '@angular/common';
 import {
@@ -448,7 +445,7 @@ export class AppComponent {
             },
           ])
           .limit(10)
-          .aggregate({ allowDiskUse: true, inspect: true })
+          .aggregate({ allowDiskUse: true, inspect: false })
       )
     : of([]);
 

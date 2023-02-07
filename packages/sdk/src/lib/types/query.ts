@@ -22,6 +22,9 @@ export interface DocumentExtraOptions {
   insert?: {
     updatedAt?: boolean;
   };
+  update?: {
+    updatedAt?: boolean;
+  };
 }
 export type DocumentOptions =
   | DocumentExtraOptions
