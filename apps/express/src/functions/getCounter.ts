@@ -1,4 +1,4 @@
-import { print, query } from '@elegante/sdk';
+import { isEmpty, print, query } from '@elegante/sdk';
 import { Cloud } from '@elegante/server';
 
 Cloud.addFunction(
@@ -6,7 +6,7 @@ Cloud.addFunction(
   {
     isPublic: true,
   },
-  async ({ req, res }) => {
+  async ({ res }) => {
     print('executing', `getCounter`);
     try {
       let counter = await query('Counter')
@@ -16,9 +16,9 @@ Cloud.addFunction(
             $eq: 'elegante',
           },
         })
-        .findOne();
+        .findOne({ inspect: false });
 
-      if (!counter) {
+      if (isEmpty(counter)) {
         counter = await query('Counter').unlock().insert({
           total: 0,
           name: 'elegante',

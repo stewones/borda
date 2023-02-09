@@ -6,16 +6,13 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-import {
-  defer as deferRXJS,
-  Observable,
-} from 'rxjs';
+import { defer as deferRXJS, Observable } from 'rxjs';
 
 import {
   cloneDeep,
   Document,
   get,
+  IndexedDB,
   isBoolean,
   isEqual,
   isOnline,
@@ -24,11 +21,7 @@ import {
 
 import { EleganteBrowser } from './Browser';
 import { log } from './log';
-import {
-  getDocState,
-  setDocState,
-  StateDocument,
-} from './state';
+import { getDocState, setDocState, StateDocument } from './state';
 
 function isDifferent(prev: any, next: any) {
   return !isEqual(prev, next);
@@ -56,6 +49,16 @@ export interface FastOptions {
    * define if data can be mutated. default to false.
    */
   mutable?: boolean;
+  /**
+   * default storage adapter is IndexedDB but you can use LocalStorage or any other
+   * as long as they implement the same interface
+   */
+  storage?: {
+    name?: string; // used for IndexedDB
+    store?: string; // used for IndexedDB
+    version?: number; // used for IndexedDB
+    adapter?: LocalStorage | IndexedDB | any;
+  };
 }
 
 export function from<T = Document>(source: Promise<T>): Observable<T> {
@@ -288,7 +291,7 @@ function memorize<T = StateDocument>(
 
   return new Observable<T>((observer) => {
     const state = getDocState<T>(key);
-    const cache = LocalStorage.get(key);
+
     let prev: any = null;
 
     if (state) {
@@ -304,81 +307,85 @@ function memorize<T = StateDocument>(
             } as T)
           : response
       );
-    } else if (cache) {
-      prev = cache;
-      log('cache.get', key, prev);
-      const response = mutable ? cloneDeep(prev) : prev;
-      observer.next(
-        options?.mode === 'detailed'
-          ? ({
-              hit: 'cache',
-              value: response,
-              key,
-            } as T)
-          : response
-      );
     }
 
-    source.subscribe({
-      next: (next) => {
-        const differ =
-          options?.differ ??
-          EleganteBrowser.params?.fast?.differ ??
-          isDifferent;
+    EleganteBrowser.storage.get(key).then((cache: T) => {
+      if (cache && !state) {
+        prev = cache;
+        log('cache.get', key, prev);
+        const response = mutable ? cloneDeep(prev) : prev;
+        observer.next(
+          options?.mode === 'detailed'
+            ? ({
+                hit: 'cache',
+                value: response,
+                key,
+              } as T)
+            : response
+        );
+      }
 
-        let value: T | T[] | string | number = next;
+      source.subscribe({
+        next: (next) => {
+          const differ =
+            options?.differ ??
+            EleganteBrowser.params?.fast?.differ ??
+            isDifferent;
 
-        /**
-         * checks if the next value is an array and iterate over it
-         * to extract the value of the path
-         */
-        if (Array.isArray(next)) {
-          value = next.map((item) => get(item, path ?? ''));
-        } else if (!Array.isArray(next) && typeof next === 'object') {
-          value = get(next, path ?? '');
-        }
+          let value: T | T[] | string | number = next;
 
-        /**
-         * update doc state
-         */
-        if (differ(state, value) && isOnline()) {
-          setDocState(key, value, { persist: false });
-          log('state.set', key, value);
-        }
+          /**
+           * checks if the next value is an array and iterate over it
+           * to extract the value of the path
+           */
+          if (Array.isArray(next)) {
+            value = next.map((item) => get(item, path ?? ''));
+          } else if (!Array.isArray(next) && typeof next === 'object') {
+            value = get(next, path ?? '');
+          }
 
-        /**
-         * update cache state
-         */
-        if (differ(cache, value) && isOnline()) {
-          LocalStorage.set(key, value);
-          log('cache.set', key, value);
-        }
+          /**
+           * update doc state
+           */
+          if (differ(state, value) && isOnline()) {
+            setDocState(key, value, { persist: false });
+            log('state.set', key, value);
+          }
 
-        /**
-         * emit a new value down to the stream only if
-         * the prev value is different from the next one
-         */
-        if (differ(prev, value) && isOnline()) {
-          const response = mutable ? cloneDeep(value) : value;
-          observer.next(
-            options?.mode === 'detailed'
-              ? ({
-                  hit: 'network',
-                  key,
-                  response,
-                } as T)
-              : (response as T)
-          );
-        }
+          /**
+           * update cache state
+           */
+          if (differ(cache, value) && isOnline()) {
+            EleganteBrowser.storage.set(key, value);
+            log('cache.set', key, value);
+          }
 
-        /**
-         * kill the subscription.
-         * useful when you want to compose and get to known
-         * the last value of the fast's stream
-         */
-        observer.complete();
-      },
-      error: (error) => observer.error(error),
+          /**
+           * emit a new value down to the stream only if
+           * the prev value is different from the next one
+           */
+          if (differ(prev, value) && isOnline()) {
+            const response = mutable ? cloneDeep(value) : value;
+            observer.next(
+              options?.mode === 'detailed'
+                ? ({
+                    hit: 'network',
+                    key,
+                    value: response,
+                  } as T)
+                : (response as T)
+            );
+          }
+
+          /**
+           * kill the subscription.
+           * useful when you want to compose and get to known
+           * the last value of the fast's stream
+           */
+          observer.complete();
+        },
+        error: (error) => observer.error(error),
+      });
     });
   });
 }

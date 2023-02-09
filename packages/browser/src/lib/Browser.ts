@@ -1,3 +1,5 @@
+import { IndexedDB, LocalStorage } from '@elegante/sdk';
+
 /**
  * @license
  * Copyright Elegante All Rights Reserved.
@@ -13,16 +15,18 @@ import { FastOptions } from './fast';
 export interface BrowserParams {
   debug?: boolean;
   reducers?: any;
-  fast?: Pick<FastOptions, 'mode' | 'differ' | 'mutable'>;
+  fast?: Pick<FastOptions, 'mode' | 'differ' | 'mutable' | 'storage'>;
 }
 
 export interface BrowserProtocol {
   store: EnhancedStore;
   params: BrowserParams;
+  storage: LocalStorage | IndexedDB | any;
 }
 
 export const EleganteBrowser: BrowserProtocol = {
   store: null as any,
+  storage: null as any,
   params: {
     debug: true,
     reducers: {},

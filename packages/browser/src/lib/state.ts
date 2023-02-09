@@ -9,21 +9,11 @@
 import watch from 'redux-watch';
 import { Observable } from 'rxjs';
 
-import {
-  cloneDeep,
-  Document,
-  get,
-  LocalStorage,
-} from '@elegante/sdk';
+import { cloneDeep, Document, get } from '@elegante/sdk';
 
 import { EleganteBrowser } from './Browser';
 import { log } from './log';
-import {
-  $docReset,
-  $docSet,
-  $docUnset,
-  dispatch,
-} from './redux';
+import { $docReset, $docSet, $docUnset, dispatch } from './redux';
 
 export interface SetStateOptions {
   /**
@@ -136,7 +126,7 @@ export function setDocState<T = StateDocument>(
 
   if (options.persist) {
     log('setDocState.cache', key, value);
-    LocalStorage.set(key, value);
+    EleganteBrowser.storage.set(key, value);
   }
 }
 
@@ -155,7 +145,7 @@ export function unsetDocState(
     })
   );
   if (options.persist) {
-    LocalStorage.unset(key);
+    EleganteBrowser.storage.unset(key);
   }
 }
 
@@ -174,7 +164,7 @@ export function resetDocState(
 
   dispatch($docReset());
   if (options.persist) {
-    LocalStorage.clear();
+    EleganteBrowser.storage.clear();
   }
 }
 

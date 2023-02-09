@@ -14,163 +14,47 @@ import {
 } from '@angular/forms';
 
 import {
-  Action,
   connect,
-  createAction,
-  createReducer,
   dispatch,
   fast,
   Fast,
   from,
   getDocState,
   getState,
-  load,
   resetDocState,
   setDocState,
   unsetDocState,
 } from '@elegante/browser';
 import {
-  ActiveParams,
-  ActiveRecord,
   Auth,
-  cleanArray,
-  init,
-  isEqual,
   LocalStorage,
-  log,
   ping,
   query,
-  Record,
   runFunction,
   Session,
+  storageEstimate,
   User,
 } from '@elegante/sdk';
 
+import {
+  coolInitialState,
+  coolReset,
+  coolSet,
+  Counter,
+  PublicUserModel,
+  sessionSet,
+  sessionUnset,
+} from '../main';
+
 console.time('startup');
-
-init({
-  apiKey: '**elegante**',
-  serverURL: 'http://localhost:1337/server',
-  debug: true,
-  validateSession: false,
-});
-
-load({
-  debug: true,
-  reducers: {
-    session: createReducer<Partial<Session>>(
-      // initial state
-      {
-        user: {} as User,
-        token: '',
-      },
-      // actions
-      {
-        sessionSet: (state: Session, action: Action<Session>) => {
-          state.user = action.payload.user;
-          state.token = action.payload.token;
-          LocalStorage.set('session', state);
-        },
-        sessionUnset: (state: any) => {
-          state.user = {} as User;
-          state.token = '';
-          LocalStorage.unset('session');
-        },
-      }
-    ),
-    cool: createReducer<any>(
-      // initial state
-      {},
-      // actions
-      {
-        coolSet: (state: any, action: Action<any>) => {
-          for (const key in action.payload) {
-            state[key] = action.payload[key];
-          }
-          LocalStorage.set('cool', state);
-        },
-        coolReset: (state: any) => {
-          for (const key in state) {
-            delete state[key];
-          }
-          for (const key in coolInitialState) {
-            state[key] = coolInitialState[key];
-          }
-          LocalStorage.set('cool', state);
-        },
-      }
-    ),
-  },
-  fast: {
-    differ: (prev, next) => {
-      /**
-       * implement a custom differ function to compare state changes
-       * this controls wheter the stream should emit a new value or not
-       */
-      log('global `fast` differ', prev, next);
-      return !isEqual(prev, next);
-    },
-  },
-});
-
-const coolSet = createAction<any>('coolSet');
-const coolReset = createAction('coolReset');
-const sessionSet = createAction<Session>('sessionSet');
-const sessionUnset = createAction('sessionUnset');
-
-const coolInitialState: any = {
-  hey: 'dude',
-  this: 'is',
-  cool: '🤓',
-};
-
-const session = LocalStorage.get('session');
-
-if (session) {
-  dispatch(sessionSet(session));
-}
-
-interface Counter extends Record {
-  total: number;
-  name: string;
-}
 
 function somePromise() {
   return new Promise<number>((resolve, reject) => {
     const randomNumber = Math.floor(Math.random() * 1000);
-    console.debug('resolving random number from promise', randomNumber);
+    console.log('resolving random number from promise', randomNumber);
     // resolve a random number to test cache invalidation
     return resolve(randomNumber);
   });
-}
-
-interface UserExtended extends User {
-  username?: string;
-}
-
-export class PublicUserModel extends ActiveRecord<UserExtended> {
-  constructor(
-    record?: Partial<UserExtended>,
-    options: ActiveParams<UserExtended> = {}
-  ) {
-    /**
-     * custom identifier query
-     */
-    if (!record?.objectId) {
-      options.filter = {
-        ...options.filter,
-        $or: cleanArray([
-          record?.email ? { email: record?.email } : {},
-          record?.username ? { username: record?.username } : {},
-        ]),
-      };
-    }
-
-    super('PublicUser', record, {
-      include: ['photo'],
-      ...options,
-    });
-  }
 }
 
 @Component({
@@ -178,6 +62,7 @@ export class PublicUserModel extends ActiveRecord<UserExtended> {
   selector: 'elegante-app',
   imports: [CommonModule, FormsModule, ReactiveFormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
+
   styles: [
     `
       form {
@@ -433,13 +318,6 @@ export class AppComponent {
             },
           })
           .pipeline([
-            {
-              $match: {
-                updatedAt: {
-                  $exists: true,
-                },
-              },
-            },
             {
               $sort: { createdAt: 1 },
             },
@@ -731,6 +609,6 @@ export class AppComponent {
       ...data,
     ]);
     console.log(`loaded ${data.length} items into localStorage`);
-    console.log(await LocalStorage.estimate());
+    console.log(await storageEstimate());
   }
 }

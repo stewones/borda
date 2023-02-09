@@ -7,21 +7,12 @@
  */
 
 import { Auth } from './Auth';
-import {
-  ClientDefaultParams,
-  ClientParams,
-  EleganteClient,
-} from './Client';
-import {
-  EleganteError,
-  ErrorCode,
-} from './Error';
+import { ClientDefaultParams, ClientParams, EleganteClient } from './Client';
+import { EleganteError, ErrorCode } from './Error';
 import { InternalHeaders } from './internal';
 import { log } from './log';
-import {
-  isServer,
-  LocalStorage,
-} from './utils';
+import { isServer, LocalStorage } from './utils';
+import { storageEstimate } from './utils/navigator';
 import { Version } from './Version';
 
 /**
@@ -35,11 +26,16 @@ export async function init(options: ClientParams) {
   log(`Elegante SDK v${Version}`);
 
   if (!isServer()) {
-    LocalStorage.estimate().then(({ percentageAvailable, remainingMB }) =>
-      log(
-        'LocalStorage',
-        `${percentageAvailable}% available (${remainingMB.toFixed(0)} MB)`
-      )
+    storageEstimate().then(
+      ({ percentageAvailable, percentageUsed, remainingMB, usedMB }) =>
+        log(
+          '💿 Storage Usage',
+          `
+|-----------------------------|
+| ${percentageUsed}% used (${usedMB.toFixed(0)} MB)              |
+| ${percentageAvailable}% available (${remainingMB.toFixed(0)} MB)  |
+|-----------------------------|`
+        )
     );
   }
 

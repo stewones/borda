@@ -20,12 +20,7 @@ import {
   Record,
   Sort,
 } from './types';
-import {
-  cloneDeep,
-  isEmpty,
-  isServer,
-  unset,
-} from './utils';
+import { cloneDeep, isEmpty, isServer, unset } from './utils';
 
 export type ActiveModel<T> = Partial<T> | string;
 export interface ActiveParams<T = any> {
@@ -281,7 +276,15 @@ export class ActiveRecord<Doc extends Record> {
     return pointer<T>(this.collection, this.objectId);
   }
 
-  private async beforeDocumentSave(obj: Doc) {
+  private async beforeDocumentSave(obj: Doc & any) {
+    if (isServer()) {
+      // we need to remove updatedAt from the document
+      // otherwise server in unlock mode will never auto-update this field
+      if (obj && obj.updatedAt) {
+        delete obj.updatedAt;
+      }
+    }
+
     obj = this.parseDocBeforeSave(obj);
 
     const hook: any = getPluginHook('ActiveRecordBeforeDocumentSave');
