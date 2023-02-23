@@ -8,9 +8,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import express, { Application } from 'express';
 import { IncomingMessage } from 'http';
+import WebSocket from 'isomorphic-ws';
 import { Db } from 'mongodb';
 import { Subject } from 'rxjs';
-import WebSocket from 'ws';
 
 import {
   DefaultEmailPasswordResetTemplate,
@@ -30,11 +30,7 @@ import {
 } from '@elegante/sdk';
 
 import { Cache } from './Cache';
-import {
-  handleOn,
-  handleOnce,
-  LiveQueryServerParams,
-} from './LiveQueryServer';
+import { handleOn, handleOnce, LiveQueryServerParams } from './LiveQueryServer';
 import { rest } from './rest';
 import {
   createIndexes,

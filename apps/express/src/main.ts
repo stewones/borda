@@ -2,7 +2,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 
-import { init, print, ping, query } from '@elegante/sdk';
+import { init, print, ping } from '@elegante/sdk';
 import {
   createLiveQueryServer,
   createServer,

@@ -5,6 +5,12 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://elegante.dev/license
  */
+import WebSocket, {
+  CloseEvent,
+  ErrorEvent,
+  Event,
+  MessageEvent,
+} from 'isomorphic-ws';
 
 import { EleganteClient } from './Client';
 
@@ -25,10 +31,10 @@ export function webSocketServer(socketURL: string) {
       `token`, // @todo send token over the wire to also validade the ws connection
     ]);
 
-    ws.onopen = (ev) => onOpen(ws, ev);
-    ws.onerror = (err) => onError(ws, err);
-    ws.onclose = (ev) => onClose(ws, ev);
-    ws.onmessage = (ev) => onMessage(ws, ev);
+    ws.onopen = (ev: Event) => onOpen(ws, ev);
+    ws.onerror = (err: ErrorEvent) => onError(ws, err);
+    ws.onclose = (ev: CloseEvent) => onClose(ws, ev);
+    ws.onmessage = (ev: MessageEvent) => onMessage(ws, ev);
 
     const timer = setInterval(() => {
       if (ws.readyState === 1) {

@@ -9,29 +9,15 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import {
-  finalize,
-  Observable,
-} from 'rxjs';
+import WebSocket, { MessageEvent } from 'isomorphic-ws';
+import { finalize, Observable } from 'rxjs';
 
 import { EleganteClient } from './Client';
-import {
-  EleganteError,
-  ErrorCode,
-} from './Error';
-import {
-  fetch,
-  HttpMethod,
-} from './fetch';
-import {
-  InternalFieldName,
-  InternalHeaders,
-} from './internal';
+import { EleganteError, ErrorCode } from './Error';
+import { fetch, HttpMethod } from './fetch';
+import { InternalFieldName, InternalHeaders } from './internal';
 import { log } from './log';
-import {
-  DocumentLiveQuery,
-  LiveQueryMessage,
-} from './types';
+import { DocumentLiveQuery, LiveQueryMessage } from './types';
 import {
   ChangeStreamOptions,
   Document,
@@ -41,18 +27,8 @@ import {
   ManyUpdateResponse,
   Query,
 } from './types/query';
-import {
-  cleanKey,
-  isBoolean,
-  isEmpty,
-  isServer,
-  LocalStorage,
-} from './utils';
-import {
-  getUrl,
-  WebSocketFactory,
-  webSocketServer,
-} from './websocket';
+import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
+import { getUrl, WebSocketFactory, webSocketServer } from './websocket';
 
 export function query<TSchema extends Document = Document>(collection: string) {
   const bridge: Query<TSchema> = {
@@ -453,10 +429,10 @@ export function query<TSchema extends Document = Document>(collection: string) {
             ws.send(JSON.stringify(body));
           },
 
-          onMessage: (ws, message) => {
+          onMessage: (ws: WebSocket, message: MessageEvent) => {
             const data = message.data;
             try {
-              observer.next(JSON.parse(data));
+              observer.next(JSON.parse(data as string));
             } catch (err) {
               log('on', event, bridge.params['collection'], 'error', err);
               ws.close();
@@ -576,7 +552,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
             const data = message.data ?? '';
 
             try {
-              observer.next(JSON.parse(data));
+              observer.next(JSON.parse(data as string));
               observer.complete(); // this is a one time query
             } catch (err) {
               log('once', bridge.params['collection'], err);

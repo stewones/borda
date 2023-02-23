@@ -9,12 +9,11 @@
 
 import chalk from 'chalk';
 import { execSync } from 'child_process';
-import {
-  readFileSync,
-  writeFileSync,
-} from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 
-import { readCachedProjectGraph } from '@nrwl/devkit';
+import pkg from '@nrwl/devkit';
+
+const { readCachedProjectGraph } = pkg;
 
 function invariant(condition, message) {
   if (!condition) {

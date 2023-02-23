@@ -8,12 +8,12 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import WebSocket, { ServerOptions } from 'isomorphic-ws';
 import {
   AggregateOptions,
   ChangeStreamUpdateDocument,
   Document,
 } from 'mongodb';
-import WebSocket, { ServerOptions } from 'ws';
 
 import {
   DocumentEvent,
@@ -25,16 +25,10 @@ import {
   log,
 } from '@elegante/sdk';
 
-import {
-  parseDoc,
-  parseDocs,
-} from './parseDoc';
+import { parseDoc, parseDocs } from './parseDoc';
 import { parseProjection } from './parseProjection';
 import { parseQuery } from './parseQuery';
-import {
-  createPipeline,
-  EleganteServer,
-} from './Server';
+import { createPipeline, EleganteServer } from './Server';
 
 export interface LiveQueryServerParams extends ServerOptions {
   collections: string[]; // allowed collections
