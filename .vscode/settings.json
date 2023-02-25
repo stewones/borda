@@ -3,7 +3,8 @@
   "tsImportSorter.configuration.autoFormat": "onSave",
   "tsImportSorter.configuration.exclude": [
     "node_modules",
-    "apps/express/src/main.ts"
+    "apps/express/src/main.ts",
+    "apps/cli/src/starters/ts-server/src/main.ts"
   ],
   "tsImportSorter.configuration.keepUnused": [],
   "tsImportSorter.configuration.groupRules": [

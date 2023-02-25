@@ -1,0 +1,36 @@
+{
+  "name": "elegante",
+  "version": "0.0.1",
+  "description": "Full application stack powered by Typescript and Mongodb",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npx ts-node src/main.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stewones/elegante.git"
+  },
+  "keywords": [
+    "typescript",
+    "mongodb",
+    "fullstack"
+  ],
+  "author": "Stewan Silva",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/stewones/elegante/issues"
+  },
+  "homepage": "https://github.com/stewones/elegante#readme",
+  "devDependencies": {
+    "@types/node": "^18.14.1",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "@elegante/sdk": "0.0.39",
+    "@elegante/server": "0.0.42",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "ws": "^8.12.1"
+  }
+}
