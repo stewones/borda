@@ -87,5 +87,5 @@ export async function restPostSignIn({
 
   const session = await createSession(user);
 
-  return res.status(201).json(session);
+  return res.status(200).json(session);
 }

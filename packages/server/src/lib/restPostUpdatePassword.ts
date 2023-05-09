@@ -169,5 +169,5 @@ export async function restPostUpdatePassword({
     email: currentUser.email,
   });
 
-  return res.status(201).json(newSession);
+  return res.status(200).json(newSession);
 }

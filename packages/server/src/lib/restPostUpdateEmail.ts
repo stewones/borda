@@ -139,5 +139,5 @@ export async function restPostUpdateEmail({
     email: email.toLowerCase(),
   });
 
-  return res.status(201).json(newSession);
+  return res.status(200).json(newSession);
 }

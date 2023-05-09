@@ -28,10 +28,10 @@ export function parseDoc<T extends Document>(
   obj: any
 ): (docQuery: DocumentQuery, params: ServerParams, locals: any) => Promise<T> {
   return async (docQuery, params, locals) => {
-    await parseInclude(obj)(docQuery, params, locals).catch((err) => {
+    await parseInclude(obj ?? {})(docQuery, params, locals).catch((err) => {
       throw new EleganteError(ErrorCode.QUERY_INCLUDE_ERROR, err.message);
     });
-    await parseExclude(obj)(docQuery, params).catch((err) => {
+    await parseExclude(obj ?? {})(docQuery, params).catch((err) => {
       throw new EleganteError(ErrorCode.QUERY_EXCLUDE_ERROR, err.message);
     });
 
