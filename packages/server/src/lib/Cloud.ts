@@ -83,7 +83,9 @@ const CloudFunction: CloudFunctionProtocol = new Map();
 const CloudTrigger: CloudTriggerProtocol = new Map();
 
 export function getCloudTrigger(collection: string, event: CloudTriggerEvent) {
-  return CloudTrigger.get(`${collection}.${event}`);
+  return CloudTrigger.get(
+    `${InternalCollectionName[collection] ?? collection}.${event}`
+  );
 }
 
 export function getCloudFunction(name: string) {
