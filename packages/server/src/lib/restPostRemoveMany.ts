@@ -9,7 +9,10 @@ import {
   isEmpty,
 } from '@elegante/sdk';
 
+import { getCloudTrigger } from './Cloud';
 import { DocQRL } from './parseQuery';
+import { parseResponse } from './parseResponse';
+import { isUnlocked } from './utils/isUnlocked';
 
 export async function restPostRemoveMany({
   req,
@@ -33,6 +36,13 @@ export async function restPostRemoveMany({
       );
   }
 
+  const updatedDocuments = await collection$.find(filter ?? {}).toArray();
+
+  console.log(
+    'restPostRemoveMany.updatedDocuments.total',
+    updatedDocuments.length
+  );
+
   const cursor = await collection$.updateMany(
     filter ?? {},
     { $set: { _expires_at: new Date() } },
@@ -42,6 +52,28 @@ export async function restPostRemoveMany({
   );
 
   if (cursor.acknowledged) {
+    // now we need to trigger afterDelete hooks
+    const afterDelete = getCloudTrigger(collection, 'afterDelete');
+    if (afterDelete) {
+      updatedDocuments.map((doc) => {
+        const afterDeletePayload = parseResponse(
+          { before: doc, doc: doc, after: null },
+          {
+            removeSensitiveFields: !isUnlocked(res.locals),
+          }
+        );
+
+        afterDelete.fn({
+          ...afterDeletePayload,
+          qrl: docQRL,
+          context: docQRL.options?.context ?? {},
+          user: res.locals['session']?.user,
+          req,
+          res,
+        });
+      });
+    }
+
     return res.status(200).json(cursor);
   }
 
