@@ -29,7 +29,7 @@ export async function restPostFind({
   params: ServerParams;
 }) {
   /**
-   * apply a default limit if not set and only *if* locals env is not unlocked
+   * apply a hard limit if not set and only *if* locals env is not unlocked
    * also ensures that the limit being passed is not greater than the max one defined in the server instance
    */
   const maxDocsPerQuery = params.queryMaxDocLimit ?? 50;

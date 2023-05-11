@@ -32,7 +32,8 @@ type CloudTriggerEvent =
   | 'afterSave'
   | 'afterSaveMany'
   | 'beforeDelete'
-  | 'afterDelete';
+  | 'afterDelete'
+  | 'beforeSignUp';
 
 type CloudFunctionProtocol = Map<string, CloudFunctionOptions>;
 
@@ -54,7 +55,7 @@ export type CloudTriggerCallback<T = any> =
   | { doc?: T; docs?: T[] };
 
 interface CloudTriggerOptions {
-  collection: string;
+  collection?: string;
   event: CloudTriggerEvent;
   fn: (
     factory: CloudTriggerFactory
@@ -88,11 +89,29 @@ export function getCloudTrigger(collection: string, event: CloudTriggerEvent) {
   );
 }
 
+export function getCloudBeforeSignUpTrigger() {
+  return CloudTrigger.get(`beforeSignUp`);
+}
+
 export function getCloudFunction(name: string) {
   return CloudFunction.get(name);
 }
 
 export abstract class Cloud {
+  public static beforeSignUp<T = Document>(
+    fn: (
+      factory: CloudTriggerFactory<T>
+    ) =>
+      | Promise<CloudTriggerCallback<T>>
+      | CloudTriggerCallback<T>
+      | boolean
+      | void
+  ) {
+    CloudTrigger.set(`beforeSignUp`, {
+      event: 'beforeSignUp',
+      fn,
+    });
+  }
   public static beforeSave<T = Document>(
     collection: string,
     fn: (

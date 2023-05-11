@@ -159,6 +159,7 @@ export function restPost({
       } else if (collectionName === '_User' && method === 'signUp') {
         return restPostSignUp({
           res,
+          req,
           docQRL,
         });
       } else if (collectionName === '_User' && method === 'signIn') {
