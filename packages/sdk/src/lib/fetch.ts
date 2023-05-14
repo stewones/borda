@@ -9,6 +9,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { fetch as fetcher } from 'cross-fetch';
+
+import { EleganteClient } from './Client';
 import { EleganteError, ErrorCode } from './Error';
 import { isServer } from './utils';
 import { Version } from './Version';
@@ -35,6 +37,15 @@ export async function fetch<T = any>(
         : {}),
     },
   };
+
+  if (isServer()) {
+    // needs to add https agent from outside
+    // { fetch: { agent: new https.Agent({ rejectUnauthorized: false }) } }
+    const paramsFetch = EleganteClient.params.fetch;
+    if (paramsFetch && paramsFetch.agent) {
+      fetchOptions.agent = EleganteClient.params.fetch?.agent;
+    }
+  }
 
   if (options?.body) {
     fetchOptions.body = JSON.stringify(options.body);

@@ -130,14 +130,39 @@ export function createServer(options: Partial<ServerParams>): Application {
 }
 
 export function createLiveQueryServer(options: LiveQueryServerParams) {
-  const { debug, collections } = options;
-  const connections = new Map();
+  const { debug, collections, httpServer, upgrade, port } = options;
 
-  const wss = new WebSocket.Server(options, () => {
+  if (upgrade && !httpServer) {
+    throw new EleganteError(
+      ErrorCode.LIVE_QUERY_INVALID_PARAMS,
+      'LiveQuery server upgrade requires an http server'
+    );
+  }
+
+  const connections = new Map();
+  const wssOptions = upgrade
+    ? {
+        noServer: true,
+      }
+    : {
+        port,
+      };
+
+  const wss = new WebSocket.Server(wssOptions, () => {
+    // this is ignored when upgrade
     if (debug) {
       print(`LiveQuery running on port ${options.port}`, connections.values());
     }
   });
+
+  if (upgrade) {
+    httpServer.on('upgrade', (request, socket, head) => {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    });
+  }
+
 
   wss.on('close', () => {
     {

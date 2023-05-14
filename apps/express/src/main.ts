@@ -170,16 +170,17 @@ import './triggers';
  */
 const httpPort = 1337;
 const httpServer = http.createServer(server);
-httpServer.listen(httpPort, () => print(`Server running on port ${httpPort}`));
 
 /**
  * start the live query server
  */
 const liveQueryPort = 1338;
 createLiveQueryServer({
+  httpServer,
   collections: ['PublicUser', 'Counter'],
   port: liveQueryPort,
   debug: false,
+  upgrade: true,
 });
 
 /**
@@ -212,3 +213,5 @@ ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
     })
     .catch((err) => print(err));
 });
+
+httpServer.listen(httpPort, () => print(`Server running on port ${httpPort}`));

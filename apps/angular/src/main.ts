@@ -76,6 +76,7 @@ export class PublicUserModel extends ActiveRecord<UserExtended> {
 init({
   apiKey: '**elegante**',
   serverURL: 'http://localhost:1337/server',
+  liveQueryServerURL: 'ws://localhost:1337',
   debug: true,
   validateSession: false,
 });

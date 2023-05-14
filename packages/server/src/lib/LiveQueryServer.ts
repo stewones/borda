@@ -8,6 +8,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { IncomingMessage, Server, ServerResponse } from 'http';
 import WebSocket, { ServerOptions } from 'isomorphic-ws';
 import {
   AggregateOptions,
@@ -31,9 +32,11 @@ import { parseQuery } from './parseQuery';
 import { createPipeline, EleganteServer } from './Server';
 
 export interface LiveQueryServerParams extends ServerOptions {
+  httpServer: Server<typeof IncomingMessage, typeof ServerResponse>;
   collections: string[]; // allowed collections
-  port: number;
   debug?: boolean;
+  port?: number; // ignored if upgrade
+  upgrade?: boolean; // this is the same as noServer:true
 }
 
 /**
@@ -41,7 +44,6 @@ export interface LiveQueryServerParams extends ServerOptions {
  * prepend `fullDocument` to the field name
  * if it's not an operator ie: doesn't start with `$`
  */
-
 export function addFullDocumentPrefix(obj: any | Array<any>) {
   if (Array.isArray(obj)) {
     obj.map((item: any) => addFullDocumentPrefix(item));

@@ -32,6 +32,9 @@ export interface ClientParams {
   debug?: boolean;
   plugins?: ElegantePlugin[];
   validateSession?: boolean;
+  fetch?: {
+    agent?: any;
+  };
 }
 
 export const ClientDefaultParams: Partial<ClientParams> = {

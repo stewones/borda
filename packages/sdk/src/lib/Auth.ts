@@ -74,6 +74,24 @@ export abstract class Auth {
         'signUp',
     };
 
+
+    if (!isServer()) {
+      const token = LocalStorage.get(
+        `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+      );
+      if (token) {
+        headers[
+          `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+        ] = token;
+      }
+    } else {
+      if (EleganteClient.params.apiSecret) {
+        headers[
+          `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
+        ] = EleganteClient.params.apiSecret;
+      }
+    }
+
     return fetch<Session>(`${EleganteClient.params.serverURL}/User`, {
       method: 'POST',
       headers,

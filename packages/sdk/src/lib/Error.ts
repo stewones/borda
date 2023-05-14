@@ -62,6 +62,7 @@ export enum ErrorCode {
   LIVE_QUERY_INVALID_QUERY_METHOD = 800,
   LIVE_QUERY_INVALID_COLLECTION = 801,
   LIVE_QUERY_SOCKET_CLOSE = 802,
+  LIVE_QUERY_INVALID_PARAMS = 803,
 }
 
 export class EleganteError extends Error {
