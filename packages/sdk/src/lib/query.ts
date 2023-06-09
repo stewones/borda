@@ -192,6 +192,18 @@ export function query<TSchema extends Document = Document>(collection: string) {
       >;
     },
 
+    upsert: (doc, options?) => {
+      return bridge.run('upsert', options ?? {}, doc) as Promise<TSchema>;
+    },
+
+    upsertMany: (docs, options?) => {
+      return bridge.run(
+        'upsertMany',
+        options ?? {},
+        docs ?? []
+      ) as Promise<ManyUpdateResponse>;
+    },
+
     delete: (objectIdOrOptions?, options?) => {
       return bridge.run(
         // method

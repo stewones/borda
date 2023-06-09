@@ -119,6 +119,8 @@ export declare type QueryMethod =
    */
   | 'insert'
   | 'insertMany'
+  | 'upsert'
+  | 'upsertMany'
   | 'update'
   | 'updateMany'
   | 'put'
@@ -248,6 +250,22 @@ export declare interface Query<TSchema extends Document = Document> {
     docs: Partial<TSchema[]>,
     options?: DocumentExtraOptions
   ): Promise<ManyInsertResponse<TSchema>>;
+
+  /**
+   * update or insert a document
+   */
+  upsert(
+    doc: Partial<TSchema>,
+    options?: DocumentExtraOptions
+  ): Promise<TSchema>;
+
+  /**
+   * update or insert many documents
+   */
+  upsertMany(
+    doc: Partial<TSchema>,
+    options?: DocumentExtraOptions
+  ): Promise<ManyUpdateResponse>;
 
   /**
    * delete a document using mongo-like queries
@@ -942,7 +960,7 @@ export declare const ReadConcernLevel: Readonly<{
 }>;
 
 export declare type ReadConcernLevel =
-  typeof ReadConcernLevel[keyof typeof ReadConcernLevel];
+  (typeof ReadConcernLevel)[keyof typeof ReadConcernLevel];
 
 export declare type ReadConcernLike =
   | ReadConcern
@@ -962,7 +980,7 @@ export declare const ReadPreferenceMode: Readonly<{
 }>;
 
 export declare type ReadPreferenceMode =
-  typeof ReadPreferenceMode[keyof typeof ReadPreferenceMode];
+  (typeof ReadPreferenceMode)[keyof typeof ReadPreferenceMode];
 
 export declare type TagSet = {
   [key: string]: string;

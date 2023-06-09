@@ -2,7 +2,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 
-import { init, print, ping } from '@elegante/sdk';
+import { init, print, ping, query } from '@elegante/sdk';
 import {
   createLiveQueryServer,
   createServer,
@@ -212,6 +212,15 @@ ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
       console.log('memory', memoryUsage());
     })
     .catch((err) => print(err));
+
+  const res = await query('UpdateTest')
+    .unlock()
+    // .filter({
+    //   active: false,
+    // })
+    .upsertMany({ name: 'tester1', active: false })
+    .catch((err) => print(err));
+  console.log(res);
 });
 
 httpServer.listen(httpPort, () => print(`Server running on port ${httpPort}`));

@@ -6,10 +6,7 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-import {
-  Request,
-  Response,
-} from 'express';
+import { Request, Response } from 'express';
 
 import {
   EleganteError,
@@ -20,10 +17,7 @@ import {
   QueryMethod,
 } from '@elegante/sdk';
 
-import {
-  DocQRLFrom,
-  parseQuery,
-} from './parseQuery';
+import { DocQRLFrom, parseQuery } from './parseQuery';
 import { restPostAggregate } from './restPostAggregate';
 import { restPostCount } from './restPostCount';
 import { restPostFind } from './restPostFind';
@@ -39,6 +33,8 @@ import { restPostUpdate } from './restPostUpdate';
 import { restPostUpdateEmail } from './restPostUpdateEmail';
 import { restPostUpdateMany } from './restPostUpdateMany';
 import { restPostUpdatePassword } from './restPostUpdatePassword';
+import { restPostUpsert } from './restPostUpsert';
+import { restPostUpsertMany } from './restPostUpsertMany';
 import { ServerParams } from './Server';
 import { isUnlocked } from './utils/isUnlocked';
 
@@ -150,9 +146,21 @@ export function restPost({
           res,
           docQRL,
         });
+      } else if (method === 'upsert') {
+        return restPostUpsert({
+          //req,
+          res,
+          docQRL,
+        });
       } else if (method === 'insertMany') {
         return restPostInsertMany({
           req,
+          res,
+          docQRL,
+        });
+      } else if (method === 'upsertMany') {
+        return restPostUpsertMany({
+          //req,
           res,
           docQRL,
         });

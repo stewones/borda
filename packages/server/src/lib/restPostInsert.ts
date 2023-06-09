@@ -24,91 +24,97 @@ export async function restPostInsert({
   res: Response;
   docQRL: DocQRL;
 }) {
-  const { collection$, collection } = docQRL;
+  try {
+    const { collection$, collection } = docQRL;
 
-  let beforeSaveCallback: CloudTriggerCallback = true;
+    let beforeSaveCallback: CloudTriggerCallback = true;
 
-  const beforeSave = getCloudTrigger(collection, 'beforeSave');
+    const beforeSave = getCloudTrigger(collection, 'beforeSave');
 
-  if (beforeSave) {
-    beforeSaveCallback = await beforeSave.fn({
-      before: undefined,
-      after: undefined,
-      doc: docQRL.doc ?? undefined,
-      qrl: docQRL,
-      context: docQRL.options?.context ?? {},
-      user: res.locals['session']?.user,
-      req,
-      res,
-    });
-  }
-
-  if (
-    beforeSaveCallback &&
-    typeof beforeSaveCallback === 'object' &&
-    beforeSaveCallback.doc
-  ) {
-    docQRL.doc = beforeSaveCallback.doc;
-  }
-
-  if (beforeSaveCallback) {
-    /**
-     * insert new documents
-     */
-    const d = parseDocForInsertion(docQRL.doc);
-    const doc: Document = {
-      ...d,
-      _id: d._id ?? newObjectId(),
-      _created_at:
-        d._created_at && isUnlocked(res.locals) ? d._created_at : new Date(),
-    };
-
-    if (docQRL?.options?.insert?.updatedAt !== false) {
-      doc['_updated_at'] = d._updated_at ?? new Date();
+    if (beforeSave) {
+      beforeSaveCallback = await beforeSave.fn({
+        before: undefined,
+        after: undefined,
+        doc: docQRL.doc ?? undefined,
+        qrl: docQRL,
+        context: docQRL.options?.context ?? {},
+        user: res.locals['session']?.user,
+        req,
+        res,
+      });
     }
 
-    const cursor = await collection$.insertOne(doc);
+    if (
+      beforeSaveCallback &&
+      typeof beforeSaveCallback === 'object' &&
+      beforeSaveCallback.doc
+    ) {
+      docQRL.doc = beforeSaveCallback.doc;
+    }
 
-    if (cursor.acknowledged) {
-      const afterSavePayload = parseResponse(
-        {
-          before: null,
-          after: doc,
-          doc,
-          updatedFields: objectFieldsUpdated({}, doc),
-          createdFields: objectFieldsCreated({}, doc),
-        },
-        {
-          removeSensitiveFields: !isUnlocked(res.locals),
-        }
-      );
+    if (beforeSaveCallback) {
+      /**
+       * insert new documents
+       */
+      const d = parseDocForInsertion(docQRL.doc);
+      const doc: Document = {
+        ...d,
+        _id: d._id ?? newObjectId(),
+        _created_at:
+          d._created_at && isUnlocked(res.locals) ? d._created_at : new Date(),
+      };
 
-      const afterSave = getCloudTrigger(collection, 'afterSave');
-      if (afterSave) {
-        afterSave.fn({
-          ...afterSavePayload,
-          qrl: docQRL,
-          context: docQRL.options?.context ?? {},
-          user: res.locals['session']?.user,
-          req,
-          res,
-        });
+      if (docQRL?.options?.insert?.updatedAt !== false) {
+        doc['_updated_at'] = d._updated_at ?? new Date();
       }
 
-      return res.status(201).json(afterSavePayload.doc);
-    } else {
-      return Promise.reject(
-        new EleganteError(
-          ErrorCode.REST_DOCUMENT_NOT_CREATED,
-          `could not create ${collection} document`
-        )
-      );
-    }
-  }
+      const cursor = await collection$.insertOne(doc);
 
-  /**
-   * didn't pass the beforeSave trigger
-   * but also doesn't mean it's an error
-   */
-  return res.status(200).json({});
+      if (cursor.acknowledged) {
+        const afterSavePayload = parseResponse(
+          {
+            before: null,
+            after: doc,
+            doc,
+            updatedFields: objectFieldsUpdated({}, doc),
+            createdFields: objectFieldsCreated({}, doc),
+          },
+          {
+            removeSensitiveFields: !isUnlocked(res.locals),
+          }
+        );
+
+        const afterSave = getCloudTrigger(collection, 'afterSave');
+        if (afterSave) {
+          afterSave.fn({
+            ...afterSavePayload,
+            qrl: docQRL,
+            context: docQRL.options?.context ?? {},
+            user: res.locals['session']?.user,
+            req,
+            res,
+          });
+        }
+
+        return res.status(201).json(afterSavePayload.doc);
+      } else {
+        return Promise.reject(
+          new EleganteError(
+            ErrorCode.REST_DOCUMENT_NOT_CREATED,
+            `could not create ${collection} document`
+          )
+        );
+      }
+    }
+
+    /**
+     * didn't pass the beforeSave trigger
+     * but also doesn't mean it's an error
+     */
+    return res.status(200).json({});
+  } catch (err) {
+    return res
+      .status(500)
+      .json(new EleganteError(ErrorCode.REST_POST_ERROR, err as object));
+  }
 }
