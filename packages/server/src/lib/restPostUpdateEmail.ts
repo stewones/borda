@@ -44,7 +44,7 @@ export async function restPostUpdateEmail({
       .json(
         new EleganteError(
           ErrorCode.AUTH_PASSWORD_INCORRECT,
-          'password incorrect'
+          'The password is incorrect'
         )
       );
   }
@@ -114,7 +114,7 @@ export async function restPostUpdateEmail({
       .json(
         new EleganteError(
           ErrorCode.AUTH_PASSWORD_INCORRECT,
-          'password incorrect'
+          'The password is incorrect'
         )
       );
   }

@@ -50,7 +50,7 @@ export async function restPostSignUp({
         .json(
           new EleganteError(
             ErrorCode.AUTH_PASSWORD_REQUIRED,
-            'password incorrect'
+            'The password is incorrect'
           )
         );
     }

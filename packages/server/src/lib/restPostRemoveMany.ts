@@ -1,13 +1,6 @@
-import {
-  Request,
-  Response,
-} from 'express';
+import { Request, Response } from 'express';
 
-import {
-  EleganteError,
-  ErrorCode,
-  isEmpty,
-} from '@elegante/sdk';
+import { EleganteError, ErrorCode, isEmpty } from '@elegante/sdk';
 
 import { getCloudTrigger } from './Cloud';
 import { DocQRL } from './parseQuery';
@@ -38,10 +31,10 @@ export async function restPostRemoveMany({
 
   const updatedDocuments = await collection$.find(filter ?? {}).toArray();
 
-  console.log(
-    'restPostRemoveMany.updatedDocuments.total',
-    updatedDocuments.length
-  );
+  // console.log(
+  //   'restPostRemoveMany.updatedDocuments.total',
+  //   updatedDocuments.length
+  // );
 
   const cursor = await collection$.updateMany(
     filter ?? {},
