@@ -8,17 +8,9 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import {
-  Request,
-  Response,
-} from 'express';
+import { Request, Response } from 'express';
 
-import {
-  Document,
-  InternalCollectionName,
-  Session,
-  User,
-} from '@elegante/sdk';
+import { Document, InternalCollectionName, Session, User } from '@elegante/sdk';
 
 import { DocQRL } from './parseQuery';
 import { routeEnsureAuth } from './route';
@@ -274,8 +266,9 @@ function createFunction(options: CloudFunctionOptions): void {
         if (EleganteServer.params.debug) {
           console.timeEnd(`function duration: ${name}`);
         }
-      } catch (err) {
-        res.status(500).send(err);
+      } catch (err: any) {
+        if (EleganteServer.params.debug) console.log(err);
+        res.status(500).json({ message: err.message });
         if (EleganteServer.params.debug) {
           console.timeEnd(`function duration: ${name}`);
         }
@@ -298,9 +291,10 @@ function createJob(
       await fn({ req }); // @todo save result to db when we have Elegante Models
       if (EleganteServer.params.debug)
         console.timeEnd(`job duration: ${options.name}`);
-    } catch (err) {
+    } catch (err: any) {
+      if (EleganteServer.params.debug) console.log(err);
       // @todo save error to db when we have Elegante Models
-      res.status(500).send(err);
+      res.status(500).json({ message: err.message });
       if (EleganteServer.params.debug)
         console.timeEnd(`job duration: ${options.name}`);
     }
