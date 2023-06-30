@@ -9,10 +9,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Application } from 'express';
-import {
-  Db,
-  MongoClient,
-} from 'mongodb';
+import { Db, MongoClient } from 'mongodb';
 
 import {
   Document,
@@ -78,10 +75,10 @@ export const EleganteServer: ServerProtocol = {
 } as ServerProtocol;
 
 export function logInspection(docQRL: DocQRL) {
-  const { locals } = docQRL.res || {};
+  // const { locals } = docQRL.res || {};
 
-  const { inspect } = locals || {};
-  if (!inspect) return;
+  // const { inspect } = locals || {};
+  // if (!inspect) return;
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { collection$, res, ...rest } = docQRL;

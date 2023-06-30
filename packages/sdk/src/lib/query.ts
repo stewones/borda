@@ -162,11 +162,11 @@ export function query<TSchema extends Document = Document>(collection: string) {
         // method
         typeof objectIdOrDoc === 'string' ? 'put' : 'update',
         // options
-        docOrOptions && docOrOptions['context'] ? docOrOptions : options ?? {},
+        typeof objectIdOrDoc !== 'string' ? docOrOptions : options ?? {},
         // optional: doc
-        typeof objectIdOrDoc === 'object'
+        typeof objectIdOrDoc !== 'string'
           ? objectIdOrDoc
-          : docOrOptions && !docOrOptions['context']
+          : docOrOptions
           ? docOrOptions
           : {},
         // optional: objectId
