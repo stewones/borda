@@ -268,11 +268,13 @@ function createFunction(options: CloudFunctionOptions): void {
         }
       } catch (err: any) {
         if (EleganteServer.params.debug) console.log(err);
-        res.status(500).json({ message: err.message });
+
         if (EleganteServer.params.debug) {
           console.timeEnd(`function duration: ${name}`);
         }
         // @todo save statistic to db when we have Elegante Models
+
+        res.status(500).json(err);
       }
     }
   );
@@ -294,9 +296,11 @@ function createJob(
     } catch (err: any) {
       if (EleganteServer.params.debug) console.log(err);
       // @todo save error to db when we have Elegante Models
-      res.status(500).json({ message: err.message });
+
       if (EleganteServer.params.debug)
         console.timeEnd(`job duration: ${options.name}`);
+
+      res.status(500).json(err);
     }
   });
 }

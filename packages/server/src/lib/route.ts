@@ -8,11 +8,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import {
-  NextFunction,
-  Request,
-  Response,
-} from 'express';
+import { NextFunction, Request, Response } from 'express';
 
 import {
   EleganteError,
@@ -39,7 +35,10 @@ export const routeEnsureApiKey =
       return res
         .status(400)
         .json(
-          new EleganteError(ErrorCode.AUTH_INVALID_API_KEY, 'API key required')
+          new EleganteError(
+            ErrorCode.AUTH_INVALID_API_KEY,
+            'API key required'
+          ).toJSON()
         );
     }
 
@@ -49,7 +48,10 @@ export const routeEnsureApiKey =
       return res
         .status(401)
         .json(
-          new EleganteError(ErrorCode.UNAUTHORIZED, 'Unauthorized API key')
+          new EleganteError(
+            ErrorCode.UNAUTHORIZED,
+            'Unauthorized API key'
+          ).toJSON()
         );
     }
 
@@ -167,7 +169,7 @@ export const routeEnsureAuth =
       !isPublicCloudFunction
     ) {
       const err = new EleganteError(ErrorCode.UNAUTHORIZED, 'Unauthorized');
-      res.status(401).json(err);
+      res.status(401).json(err.toJSON());
       return;
     }
     return next();

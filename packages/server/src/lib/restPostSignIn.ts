@@ -29,7 +29,10 @@ export async function restPostSignIn({
     return res
       .status(400)
       .json(
-        new EleganteError(ErrorCode.AUTH_INVALID_EMAIL, 'Invalid email address')
+        new EleganteError(
+          ErrorCode.AUTH_INVALID_EMAIL,
+          'Invalid email address'
+        ).toJSON()
       );
   } else if (!password) {
     return res
@@ -70,7 +73,10 @@ export async function restPostSignIn({
     return res
       .status(404)
       .json(
-        new EleganteError(ErrorCode.AUTH_EMAIL_NOT_FOUND, 'User not found')
+        new EleganteError(
+          ErrorCode.AUTH_EMAIL_NOT_FOUND,
+          'User not found'
+        ).toJSON()
       );
   }
 

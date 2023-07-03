@@ -11,11 +11,7 @@ import {
 } from '@elegante/sdk';
 
 import { DocQRL } from './parseQuery';
-import {
-  compare,
-  hash,
-  validate,
-} from './utils/password';
+import { compare, hash, validate } from './utils/password';
 
 export async function restPostPasswordReset({
   res,
@@ -34,7 +30,10 @@ export async function restPostPasswordReset({
     return res
       .status(400)
       .json(
-        new EleganteError(ErrorCode.AUTH_PASSWORD_REQUIRED, 'password required')
+        new EleganteError(
+          ErrorCode.AUTH_PASSWORD_REQUIRED,
+          'password required'
+        ).toJSON()
       );
   }
 
@@ -45,7 +44,10 @@ export async function restPostPasswordReset({
     return res
       .status(400)
       .json(
-        new EleganteError(ErrorCode.AUTH_PASSWORD_INCORRECT, validation[0])
+        new EleganteError(
+          ErrorCode.AUTH_PASSWORD_INCORRECT,
+          validation[0]
+        ).toJSON()
       );
   }
 

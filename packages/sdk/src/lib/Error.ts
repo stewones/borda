@@ -95,4 +95,11 @@ export class EleganteError extends Error {
   override toString() {
     return `EleganteError ${this.code}: ${this.message}`;
   }
+
+  toJSON() {
+    return {
+      code: this.code,
+      message: this.message,
+    };
+  }
 }

@@ -8,9 +8,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { Request, Response } from 'express';
+
 import { EleganteError, ErrorCode, query } from '@elegante/sdk';
 
-import { Request, Response } from 'express';
 import { ServerParams } from './Server';
 
 export function restDeleteMe({
@@ -26,7 +27,12 @@ export function restDeleteMe({
     } catch (err) {
       return res
         .status(500)
-        .json(new EleganteError(ErrorCode.AUTH_SIGN_OUT_ERROR, err as object));
+        .json(
+          new EleganteError(
+            ErrorCode.AUTH_SIGN_OUT_ERROR,
+            err as object
+          ).toJSON()
+        );
     }
   };
 }

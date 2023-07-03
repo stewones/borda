@@ -204,7 +204,9 @@ export function restPut({
     } catch (err) {
       return res
         .status(500)
-        .json(new EleganteError(ErrorCode.REST_PUT_ERROR, err as object));
+        .json(
+          new EleganteError(ErrorCode.REST_PUT_ERROR, err as object).toJSON()
+        );
     }
   };
 }

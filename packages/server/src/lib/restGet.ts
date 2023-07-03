@@ -6,10 +6,7 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-import {
-  Request,
-  Response,
-} from 'express';
+import { Request, Response } from 'express';
 
 import {
   Document,
@@ -21,10 +18,7 @@ import {
 
 import { parseDoc } from './parseDoc';
 import { parseProjection } from './parseProjection';
-import {
-  DocQRLFrom,
-  parseQuery,
-} from './parseQuery';
+import { DocQRLFrom, parseQuery } from './parseQuery';
 import { ServerParams } from './Server';
 import { isUnlocked } from './utils/isUnlocked';
 
@@ -90,7 +84,9 @@ export function restGet({
     } catch (err) {
       return res
         .status(500)
-        .json(new EleganteError(ErrorCode.REST_GET_ERROR, err as object));
+        .json(
+          new EleganteError(ErrorCode.REST_GET_ERROR, err as object).toJSON()
+        );
     }
   };
 }

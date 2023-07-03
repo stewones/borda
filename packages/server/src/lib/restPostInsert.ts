@@ -115,6 +115,8 @@ export async function restPostInsert({
   } catch (err) {
     return res
       .status(500)
-      .json(new EleganteError(ErrorCode.REST_POST_ERROR, err as object));
+      .json(
+        new EleganteError(ErrorCode.REST_POST_ERROR, err as object).toJSON()
+      );
   }
 }

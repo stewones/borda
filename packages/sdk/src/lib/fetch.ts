@@ -11,7 +11,6 @@
 import { fetch as fetcher } from 'cross-fetch';
 
 import { EleganteClient } from './Client';
-import { EleganteError, ErrorCode } from './Error';
 import { isServer } from './utils';
 import { Version } from './Version';
 
@@ -51,34 +50,33 @@ export async function fetch<T = any>(
     fetchOptions.body = JSON.stringify(options.body);
   }
 
-  return fetcher(url, fetchOptions)
-    .then(async (response: Response) => {
-      const contentType = response.headers.get('content-type') || '';
-      const contentResponse = contentType.includes('json')
-        ? await response.json()
-        : await response.text();
+  return fetcher(url, fetchOptions).then(async (response: Response) => {
+    const contentType = response.headers.get('content-type') || '';
+    const contentResponse = contentType.includes('json')
+      ? await response.json()
+      : await response.text();
 
-      if (!response.ok || response.status >= 400) {
-        return Promise.reject(contentResponse);
-      }
+    if (!response.ok || response.status >= 400) {
+      return Promise.reject(contentResponse);
+    }
 
-      return contentResponse;
-    })
-    .catch((err) => {
-      /**
-       * if we don't have a proper response means it's
-       * a generic error so we reject it as a generic network error
-       * to make the log easier to read and trace
-       */
-      if (!err.code) {
-        /**
-         * easy way to test if it's a network error
-         * is to just shutdown Elegante Server
-         * and try to run the Client SDK
-         */
-        throw new EleganteError(ErrorCode.NETWORK_ERROR, err as object);
-      } else {
-        throw err;
-      }
-    });
+    return contentResponse;
+  });
+  // .catch((err) => {
+  //   /**
+  //    * if we don't have a proper response means it's
+  //    * a generic error so we reject it as a generic network error
+  //    * to make the log easier to read and trace
+  //    */
+  //   if (!err.code) {
+  //     /**
+  //      * easy way to test if it's a network error
+  //      * is to just shutdown Elegante Server
+  //      * and try to run the Client SDK
+  //      */
+  //     throw new EleganteError(ErrorCode.NETWORK_ERROR, err as object);
+  //   } else {
+  //     throw err;
+  //   }
+  // });
 }

@@ -34,7 +34,12 @@ export async function restPostSignUp({
     if (!name) {
       return res
         .status(400)
-        .json(new EleganteError(ErrorCode.AUTH_NAME_REQUIRED, 'Name required'));
+        .json(
+          new EleganteError(
+            ErrorCode.AUTH_NAME_REQUIRED,
+            'Name required'
+          ).toJSON()
+        );
     } else if (!validateEmail(email)) {
       return res
         .status(400)
@@ -62,7 +67,10 @@ export async function restPostSignUp({
       return res
         .status(400)
         .json(
-          new EleganteError(ErrorCode.AUTH_PASSWORD_INCORRECT, validation[0])
+          new EleganteError(
+            ErrorCode.AUTH_PASSWORD_INCORRECT,
+            validation[0]
+          ).toJSON()
         );
     }
 

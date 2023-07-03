@@ -8,10 +8,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import {
-  Request,
-  Response,
-} from 'express';
+import { Request, Response } from 'express';
 
 import {
   Document,
@@ -25,10 +22,7 @@ import { invalidateCache } from './Cache';
 import { getCloudTrigger } from './Cloud';
 import { DocQRL } from './parseQuery';
 import { parseResponse } from './parseResponse';
-import {
-  EleganteServer,
-  ServerParams,
-} from './Server';
+import { EleganteServer, ServerParams } from './Server';
 import { isUnlocked } from './utils/isUnlocked';
 
 export function restDelete({
@@ -123,7 +117,9 @@ export function restDelete({
     } catch (err) {
       return res
         .status(500)
-        .json(new EleganteError(ErrorCode.REST_DELETE_ERROR, err as object));
+        .json(
+          new EleganteError(ErrorCode.REST_DELETE_ERROR, err as object).toJSON()
+        );
     }
   };
 }

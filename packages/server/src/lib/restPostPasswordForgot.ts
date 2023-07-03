@@ -36,7 +36,10 @@ export async function restPostPasswordForgot({
     return res
       .status(400)
       .json(
-        new EleganteError(ErrorCode.AUTH_INVALID_EMAIL, 'Invalid email address')
+        new EleganteError(
+          ErrorCode.AUTH_INVALID_EMAIL,
+          'Invalid email address'
+        ).toJSON()
       );
   }
 
