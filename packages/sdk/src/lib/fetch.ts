@@ -46,6 +46,21 @@ export async function fetch<T = any>(
     }
   }
 
+  if (EleganteClient.params.fetch?.headers) {
+    const headers = EleganteClient.params.fetch?.headers;
+    if (typeof headers === 'function') {
+      fetchOptions.headers = {
+        ...fetchOptions.headers,
+        ...headers(),
+      };
+    } else if (typeof headers === 'object') {
+      fetchOptions.headers = {
+        ...fetchOptions.headers,
+        ...headers,
+      };
+    }
+  }
+
   if (options?.body) {
     fetchOptions.body = JSON.stringify(options.body);
   }

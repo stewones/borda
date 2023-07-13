@@ -34,6 +34,7 @@ export interface ClientParams {
   validateSession?: boolean;
   fetch?: {
     agent?: any;
+    headers?: any; // can be an obeject of headers or a function that returns an object of headers
   };
 }
 
