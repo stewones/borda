@@ -10,7 +10,14 @@
 
 import { Request, Response } from 'express';
 
-import { Document, InternalCollectionName, Session, User } from '@elegante/sdk';
+import {
+  Document,
+  EleganteError,
+  ErrorCode,
+  InternalCollectionName,
+  Session,
+  User,
+} from '@elegante/sdk';
 
 import { DocQRL } from './parseQuery';
 import { routeEnsureAuth } from './route';
@@ -273,8 +280,14 @@ function createFunction(options: CloudFunctionOptions): void {
           console.timeEnd(`function duration: ${name}`);
         }
         // @todo save statistic to db when we have Elegante Models
-
-        res.status(500).json(err);
+        res
+          .status(500)
+          .json(
+            new EleganteError(
+              ErrorCode.SERVER_FUNCTION_ERROR,
+              err as object
+            ).toJSON()
+          );
       }
     }
   );
@@ -300,7 +313,11 @@ function createJob(
       if (EleganteServer.params.debug)
         console.timeEnd(`job duration: ${options.name}`);
 
-      res.status(500).json(err);
+      res
+        .status(500)
+        .json(
+          new EleganteError(ErrorCode.SERVER_JOB_ERROR, err as object).toJSON()
+        );
     }
   });
 }
