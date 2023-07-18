@@ -64,6 +64,7 @@ export function parseFilter(obj: any | any[]): any | any[] {
       if (
         !field.startsWith('$') &&
         !field.startsWith('_p_') &&
+        !field.includes('.') &&
         isPointer(value)
       ) {
         obj['_p_' + field] = value;
