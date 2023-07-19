@@ -11,7 +11,7 @@
 import { stringify } from './utils';
 
 export enum ErrorCode {
-  UNAUTHORIZED = -2,
+  UNAUTHORIZED = 401,
   NETWORK_ERROR = -1,
 
   DATABASE_ERROR = 1,
