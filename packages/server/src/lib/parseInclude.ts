@@ -128,7 +128,7 @@ export async function parseJoin<T extends Document>(
       .findOne(objectId);
 
     // memoize
-    Cache.set(collection, objectId, obj[pointerField]);
+    Cache.set(collection, objectId, doc);
   }
   return doc;
 }
