@@ -36,7 +36,7 @@ export async function restPostUpdatePassword({
       .json(
         new EleganteError(
           ErrorCode.AUTH_PASSWORD_REQUIRED,
-          'password required'
+          'Password is required'
         ).toJSON()
       );
   }
@@ -96,7 +96,7 @@ export async function restPostUpdatePassword({
       .json(
         new EleganteError(
           ErrorCode.AUTH_PASSWORD_INCORRECT,
-          'current password is incorrect'
+          'Current password is incorrect'
         )
       );
   }
@@ -107,7 +107,7 @@ export async function restPostUpdatePassword({
       .json(
         new EleganteError(
           ErrorCode.AUTH_PASSWORD_ALREADY_EXISTS,
-          'new password must be different from the current password'
+          'The new password must be different from the current password'
         )
       );
   }

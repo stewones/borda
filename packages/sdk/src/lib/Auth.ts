@@ -9,11 +9,7 @@ import { EleganteClient } from './Client';
 import { fetch } from './fetch';
 import { InternalHeaders } from './internal';
 import { Session } from './types';
-import {
-  isBoolean,
-  isServer,
-  LocalStorage,
-} from './utils';
+import { isBoolean, isServer, LocalStorage } from './utils';
 
 interface SignOptions {
   /**
@@ -73,7 +69,6 @@ export abstract class Auth {
       [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
         'signUp',
     };
-
 
     if (!isServer()) {
       const token = LocalStorage.get(
@@ -171,8 +166,8 @@ export abstract class Auth {
   }
 
   public static updateEmail(
-    newEmail: string,
     password: string,
+    newEmail: string,
     options?: SignOptions
   ) {
     if (isServer()) {
