@@ -11,6 +11,7 @@
 import {
   DocumentQuery,
   isArrayPointer,
+  isEmpty,
   isPointer,
   log,
   pointerObjectFrom,
@@ -128,7 +129,9 @@ export async function parseJoin<T extends Document>(
       .findOne(objectId);
 
     // memoize
-    Cache.set(collection, objectId, doc);
+    if (!isEmpty(doc)) {
+      Cache.set(collection, objectId, doc);
+    }
   }
   return doc;
 }
