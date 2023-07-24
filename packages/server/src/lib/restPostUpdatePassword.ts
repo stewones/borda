@@ -11,6 +11,7 @@ import {
   User,
 } from '@elegante/sdk';
 
+import { Cache } from './Cache';
 import { DocQRL } from './parseQuery';
 import { createSession } from './public';
 import { compare, hash, validate } from './utils/password';
@@ -165,6 +166,9 @@ export async function restPostUpdatePassword({
   for (const session of sessions) {
     await query('Session').unlock().delete(session.objectId);
   }
+
+  // invalidate all cached users
+  Cache.invalidate('_User', currentUser.objectId);
 
   const newSession = await createSession({
     ...currentUser,

@@ -11,6 +11,7 @@ import {
   validateEmail,
 } from '@elegante/sdk';
 
+import { Cache } from './Cache';
 import { DocQRL } from './parseQuery';
 import { createSession } from './public';
 import { compare } from './utils/password';
@@ -133,9 +134,13 @@ export async function restPostUpdateEmail({
       user: pointer('User', currentUser.objectId),
     })
     .find();
+
   for (const session of sessions) {
     await query('Session').unlock().delete(session.objectId);
   }
+
+  // invalidate all cached users
+  Cache.invalidate('_User', currentUser.objectId);
 
   const newSession = await createSession({
     ...currentUser,
