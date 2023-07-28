@@ -120,9 +120,11 @@ export async function parseJoin<T extends Document>(
   const { collection, objectId } = pointerObjectFrom(pointerValue);
   const memo = Cache.get(collection, objectId);
 
-  if (memo) {
+  if (!isEmpty(memo)) {
     doc = memo;
-  } else {
+  }
+
+  if (isEmpty(memo)) {
     doc = await query<T>(collection)
       .include(join)
       .unlock() // here we force unlock because `parseInclude` run in the server anyways 💁‍♂️
