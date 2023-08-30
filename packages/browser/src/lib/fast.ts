@@ -309,7 +309,7 @@ function memorize<T = StateDocument>(
       );
     }
 
-    EleganteBrowser.storage.get(key).then((cache: T) => {
+    EleganteBrowser.storage?.get(key).then((cache: T) => {
       if (cache && !state) {
         prev = cache;
         log('cache.get', key, prev);

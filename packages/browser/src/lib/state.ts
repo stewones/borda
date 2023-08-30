@@ -70,6 +70,9 @@ export type StateDocument =
  * @returns {*}  {T}
  */
 export function getState<T = StateDocument>(path?: string): T {
+  if (typeof window === 'undefined') {
+    return {} as T;
+  }
   if (!EleganteBrowser.store) {
     throw new Error(
       'unable to find any store. to use getState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
@@ -198,6 +201,10 @@ export function connect<T = Document>(
     copy: false,
   }
 ): Observable<T> {
+  if (typeof window === 'undefined') {
+    return new Observable<T>();
+  }
+
   if (!EleganteBrowser.store) {
     throw new Error(
       'unable to find any store. to use connect make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'

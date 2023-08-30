@@ -77,13 +77,19 @@ export async function restPostUpdate({
         });
       }
 
-      const cursor = await collection$.findOneAndUpdate(
-        filter || {},
-        {
-          $set: doc,
-        },
-        { returnDocument: 'after', readPreference: 'primary' }
-      );
+      let payload: any = {
+        $set: doc,
+      };
+
+      // checks if doc has any prop starting with $ to allow update filter operators coming from the client
+      if (Object.keys(doc).some((key) => key.startsWith('$'))) {
+        payload = doc;
+      }
+
+      const cursor = await collection$.findOneAndUpdate(filter || {}, payload, {
+        returnDocument: 'after',
+        readPreference: 'primary',
+      });
 
       if (cursor.ok) {
         const docAfter = cursor.value ?? ({} as Document);
