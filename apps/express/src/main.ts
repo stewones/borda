@@ -24,7 +24,7 @@ const documentCacheTTL =
 
 const databaseURI =
   process.env.ELEGANTE_DATABASE_URI ||
-  'mongodb://localhost:27017/elegante-dev?directConnection=true&serverSelectionTimeoutMS=2000&appName=elegante';
+  'mongodb://127.0.0.1:27017/elegante-dev?directConnection=true&serverSelectionTimeoutMS=2000&appName=elegante';
 // 'mongodb+srv://parse:Q9SxP1GktfhkdGRE@sandbox.cepvjcf.mongodb.net/sandbox?retryWrites=true&w=majority';
 
 const apiKey = process.env.ELEGANTE_API_KEY || '**elegante**';

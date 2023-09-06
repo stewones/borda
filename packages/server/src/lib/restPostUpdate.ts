@@ -82,7 +82,7 @@ export async function restPostUpdate({
       };
 
       // checks if doc has any prop starting with $ to allow update filter operators coming from the client
-      if (Object.keys(doc).some((key) => key.startsWith('$'))) {
+      if (hasMongoOperators(doc)) {
         payload = doc;
       }
 
@@ -143,4 +143,36 @@ export async function restPostUpdate({
         new EleganteError(ErrorCode.REST_POST_ERROR, err as object).toJSON()
       );
   }
+}
+
+function hasMongoOperators(doc: any): boolean {
+  if (typeof doc !== 'object' || doc === null) {
+    return false;
+  }
+
+  for (const key in doc) {
+    if (key.startsWith('$')) {
+      return true;
+    }
+
+    if (typeof doc[key] === 'object' && doc[key] !== null) {
+      const hasOperator = hasMongoOperators(doc[key]);
+      if (hasOperator) {
+        return true;
+      }
+    }
+
+    if (Array.isArray(doc[key])) {
+      for (const item of doc[key]) {
+        if (typeof item === 'object' && item !== null) {
+          const hasOperator = hasMongoOperators(item);
+          if (hasOperator) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
 }

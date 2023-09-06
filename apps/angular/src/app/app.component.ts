@@ -395,7 +395,13 @@ export class AppComponent {
         );
       });
 
-    this.subscription$['userInsert'] = query<User>('PublicUser')
+    this.subscription$['userInsert'] = query<User & any>('PublicUser')
+      .filter({
+        expiresAt: {
+          $exists: 1,
+          a: 1,
+        },
+      })
       .sort({
         createdAt: -1,
       })
