@@ -60,9 +60,7 @@ export async function restPostUpdateMany({
       delete doc[field];
     });
   }
-console.log(123, {
-  $set: doc,
-});
+
   const cursor = await collection$.updateMany(
     filter || {},
     {
