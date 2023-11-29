@@ -34,7 +34,9 @@ export async function restPostUpdateMany({
   }
 
   const doc: Document = {
-    ...parseDocForInsertion(docQRL.doc),
+    ...(docQRL?.options?.parse?.doc !== false
+      ? parseDocForInsertion(docQRL.doc)
+      : docQRL.doc),
   };
 
   if (docQRL?.options?.update?.updatedAt !== false) {
@@ -58,7 +60,9 @@ export async function restPostUpdateMany({
       delete doc[field];
     });
   }
-
+console.log(123, {
+  $set: doc,
+});
   const cursor = await collection$.updateMany(
     filter || {},
     {

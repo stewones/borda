@@ -25,6 +25,9 @@ export interface DocumentExtraOptions {
   update?: {
     updatedAt?: boolean;
   };
+  parse?: {
+    doc?: boolean;
+  };
 }
 export type DocumentOptions =
   | DocumentExtraOptions
@@ -99,10 +102,59 @@ export type DocumentPipe<TSchema = Document> =
 
 export type DocumentPipeline<TSchema = Document> = DocumentPipe<TSchema>[];
 
+export interface DocumentUpdate<TSchema = Document> {
+  // Sets the value of a field to current date, either as a Date or a Timestamp.
+  $currentDate: {
+    [key in keyof TSchema]?: boolean | Date | Timestamp;
+  };
+  // Increments the value of the field by the specified amount.
+  $inc: {
+    [key in keyof TSchema]?: number;
+  };
+  // Only updates the field if the specified value is less than the existing field value.
+  $min: {
+    [key in keyof TSchema]?: number;
+  };
+  // Only updates the field if the specified value is greater than the existing field value.
+  $max: {
+    [key in keyof TSchema]?: number;
+  };
+  // Multiplies the value of the field by the specified amount.
+  $mul: {
+    [key in keyof TSchema]?: number;
+  };
+  // Renames a field.
+  $rename: {
+    [key in keyof TSchema]?: string;
+  };
+  // Sets the value of a field in a document.
+  $set: {
+    [key in keyof TSchema]?: TSchema[key];
+  };
+  // Sets the value of a field if an update results in an insert of a document. Has no effect on update operations that modify existing documents.
+  $setOnInsert: {
+    [key in keyof TSchema]?: TSchema[key];
+  };
+  // Removes the specified field from a document.
+  $unset: {
+    [key in keyof TSchema]?: boolean;
+  };
+}
+
 export type DocumentFilter<TSchema = Document> = Partial<{
   [key in keyof TSchema]: TSchema[key] | FilterOperators<TSchema[key]>;
 }> &
   DocumentRootFilter<TSchema>;
+
+// @todo for when we support valibot
+// export type DocumentFilter<TSchema = Document> =
+//   | {
+//       [key in keyof TSchema]?: StrictFilterOperators<
+//         string | boolean | number | object | never
+//       >;
+//     }
+//   | Partial<Pick<TSchema, keyof TSchema>>
+//   | StrictRootFilterOperators<TSchema>;
 
 export declare type QueryMethod =
   /**
@@ -1115,6 +1167,60 @@ export declare interface ObjectIdLike {
 export declare type NonObjectIdLikeDocument = {
   [key in keyof ObjectIdLike]?: never;
 } & Document;
+
+export declare interface StrictFilterOperators<TValue> {
+  $eq?: TValue;
+  $gt?: TValue;
+  $gte?: TValue;
+  $in?: TValue | ReadonlyArray<TValue>;
+  $lt?: TValue;
+  $lte?: TValue;
+  $ne?: TValue;
+  $nin?: TValue | ReadonlyArray<TValue>;
+  $not?: TValue extends string
+    ? FilterOperators<TValue> | RegExp
+    : FilterOperators<TValue>;
+  /**
+   * When `true`, `$exists` matches the documents that contain the field,
+   * including documents where the field value is null.
+   */
+  $exists?: boolean;
+  $type?: any; // BSONType | BSONTypeAlias
+  $expr?: Record<string, any>;
+  $jsonSchema?: Record<string, any>;
+  $mod?: TValue extends number ? [number, number] : never;
+  $regex?: TValue extends string ? RegExp | string : never; // | BSONRegExp;
+  $options?: TValue extends string ? string : never;
+  $geoIntersects?: {
+    $geometry: Document;
+  };
+  $geoWithin?: Document;
+  $near?: Document;
+  $nearSphere?: Document;
+  $maxDistance?: number;
+  $all?: ReadonlyArray<any>;
+  $elemMatch?: Document;
+  $size?: TValue extends ReadonlyArray<any> ? number : never;
+  $bitsAllClear?: BitwiseFilter;
+  $bitsAllSet?: BitwiseFilter;
+  $bitsAnyClear?: BitwiseFilter;
+  $bitsAnySet?: BitwiseFilter;
+  $rand?: Record<string, never>;
+}
+
+export declare interface StrictRootFilterOperators<TSchema> {
+  $and?: DocumentFilter<TSchema>[];
+  $nor?: DocumentFilter<TSchema>[];
+  $or?: DocumentFilter<TSchema>[];
+  $text?: {
+    $search: string;
+    $language?: string;
+    $caseSensitive?: boolean;
+    $diacriticSensitive?: boolean;
+  };
+  $where?: string | ((this: TSchema) => boolean);
+  $comment?: string | Document;
+}
 
 export declare interface FilterOperators<TValue>
   extends NonObjectIdLikeDocument {
