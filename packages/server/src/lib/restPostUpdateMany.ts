@@ -35,8 +35,14 @@ export async function restPostUpdateMany({
 
   const doc: Document = {
     ...parseDocForInsertion(docQRL.doc),
-    _updated_at: new Date(),
   };
+
+  if (docQRL?.options?.update?.updatedAt !== false) {
+    doc['_updated_at'] =
+      doc['_updated_at'] && isUnlocked(res.locals)
+        ? doc['_updated_at']
+        : new Date();
+  }
 
   /**
    * ensure each internal/external field is deleted from the user payload
