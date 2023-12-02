@@ -34,6 +34,7 @@ import { createPipeline, EleganteServer } from './Server';
 export interface LiveQueryServerParams extends ServerOptions {
   httpServer: Server<typeof IncomingMessage, typeof ServerResponse>;
   collections: string[]; // allowed collections
+  reservedCollections?: string[]; // reserved collections (cannot be used). default to InternalCollectionName
   debug?: boolean;
   port?: number; // ignored if upgrade
   upgrade?: boolean; // this is the same as noServer:true

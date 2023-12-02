@@ -239,7 +239,8 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
       /**
        * can't subscribe to any of the reserved collections
        */
-      const reservedCollections = Object.keys(InternalCollectionName);
+      const reservedCollections =
+        options.reservedCollections || Object.keys(InternalCollectionName);
       if (reservedCollections.includes(collection)) {
         const message = `You can't subscribe to the collection ${collection} because it's reserved`;
         log(
