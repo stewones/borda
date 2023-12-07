@@ -299,7 +299,7 @@ export declare interface Query<TSchema extends Document = Document> {
    * learn more https://www.mongodb.com/docs/manual/reference/method/db.collection.insertMany/
    */
   insertMany(
-    docs: Partial<TSchema[]>,
+    docs: Partial<TSchema>[],
     options?: DocumentExtraOptions
   ): Promise<ManyInsertResponse<TSchema>>;
 
@@ -315,7 +315,7 @@ export declare interface Query<TSchema extends Document = Document> {
    * update or insert many documents
    */
   upsertMany(
-    doc: Partial<TSchema>,
+    docs: Partial<TSchema>[],
     options?: DocumentExtraOptions
   ): Promise<ManyUpdateResponse>;
 
@@ -345,7 +345,7 @@ export declare interface Query<TSchema extends Document = Document> {
   run(
     method: QueryMethod,
     options?: DocumentOptions,
-    docOrDocs?: Partial<TSchema | TSchema[]>,
+    docOrDocs?: Partial<TSchema> | Partial<TSchema>[],
     objectId?: string
   ): Promise<
     | number

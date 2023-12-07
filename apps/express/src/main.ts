@@ -2,7 +2,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 
-import { init, print, ping, query } from '@elegante/sdk';
+import { init, print, ping, query, pointer } from '@elegante/sdk';
 import {
   createLiveQueryServer,
   createServer,
@@ -178,6 +178,7 @@ const liveQueryPort = 1338;
 createLiveQueryServer({
   httpServer,
   collections: ['PublicUser', 'Counter'],
+  // reservedCollections: [],
   port: liveQueryPort,
   debug,
   upgrade: true,
@@ -223,48 +224,88 @@ ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
   //   .catch((err) => print(err));
   // console.log(res);
 
-  await query('UpdateTest')
+  // await query('UpdateTest')
+  //   .unlock()
+  //   // .filter({
+  //   //   objectId: 'asdf',
+  //   // })
+  //   .update(
+  //     'asdf',
+  //     {
+  //       title: 'Chatness Articles',
+  //       url: 'https://chatness.app/articles',
+  //       language: 'en',
+  //       topics: [
+  //         'chatbot technology',
+  //         'ai',
+  //         'customer service',
+  //         'sales',
+  //         'self-hosted chatbot platforms',
+  //         'industry-specific use cases',
+  //         'integrating chatbots to websites',
+  //         'benefits of self-hosted chatbot platforms',
+  //       ],
+  //       context:
+  //         'The Chatbot Revolution: How Businesses are Streamlining Customer Service and Sales with AI\n\nExplore the latest trends and strategies in chatbot technology and discover how businesses are leveraging AI to improve customer service and boost sales. From self-hosted chatbot platforms to industry-specific use cases, our expert insights and case studies will help you stay ahead of the curve in the chatbot revolution.\n\nHow to integrate a chatbot to your website\n\nIn this article, we will show you how to integrate an AI chatbot to your website using Chatness, a user-friendly and efficient AI Chatbot Platform to allow your users chat with bots\n\nWhy Use a Self-Hosted Chatbot Platform for Your Business?\n\nIn this article, we explore why businesses are turning to chatbots to streamline their customer service operations and boost sales. We discuss the limitations of traditional chatbot platforms and how self-hosted chatbot platforms like Chatness can help businesses overcome these limitations.',
+  //       source: 'website',
+  //       qa: [
+  //         {
+  //           question: 'How can I integrate a chatbot to my website?',
+  //           answer:
+  //             "To integrate an AI chatbot to your website, you can use Chatness, a user-friendly and efficient AI Chatbot Platform that allows your users to chat with bots. You can follow the steps mentioned in the article 'How to integrate a chatbot to your website' for detailed instructions.",
+  //         },
+  //         {
+  //           question:
+  //             'Why should businesses use a self-hosted chatbot platform?',
+  //           answer:
+  //             "Businesses are turning to self-hosted chatbot platforms like Chatness to streamline their customer service operations and boost sales. These platforms offer advantages over traditional chatbot platforms, such as overcoming limitations and providing more control and customization options. You can learn more about the benefits in the article 'Why Use a Self-Hosted Chatbot Platform for Your Business?'",
+  //         },
+  //       ],
+  //       locked: true,
+  //     },
+  //     { inspect: true }
+  //   )
+  //   .catch((err) => print(err));
+
+  // tests
+  // await query('Analytic')
+  //   .unlock()
+  //   .filter({
+  //     '_metadata._p_user': pointer('User', '4oiXABfGkj'),
+  //   })
+  //   .updateMany(
+  //     { '_metadata._p_user': pointer('User', '4oiXABfGkjj') },
+  //     {
+  //       inspect: true,
+  //       update: {
+  //         updatedAt: false,
+  //       },
+  //       parse: {
+  //         doc: false,
+  //       },
+  //     }
+  //   )
+  //   .then(() => console.log('yahoo'))
+  //   .catch((err) => console.log(err));
+
+  await query('UpsertMethodTest')
     .unlock()
-    // .filter({
-    //   objectId: 'asdf',
-    // })
-    .update(
-      'asdf',
+    .filter({
+      email: '$$email',
+    })
+    .upsertMany([
+      { name: 'John Doe', email: 'john@doe.com' },
       {
-        title: 'Chatness Articles',
-        url: 'https://chatness.app/articles',
-        language: 'en',
-        topics: [
-          'chatbot technology',
-          'ai',
-          'customer service',
-          'sales',
-          'self-hosted chatbot platforms',
-          'industry-specific use cases',
-          'integrating chatbots to websites',
-          'benefits of self-hosted chatbot platforms',
-        ],
-        context:
-          'The Chatbot Revolution: How Businesses are Streamlining Customer Service and Sales with AI\n\nExplore the latest trends and strategies in chatbot technology and discover how businesses are leveraging AI to improve customer service and boost sales. From self-hosted chatbot platforms to industry-specific use cases, our expert insights and case studies will help you stay ahead of the curve in the chatbot revolution.\n\nHow to integrate a chatbot to your website\n\nIn this article, we will show you how to integrate an AI chatbot to your website using Chatness, a user-friendly and efficient AI Chatbot Platform to allow your users chat with bots\n\nWhy Use a Self-Hosted Chatbot Platform for Your Business?\n\nIn this article, we explore why businesses are turning to chatbots to streamline their customer service operations and boost sales. We discuss the limitations of traditional chatbot platforms and how self-hosted chatbot platforms like Chatness can help businesses overcome these limitations.',
-        source: 'website',
-        qa: [
-          {
-            question: 'How can I integrate a chatbot to my website?',
-            answer:
-              "To integrate an AI chatbot to your website, you can use Chatness, a user-friendly and efficient AI Chatbot Platform that allows your users to chat with bots. You can follow the steps mentioned in the article 'How to integrate a chatbot to your website' for detailed instructions.",
-          },
-          {
-            question:
-              'Why should businesses use a self-hosted chatbot platform?',
-            answer:
-              "Businesses are turning to self-hosted chatbot platforms like Chatness to streamline their customer service operations and boost sales. These platforms offer advantages over traditional chatbot platforms, such as overcoming limitations and providing more control and customization options. You can learn more about the benefits in the article 'Why Use a Self-Hosted Chatbot Platform for Your Business?'",
-          },
-        ],
-        locked: true,
+        name: 'Jane Doe',
+        email: 'jane@doe.com',
       },
-      { inspect: true }
-    )
-    .catch((err) => print(err));
+      {
+        name: 'Yellow Musk',
+        email: 'yellow@musk.com',
+      },
+    ])
+    .then(() => console.log('yahoo'))
+    .catch((err) => console.log(err));
 });
 
 httpServer.listen(httpPort, () => print(`Server running on port ${httpPort}`));
