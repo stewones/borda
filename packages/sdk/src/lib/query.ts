@@ -25,6 +25,7 @@ import {
   DocumentResponse,
   ManyInsertResponse,
   ManyUpdateResponse,
+  ManyUpsertResponse,
   Query,
 } from './types/query';
 import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
@@ -201,7 +202,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
         'upsertMany',
         options ?? {},
         docs ?? []
-      ) as Promise<ManyUpdateResponse>;
+      ) as Promise<ManyUpsertResponse>;
     },
 
     delete: (objectIdOrOptions?, options?) => {

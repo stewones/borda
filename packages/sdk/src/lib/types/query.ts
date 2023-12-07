@@ -317,7 +317,7 @@ export declare interface Query<TSchema extends Document = Document> {
   upsertMany(
     docs: Partial<TSchema>[],
     options?: DocumentExtraOptions
-  ): Promise<ManyUpdateResponse>;
+  ): Promise<ManyUpsertResponse>;
 
   /**
    * delete a document using mongo-like queries
@@ -353,6 +353,7 @@ export declare interface Query<TSchema extends Document = Document> {
     | TSchema[]
     | ManyInsertResponse<TSchema>
     | ManyUpdateResponse
+    | ManyUpsertResponse
     | void
   >;
 
@@ -399,6 +400,25 @@ export declare interface ManyUpdateResponse {
   upsertedCount: number;
   /** The identifier of the inserted document if an upsert took place */
   upsertedId: ObjectId;
+}
+
+export declare interface ManyUpsertResponse {
+  ok: number;
+  writeErrors: any[];
+  writeConcernErrors: any[];
+  insertedIds: any[];
+  nInserted: number;
+  nUpserted: number;
+  nMatched: number;
+  nModified: number;
+  nRemoved: number;
+  upserted: any[];
+  opTime: {
+    ts: {
+      $timestamp: string;
+    };
+    t: number;
+  };
 }
 
 export interface ManyInsertOptions<TSchema extends Document = Document> {

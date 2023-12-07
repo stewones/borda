@@ -303,8 +303,12 @@ ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
         name: 'Yellow Musk',
         email: 'yellow@musk.com',
       },
+      {
+        name: 'Yellow Musk 2',
+        email: 'yellow2@musk.com',
+      },
     ])
-    .then(() => console.log('yahoo'))
+    .then((result) => console.log('yahoo', result))
     .catch((err) => console.log(err));
 });
 
