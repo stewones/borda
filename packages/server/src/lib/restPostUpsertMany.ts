@@ -78,7 +78,10 @@ export async function restPostUpsertMany({
     const filterPayload: any = filter;
     const condition = Object.keys(filterPayload).reduce(
       (acc: any, key: string) => {
-        if (filterPayload[key].startsWith('$$')) {
+        if (
+          typeof filterPayload[key] === 'string' &&
+          filterPayload[key].startsWith('$$')
+        ) {
           acc[key] = doc[filterPayload[key].slice(2)];
         } else {
           acc[key] = filterPayload[key];
