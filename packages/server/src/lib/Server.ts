@@ -58,6 +58,7 @@ export interface ServerParams {
    * Default to 50 docs per query
    */
   queryMaxDocLimit?: number;
+  poweredBy?: string;
 }
 
 export const ServerDefaultParams: Partial<ServerParams> = {
