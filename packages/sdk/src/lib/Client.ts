@@ -32,6 +32,7 @@ export interface ClientParams {
   debug?: boolean;
   plugins?: ElegantePlugin[];
   validateSession?: boolean;
+  sessionToken?: string;
   fetch?: {
     agent?: any;
     headers?: any; // can be an obeject of headers or a function that returns an object of headers

@@ -288,28 +288,91 @@ ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
   //   .then(() => console.log('yahoo'))
   //   .catch((err) => console.log(err));
 
+  // await query('UpsertMethodTest')
+  //   .unlock()
+  //   .filter({
+  //     email: '$$email',
+  //   })
+  //   .upsertMany([
+  //     { name: 'John Doe', email: 'john@doe.com' },
+  //     {
+  //       name: 'Jane Doe',
+  //       email: 'jane@doe.com',
+  //     },
+  //     {
+  //       name: 'Yellow Musk 1',
+  //       email: 'yellow@musk.com',
+  //     },
+  //     {
+  //       name: 'Yellow Musk 2',
+  //       email: 'yellow2@musk.com',
+  //     },
+  //     {
+  //       name: 'Yellow Musk 3',
+  //       email: 'yellow3@musk.com',
+  //     },
+  //   ])
+  //   .then((result) => console.log('yahoo', result))
+  //   .catch((err) => console.log(err));
+
   await query('UpsertMethodTest')
     .unlock()
     .filter({
       email: '$$email',
+      expiresAt: {
+        $exists: false,
+      },
     })
     .upsertMany([
-      { name: 'John Doe', email: 'john@doe.com' },
+      { name: 'John Doe', email: 'john@doe.com', source: ['manual'] },
       {
         name: 'Jane Doe',
         email: 'jane@doe.com',
+        source: ['manual'],
       },
       {
-        name: 'Yellow Musk',
+        name: 'Yellow Musk 1',
         email: 'yellow@musk.com',
+        source: ['manual', 'messenger'],
       },
       {
         name: 'Yellow Musk 2',
         email: 'yellow2@musk.com',
+        source: ['manual', 'whatsapp'],
+      },
+      {
+        name: 'Yellow Musk 3',
+        email: 'yellow3@musk.com',
+        source: ['manual', 'whatsapp', 'api'],
       },
     ])
     .then((result) => console.log('yahoo', result))
     .catch((err) => console.log(err));
+
+  // await query('InsertManyMethodTest')
+  // .unlock()
+  // .insertMany([
+  //   { name: 'John Doe', email: 'john@doe.com' },
+  //   {
+  //     name: 'Jane Doe',
+  //     email: 'jane@doe.com',
+  //   },
+  //   {
+  //     name: 'Yellow Musk 1',
+  //     email: 'yellow@musk.com',
+  //   },
+  //   {
+  //     name: 'Yellow Musk 2',
+  //     email: 'yellow2@musk.com',
+  //   },
+  //   {
+  //     name: 'Yellow Musk 3',
+  //     email: 'yellow3@musk.com',
+  //     source: ['api'],
+  //   },
+  // ])
+  // .then((result) => console.log('yahoo', result))
+  // .catch((err) => console.log(err));
 });
 
 httpServer.listen(httpPort, () => print(`Server running on port ${httpPort}`));

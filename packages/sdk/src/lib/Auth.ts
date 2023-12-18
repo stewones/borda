@@ -11,7 +11,7 @@ import { InternalHeaders } from './internal';
 import { Session } from './types';
 import { isBoolean, isServer, LocalStorage } from './utils';
 
-interface SignOptions {
+export interface SignOptions {
   /**
    * modify returned user object
    */

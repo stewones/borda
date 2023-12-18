@@ -22,12 +22,15 @@ export interface WebSocketFactory {
   onMessage: (ws: WebSocket, message: MessageEvent) => void;
 }
 
-export function webSocketServer(socketURL: string) {
+export function webSocketServer(
+  socketURL: string,
+  apiKey = EleganteClient.params.apiKey
+) {
   return (factory: WebSocketFactory) => {
     const { onConnect, onOpen, onError, onClose, onMessage } = factory;
 
     const ws = new WebSocket(socketURL, [
-      `${EleganteClient.params.apiKey}`,
+      `${apiKey}`,
       `token`, // @todo send token over the wire to also validade the ws connection
     ]);
 

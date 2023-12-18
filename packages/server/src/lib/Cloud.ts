@@ -23,6 +23,8 @@ import { DocQRL } from './parseQuery';
 import { routeEnsureAuth } from './route';
 import { EleganteServer } from './Server';
 
+type ExpressCors = any;
+
 type CloudTriggerProtocol = Map<string, CloudTriggerOptions>;
 
 type CloudTriggerEvent =
@@ -64,6 +66,7 @@ interface CloudTriggerOptions {
 interface CloudFunctionOptions {
   name: string;
   isPublic?: boolean;
+  cors?: ExpressCors;
   fn: (
     factory: CloudFunctionFactory
   ) => Promise<boolean | Document | Document[] | void>;
@@ -197,7 +200,7 @@ export abstract class Cloud {
    */
   public static addFunction(
     name: string,
-    options: Pick<CloudFunctionOptions, 'isPublic'>,
+    options: Pick<CloudFunctionOptions, 'isPublic' | 'cors'>,
     fn: (factory: CloudFunctionFactory) => Promise<Document | Document[] | void>
   ) {
     const cloudFn: CloudFunctionOptions = {
@@ -258,8 +261,12 @@ export abstract class Cloud {
 function createFunction(options: CloudFunctionOptions): void {
   const { app, params } = EleganteServer;
   const { name, fn } = options;
+  // const noop = (req, res, next) => {
+  //   next()
+  // };
   app.post(
     `/functions/${name}`,
+    // options.cors || noop,
     routeEnsureAuth({
       params,
     }),
