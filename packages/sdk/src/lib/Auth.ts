@@ -7,7 +7,7 @@
  */
 import { EleganteClient } from './Client';
 import { fetch } from './fetch';
-import { InternalHeaders } from './internal';
+import { InternalHeaders, memo } from './internal';
 import { Session } from './types';
 import { isBoolean, isServer, LocalStorage } from './utils';
 
@@ -121,6 +121,8 @@ export abstract class Auth {
       ] = token;
     }
 
+
+
     return fetch(`${EleganteClient.params.serverURL}/me`, {
       method: 'DELETE',
       headers,
@@ -129,6 +131,15 @@ export abstract class Auth {
         LocalStorage.unset(
           `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
         );
+        EleganteClient.params.sessionToken = undefined;
+
+        if (memo.size) {
+          for (const [key, value] of memo) {
+            if (key.startsWith('websocket:')) {
+              value.close();
+            }
+          }
+        }
       }
     });
   }
@@ -307,5 +318,6 @@ function saveSessionToken(token: string, options: SignOptions) {
       `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`,
       token
     );
+    EleganteClient.params.sessionToken = token;
   }
 }

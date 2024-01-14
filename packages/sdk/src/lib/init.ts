@@ -44,7 +44,7 @@ export async function init(options: ClientParams) {
     ...options,
   });
 
-  if (!isServer() && params.validateSession) {
+  if (!isServer()) {
     if (params.apiSecret) {
       throw new EleganteError(
         ErrorCode.SERVER_SECRET_EXPOSED,
@@ -57,9 +57,11 @@ export async function init(options: ClientParams) {
     );
 
     if (token) {
-      return Auth.become(token);
+      EleganteClient.params.sessionToken = token;
+      return params.validateSession ? Auth.become(token) : Promise.resolve();
     }
   }
+  
 
   return Promise.resolve();
 }

@@ -15,7 +15,7 @@ import { finalize, Observable } from 'rxjs';
 import { EleganteClient } from './Client';
 import { EleganteError, ErrorCode } from './Error';
 import { fetch, HttpMethod } from './fetch';
-import { InternalFieldName, InternalHeaders } from './internal';
+import { InternalFieldName, InternalHeaders, memo } from './internal';
 import { log } from './log';
 import { DocumentLiveQuery, LiveQueryMessage } from './types';
 import {
@@ -390,6 +390,8 @@ export function query<TSchema extends Document = Document>(collection: string) {
       let wssFinished = false;
       let wssConnected = false;
 
+      let hasConnected = false;
+
       const {
         filter,
         limit,
@@ -419,6 +421,8 @@ export function query<TSchema extends Document = Document>(collection: string) {
         method: 'on',
       };
 
+      const key = `websocket:${cleanKey(body)}`;
+
       const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
         if (!EleganteClient.params.serverURL) {
           throw new EleganteError(
@@ -434,14 +438,16 @@ export function query<TSchema extends Document = Document>(collection: string) {
           onOpen: (ws, ev) => {
             wss = ws;
             wssConnected = true;
+            memo.set(key, wss);
             log('on', event, bridge.params['collection'], bridge.params);
           },
 
           onError: (ws, err) => {
-            log('error', 'on', event, err, bridge.params['collection']);
+            log('error', err, 'on', event, err, bridge.params['collection']);
           },
 
           onConnect: (ws) => {
+            hasConnected = true;
             // send query to the server
             ws.send(JSON.stringify(body));
           },
@@ -457,16 +463,29 @@ export function query<TSchema extends Document = Document>(collection: string) {
           },
 
           onClose: (ws, ev) => {
-            if (wssFinished || ev?.code === 1008) {
-              wss.close();
+            if (
+              wssFinished ||
+              ev?.code === 1008 ||
+              [
+                'Invalid secret',
+                'Invalid key',
+                'Invalid session',
+                'Collection not allowed',
+                'Invalid query method',
+                'stream closed',
+              ].includes(ev?.reason) ||
+              !hasConnected
+            ) {
+              ws.close();
               observer.error(
-                new EleganteError(
-                  ErrorCode.LIVE_QUERY_SOCKET_CLOSE,
-                  ev.reason || ''
-                )
+                `${ErrorCode.LIVE_QUERY_SOCKET_CLOSE}: ${
+                  ev.reason || 'network error'
+                }`
               );
+              observer.complete();
               return;
             }
+
             if (wssConnected) {
               wssConnected = false;
               log(
@@ -478,6 +497,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
                 bridge.params
               );
             }
+
             setTimeout(() => {
               log(
                 'on',
@@ -486,7 +506,12 @@ export function query<TSchema extends Document = Document>(collection: string) {
                 'trying to reconnect',
                 bridge.params
               );
-              webSocketServer(socketURL)(webSocket);
+              webSocketServer(
+                socketURL,
+                EleganteClient.params.apiKey,
+                EleganteClient.params.sessionToken || null,
+                unlock ? EleganteClient.params.apiSecret : null
+              )(webSocket);
             }, 1 * 500);
           },
         };
@@ -494,12 +519,18 @@ export function query<TSchema extends Document = Document>(collection: string) {
         /**
          * connect to the server
          */
-        webSocketServer(socketURL)(webSocket);
+        webSocketServer(
+          socketURL,
+          EleganteClient.params.apiKey,
+          EleganteClient.params.sessionToken || null,
+          unlock ? EleganteClient.params.apiSecret : null
+        )(webSocket);
       }).pipe(
         finalize(() => {
           log('on', event, 'unsubscribed', bridge.params);
           wssFinished = true;
-          wss.close();
+          memo.delete(key);
+          wss && wss.close();
         })
       );
 
@@ -509,7 +540,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
 
     once: () => {
       let wss: WebSocket;
-
+      const { unlock } = bridge.params;
       return new Observable<LiveQueryMessage<TSchema>>((observer) => {
         if (!EleganteClient.params.serverURL) {
           throw new EleganteError(
@@ -520,7 +551,12 @@ export function query<TSchema extends Document = Document>(collection: string) {
         const socketURLPathname = `/${bridge.params['collection']}`;
         const socketURL = getUrl() + socketURLPathname;
 
-        webSocketServer(socketURL)({
+        webSocketServer(
+          socketURL,
+          EleganteClient.params.apiKey,
+          EleganteClient.params.sessionToken || null,
+          unlock ? EleganteClient.params.apiSecret : null
+        )({
           onOpen: (ws, ev) => {
             wss = ws;
             log('once', bridge.params['collection'], bridge.params);

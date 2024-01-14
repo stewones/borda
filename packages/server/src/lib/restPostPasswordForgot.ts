@@ -108,7 +108,10 @@ export async function restPostPasswordForgot({
 
   try {
     await EmailProviderPlugin().send({
-      to: currentUser.email,
+      to: {
+        email: currentUser.email,
+        name: currentUser.name,
+      },
       subject: emailTemplate.subject,
       html: emailTemplate.html,
     });

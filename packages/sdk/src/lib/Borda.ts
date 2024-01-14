@@ -5,7 +5,8 @@ import { SignOptions } from './Auth';
 import { ClientDefaultParams, ClientParams } from './Client';
 import { EleganteError, ErrorCode } from './Error';
 import { fetch, HttpMethod } from './fetch';
-import { InternalFieldName, InternalHeaders } from './internal';
+import { InternalFieldName, InternalHeaders, memo } from './internal';
+import { log } from './log';
 import {
   ChangeStreamOptions,
   Document,
@@ -119,11 +120,20 @@ export class Borda {
           ] = this.params.sessionToken;
         }
 
+
         return fetch(`${this.params.serverURL}/me`, {
           method: 'DELETE',
           headers,
         }).then(() => {
           this.params.sessionToken = undefined;
+
+          if (memo.size) {
+            for (const [key, value] of memo) {
+              if (key.startsWith('websocket:')) {
+                value.close();
+              }
+            }
+          }
         });
       },
     };
@@ -449,7 +459,7 @@ export class Borda {
         } = bridge.params;
 
         const { inspect } = options;
-        const headers = {
+        let headers = {
           [`${this.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
             this.params.apiKey,
           [`${this.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
@@ -492,6 +502,13 @@ export class Borda {
           docs,
         };
 
+        if (this.params.fetch?.headers) {
+          headers = {
+            ...headers,
+            ...this.params.fetch.headers(),
+          };
+        }
+
         const source = fetch<DocumentResponse<TSchema>>(
           `${this.params.serverURL}/${bridge.params['collection']}${
             ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
@@ -520,6 +537,8 @@ export class Borda {
         let wss: WebSocket;
         let wssFinished = false;
         let wssConnected = false;
+
+        let hasConnected = false;
 
         const {
           filter,
@@ -550,6 +569,8 @@ export class Borda {
           method: 'on',
         };
 
+        const key = `websocket:${cleanKey(body)}`;
+
         const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
           if (!this.params.serverURL) {
             throw new EleganteError(
@@ -565,17 +586,18 @@ export class Borda {
             onOpen: (ws, ev) => {
               wss = ws;
               wssConnected = true;
+              memo.set(key, wss);
             },
 
             onError: (ws, err) => {
-              //
+              log('error', err, 'on', event, err, bridge.params['collection']);
             },
 
             onConnect: (ws) => {
+              hasConnected = true;
               // send query to the server
               ws.send(JSON.stringify(body));
             },
-
             onMessage: (ws: WebSocket, message: MessageEvent) => {
               const data = message.data;
               try {
@@ -584,23 +606,56 @@ export class Borda {
                 ws.close();
               }
             },
-
             onClose: (ws, ev) => {
-              if (wssFinished || ev?.code === 1008) {
-                wss.close();
+              if (
+                wssFinished ||
+                ev?.code === 1008 ||
+                [
+                  'Invalid secret',
+                  'Invalid key',
+                  'Invalid session',
+                  'Collection not allowed',
+                  'Invalid query method',
+                  'stream closed',
+                ].includes(ev?.reason) ||
+                !hasConnected
+              ) {
+                ws.close();
                 observer.error(
-                  new EleganteError(
-                    ErrorCode.LIVE_QUERY_SOCKET_CLOSE,
-                    ev.reason || ''
-                  )
+                  `${ErrorCode.LIVE_QUERY_SOCKET_CLOSE}: ${
+                    ev.reason || 'network error'
+                  }`
                 );
+                observer.complete();
                 return;
               }
+
               if (wssConnected) {
                 wssConnected = false;
+                log(
+                  'on',
+                  event,
+                  bridge.params['collection'],
+                  'disconnected',
+                  ev.reason,
+                  bridge.params
+                );
               }
+
               setTimeout(() => {
-                webSocketServer(socketURL, this.params.apiKey)(webSocket);
+                log(
+                  'on',
+                  event,
+                  bridge.params['collection'],
+                  'trying to reconnect',
+                  bridge.params
+                );
+                webSocketServer(
+                  socketURL,
+                  this.params.apiKey,
+                  this.params.sessionToken || null,
+                  unlock ? this.params.apiSecret : null
+                )(webSocket);
               }, 1 * 500);
             },
           };
@@ -608,11 +663,17 @@ export class Borda {
           /**
            * connect to the server
            */
-          webSocketServer(socketURL, this.params.apiKey)(webSocket);
+          webSocketServer(
+            socketURL,
+            this.params.apiKey,
+            this.params.sessionToken
+          )(webSocket);
         }).pipe(
           finalize(() => {
+            log('on', event, 'unsubscribed', bridge.params);
             wssFinished = true;
-            wss.close();
+            memo.delete(key);
+            wss && wss.close();
           })
         );
 
@@ -622,7 +683,6 @@ export class Borda {
 
       once: () => {
         let wss: WebSocket;
-
         return new Observable<LiveQueryMessage<TSchema>>((observer) => {
           if (!this.params.serverURL) {
             throw new EleganteError(
@@ -635,7 +695,8 @@ export class Borda {
 
           webSocketServer(
             socketURL,
-            this.params.apiKey
+            this.params.apiKey,
+            this.params.sessionToken
           )({
             onOpen: (ws, ev) => {
               wss = ws;
@@ -747,11 +808,18 @@ export class Borda {
       );
     }
 
-    const headers = {
+    let headers = {
       [`${this.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.params.apiKey,
       ...options?.headers,
     };
+
+    if (this.params.fetch?.headers) {
+      headers = {
+        ...headers,
+        ...this.params.fetch.headers(),
+      };
+    }
 
     if (!isServer()) {
       const token = this.params.sessionToken;

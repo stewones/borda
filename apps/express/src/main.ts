@@ -31,13 +31,18 @@ const apiKey = process.env.ELEGANTE_API_KEY || '**elegante**';
 const apiSecret = process.env.ELEGANTE_API_SECRET || '**secret**';
 
 const serverMount = process.env.ELEGANTE_SERVER_MOUNT || '/server';
-
-const serverURL = `${
-  process.env.ELEGANTE_SERVER_URL || 'http://localhost:1337'
-}${serverMount}`;
-
 const serverHeaderPrefix =
   process.env.ELEGANTE_SERVER_HEADER_PREFIX || 'X-Elegante';
+
+const httpPort = parseFloat(process.env.ELEGANTE_HTTP_PORT ?? '1337');
+const liveQueryPort = parseFloat(process.env.ELEGANTE_LIVE_PORT ?? '1337');
+
+const serverURL = `${
+  process.env.ELEGANTE_SERVER_URL || `http://127.0.0.1:${httpPort}`
+}${serverMount}`;
+
+const liveQueryServerURL =
+  process.env.ELEGANTE_LIVEQUERY_URL || `ws://127.0.0.1:${liveQueryPort}`;
 
 /**
  * init elegante sdk
@@ -48,6 +53,7 @@ init({
   apiSecret, // <-- this is optional. only allowed in server.
   serverURL,
   debug,
+  liveQueryServerURL,
 });
 
 /**
@@ -168,20 +174,18 @@ import './triggers';
 /**
  * start the node server
  */
-const httpPort = 1337;
 const httpServer = http.createServer(server);
 
 /**
  * start the live query server
  */
-const liveQueryPort = 1338;
 createLiveQueryServer({
   httpServer,
-  collections: ['PublicUser', 'Counter'],
-  // reservedCollections: [],
-  port: liveQueryPort,
   debug,
   upgrade: true,
+  collections: ['PublicUser', 'Counter'],
+  // reservedCollections: [],
+  // port: liveQueryPort, // ignored if upgrade
 });
 
 /**
@@ -213,6 +217,23 @@ ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
       console.log('memory', memoryUsage());
     })
     .catch((err) => print(err));
+
+  setTimeout(() => {
+    query('Counter')
+      .filter({
+        name: {
+          $eq: 'elegante',
+        },
+      })
+      .unlock(true)
+      .on('update')
+      .subscribe({
+        next: ({ doc }) => {
+          console.log('counter update', doc);
+        },
+        error: (err) => console.error(err),
+      });
+  }, 2000);
 
   // upsert needs more thought
   // const res = await query('UpdateTest')
@@ -315,39 +336,39 @@ ServerEvents.onDatabaseConnect.subscribe(async ({ db }) => {
   //   .then((result) => console.log('yahoo', result))
   //   .catch((err) => console.log(err));
 
-  await query('UpsertMethodTest')
-    .unlock()
-    .filter({
-      email: '$$email',
-      expiresAt: {
-        $exists: false,
-      },
-    })
-    .upsertMany([
-      { name: 'John Doe', email: 'john@doe.com', source: ['manual'] },
-      {
-        name: 'Jane Doe',
-        email: 'jane@doe.com',
-        source: ['manual'],
-      },
-      {
-        name: 'Yellow Musk 1',
-        email: 'yellow@musk.com',
-        source: ['manual', 'messenger'],
-      },
-      {
-        name: 'Yellow Musk 2',
-        email: 'yellow2@musk.com',
-        source: ['manual', 'whatsapp'],
-      },
-      {
-        name: 'Yellow Musk 3',
-        email: 'yellow3@musk.com',
-        source: ['manual', 'whatsapp', 'api'],
-      },
-    ])
-    .then((result) => console.log('yahoo', result))
-    .catch((err) => console.log(err));
+  // await query('UpsertMethodTest')
+  //   .unlock()
+  //   .filter({
+  //     email: '$$email',
+  //     expiresAt: {
+  //       $exists: false,
+  //     },
+  //   })
+  //   .upsertMany([
+  //     { name: 'John Doe', email: 'john@doe.com', source: ['manual'] },
+  //     {
+  //       name: 'Jane Doe',
+  //       email: 'jane@doe.com',
+  //       source: ['manual'],
+  //     },
+  //     {
+  //       name: 'Yellow Musk 1',
+  //       email: 'yellow@musk.com',
+  //       source: ['manual', 'messenger'],
+  //     },
+  //     {
+  //       name: 'Yellow Musk 2',
+  //       email: 'yellow2@musk.com',
+  //       source: ['manual', 'whatsapp'],
+  //     },
+  //     {
+  //       name: 'Yellow Musk 3',
+  //       email: 'yellow3@musk.com',
+  //       source: ['manual', 'whatsapp', 'api'],
+  //     },
+  //   ])
+  //   .then((result) => console.log('yahoo', result))
+  //   .catch((err) => console.log(err));
 
   // await query('InsertManyMethodTest')
   // .unlock()

@@ -9,7 +9,10 @@ import { print } from './log';
 import { User } from './types';
 
 export interface EmailProviderParams {
-  to: string;
+  to: {
+    name: string;
+    email: string;
+  };
   subject: string;
   html: string;
 }
@@ -20,7 +23,7 @@ export interface EmailProvider {
 
 export function DefaultEmailProvider(): EmailProvider {
   return {
-    send(params: { to: string; subject: string; html: string }) {
+    send(params: EmailProviderParams) {
       print(`
           -------------------
           Email Provider Test

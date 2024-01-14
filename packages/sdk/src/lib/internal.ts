@@ -61,3 +61,5 @@ export const InternalSensitiveFields = [
   '_session_token',
   '_auth_data_MagicAuth',
 ];
+
+export const memo: Map<string, any> = new Map();

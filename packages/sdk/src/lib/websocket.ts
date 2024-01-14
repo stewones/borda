@@ -24,14 +24,19 @@ export interface WebSocketFactory {
 
 export function webSocketServer(
   socketURL: string,
-  apiKey = EleganteClient.params.apiKey
+  apiKey = EleganteClient.params.apiKey,
+  token = EleganteClient.params.sessionToken || null,
+  secret: string | null = null
 ) {
   return (factory: WebSocketFactory) => {
     const { onConnect, onOpen, onError, onClose, onMessage } = factory;
 
+    // console.log([`${apiKey}`, `${token}`, ...(secret ? [secret] : [])]);
+
     const ws = new WebSocket(socketURL, [
       `${apiKey}`,
-      `token`, // @todo send token over the wire to also validade the ws connection
+      `${token?.replace(':', '')}`,
+      ...(secret ? [secret] : []),
     ]);
 
     ws.onopen = (ev: Event) => onOpen(ws, ev);
@@ -52,7 +57,8 @@ export function getUrl() {
   const serverURL = EleganteClient.params.serverURL;
 
   // replace port with socket port
-  const socketURLWithPort = serverURL.replace(/:(\d+)/, `:1338`);
+  // const socketURLWithPort = serverURL.replace(/:(\d+)/, `:1338`);
+  const socketURLWithPort = serverURL;
 
   // replace http:// or https:// with ws:// or wss://
   const socketProtocol = socketURLWithPort.startsWith('https://')

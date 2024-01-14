@@ -399,7 +399,6 @@ export class AppComponent {
       .filter({
         expiresAt: {
           $exists: 1,
-          a: 1,
         },
       })
       .sort({
