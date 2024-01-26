@@ -35,6 +35,7 @@ export function parseFilter(obj: any | any[]): any | any[] {
 
   if (!Array.isArray(obj) && typeof obj === 'object') {
     for (let field in obj) {
+   
       const value: any = obj[field];
 
       /**
@@ -53,6 +54,17 @@ export function parseFilter(obj: any | any[]): any | any[] {
        */
       if (typeof value === 'string' && isISODate(value)) {
         obj[field] = new Date(value) as any;
+      }
+
+      /**
+       * checks for expression cases
+       * eg: [ '$someField.someDate', '2024-01-21T20:33:37.302Z' ]       *
+       */
+      if (Array.isArray(value) && value.length === 2) {
+        const [field, date] = value;
+        if (isISODate(date)) {
+          value[1] = new Date(date);
+        }
       }
 
       /**
