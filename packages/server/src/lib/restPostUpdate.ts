@@ -28,7 +28,7 @@ export async function restPostUpdate({
 }) {
   try {
     const { collection$, collection, filter } = docQRL;
-    const docBefore = await collection$.findOne(filter || {}, {
+    const docBefore = await collection$.findOne(filter || ({} as any), {
       readPreference: 'primary',
     });
 

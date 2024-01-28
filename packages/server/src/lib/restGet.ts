@@ -70,7 +70,7 @@ export function restGet({
       const { collection$ } = docQRL;
 
       const doc = await collection$.findOne<Document>({
-        _id: objectId,
+        _id: objectId as any,
       });
 
       return res

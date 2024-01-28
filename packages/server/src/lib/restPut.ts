@@ -80,7 +80,7 @@ export function restPut({
       const docBefore = await collection$.findOne(
         {
           _id: {
-            $eq: objectId,
+            $eq: objectId as any,
           },
         },
         {
@@ -138,7 +138,7 @@ export function restPut({
       const cursor = await collection$.findOneAndUpdate(
         {
           _id: {
-            $eq: objectId,
+            $eq: objectId as any,
           },
         },
         {

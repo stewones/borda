@@ -29,7 +29,9 @@ export async function restPostRemoveMany({
       );
   }
 
-  const updatedDocuments = await collection$.find(filter ?? {}).toArray();
+  const updatedDocuments = await collection$
+    .find(filter ?? ({} as any))
+    .toArray();
 
   // console.log(
   //   'restPostRemoveMany.updatedDocuments.total',
