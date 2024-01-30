@@ -18,11 +18,11 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
+      "@borda/sdk": ["packages/sdk/src/index.ts"],
+      "@borda/server": ["packages/server/src/index.ts"],
       "@elegante/browser": ["packages/browser/src/index.ts"],
       "@elegante/sdk": ["packages/sdk/src/index.ts"],
-      "@elegante/server": ["packages/server/src/index.ts"],
-      "@borda/sdk": ["packages/sdk/src/index.ts"],
-      "@borda/server": ["packages/server/src/index.ts"]
+      "@elegante/server": ["packages/server/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

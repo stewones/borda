@@ -183,12 +183,12 @@ function somePromise() {
         </tr>
       </table>
 
-      <h4>@Fast Promise</h4>
+      <h4>&#64;Fast Promise</h4>
       <code>
         <pre>Random number: {{ fromPromise$ | async }}</pre>
       </code>
 
-      <h4>@Fast Query (needs login)</h4>
+      <h4>&#64;Fast Query (needs login)</h4>
       <code>
         <pre>Oldest users: {{ oldestUsers$ | async | json }}</pre>
       </code>

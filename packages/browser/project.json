@@ -5,15 +5,13 @@
   "projectType": "library",
   "targets": {
     "build": {
-      "executor": "@nrwl/js:tsc",
+      "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/packages/browser",
         "main": "packages/browser/src/index.ts",
         "tsConfig": "packages/browser/tsconfig.lib.json",
         "packageJson": "packages/browser/src/package.json",
-        "updateBuildableProjectDepsInPackageJson": false,
-        "buildableProjectDepsInPackageJsonType": "dependencies",
         "external": "all",
         "externalBuildTargets": [
           "@elegante/sdk",
@@ -32,18 +30,14 @@
       "dependsOn": ["build"]
     },
     "lint": {
-      "executor": "@nrwl/linter:eslint",
-      "outputs": ["{options.outputFile}"],
-      "options": {
-        "lintFilePatterns": ["packages/browser/**/*.ts"]
-      }
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"]
     },
     "test": {
-      "executor": "@nrwl/jest:jest",
+      "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "packages/browser/jest.config.ts",
-        "passWithNoTests": true
+        "jestConfig": "packages/browser/jest.config.ts"
       }
     }
   },

@@ -11,7 +11,7 @@ import chalk from 'chalk';
 import { execSync } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
 
-import pkg from '@nrwl/devkit';
+import pkg from '@nx/devkit';
 
 const { readCachedProjectGraph } = pkg;
 
