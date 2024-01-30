@@ -6,6 +6,6 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-export * from './lib';
-export * from './utils';
-export * from './lib_elegante';
+import packageJson from '../../package.json';
+
+export const Version = packageJson?.version ?? '0.0.0';

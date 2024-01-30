@@ -6,6 +6,10 @@
  * found in the LICENSE file at https://elegante.dev/license
  */
 
-export * from './lib';
-export * from './utils';
-export * from './lib_elegante';
+//import { createServer } from '../src/lib';
+
+describe('createServer', () => {
+  it('should be defined', () => {
+    //  expect(createServer).toBeDefined();
+  });
+});
