@@ -1,11 +1,27 @@
 import WebSocket, { MessageEvent } from 'isomorphic-ws';
-import { finalize, Observable } from 'rxjs';
+import {
+  finalize,
+  Observable,
+} from 'rxjs';
 
 import { SignOptions } from './Auth';
-import { ClientDefaultParams, ClientParams } from './Client';
-import { EleganteError, ErrorCode } from './Error';
-import { fetch, HttpMethod } from './fetch';
-import { InternalFieldName, InternalHeaders, memo } from './internal';
+import {
+  ClientDefaultParams,
+  ClientParams,
+} from './Client';
+import {
+  EleganteError,
+  ErrorCode,
+} from './Error';
+import {
+  fetch,
+  HttpMethod,
+} from './fetch';
+import {
+  InternalFieldName,
+  InternalHeaders,
+  memo,
+} from './internal';
 import { log } from './log';
 import {
   ChangeStreamOptions,
@@ -20,8 +36,16 @@ import {
   Query,
   Session,
 } from './types';
-import { cleanKey, isBoolean, isEmpty, isServer } from './utils';
-import { WebSocketFactory, webSocketServer } from './websocket';
+import {
+  cleanKey,
+  isBoolean,
+  isEmpty,
+  isServer,
+} from './utils';
+import {
+  WebSocketFactory,
+  webSocketServer,
+} from './websocket';
 
 export class Borda {
   params: ClientParams = {} as ClientParams;

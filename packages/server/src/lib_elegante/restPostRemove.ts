@@ -1,6 +1,12 @@
-import { Request, Response } from 'express';
+import {
+  Request,
+  Response,
+} from 'express';
 
-import { EleganteError, ErrorCode } from '@elegante/sdk';
+import {
+  EleganteError,
+  ErrorCode,
+} from '@elegante/sdk';
 
 import { isUnlocked } from '../utils/isUnlocked';
 import { invalidateCache } from './Cache';
@@ -20,7 +26,7 @@ export async function restPostRemove({
   const { collection, filter, collection$ } = docQRL;
 
   const cursor = await collection$.findOneAndUpdate(
-    filter || {},
+    filter || ({} as any),
     { $set: { _expires_at: new Date() } },
     {
       returnDocument: 'after',

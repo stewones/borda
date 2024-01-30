@@ -1,12 +1,14 @@
 import { Elysia } from 'elysia';
 
-import { Borda, memoryUsage, Version } from '@borda/server';
+import {
+  Borda,
+  memoryUsage,
+  Version,
+} from '@borda/server';
 
 const borda = new Borda({
-  params: {
-    name: 'borda-elysia',
-    inspect: true,
-  },
+  name: 'borda-on-elysia',
+  inspect: true,
 });
 
 const app = new Elysia()
@@ -18,9 +20,9 @@ console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
 );
 
-Borda.onDatabaseConnect.subscribe(async ({ db, name }) => {
+borda.on.databaseConnect.subscribe(async ({ db, name }) => {
   const stats = await db.stats();
-  Borda.print(
+  console.log(
     `💽 Borda v${Version} is connected to the database ${stats['db']} from ${name}`
   );
 
@@ -31,13 +33,33 @@ Borda.onDatabaseConnect.subscribe(async ({ db, name }) => {
   console.timeEnd('startup');
   console.time('ping');
 
-  borda
+  await borda
     .ping()
     .then(() => {
       console.timeEnd('ping');
-      console.log('memory', memoryUsage());
+      console.log('🧠 memory', memoryUsage());
     })
-    .catch((err) => Borda.print(err));
+    .catch((err) => console.log(err));
+
+  // insert
+  await borda
+    .query('User')
+    .insert({
+      name: 'John',
+      age: 30,
+    })
+    .then((user) => console.log('new user', user))
+    .catch((err) => console.log(err));
+
+  // find
+  await borda
+    .query('User')
+    .find()
+    .then((users) => console.log('users', users))
+    .catch((err) => console.log(err));
+
+  // findOne
+  // ...
 });
 
 // iife

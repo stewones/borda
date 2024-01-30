@@ -69,7 +69,7 @@ export function parseQuery(from: DocQRLFrom): DocQRL {
   }
 
   if (!isEmpty(docQuery.filter)) {
-    docQuery.filter = parseFilter(docQuery.filter || {});
+    docQuery.filter = parseFilter(docQuery.filter || ({} as any));
   }
 
   if (!isEmpty(docQuery.pipeline)) {

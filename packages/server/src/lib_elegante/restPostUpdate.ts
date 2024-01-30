@@ -1,4 +1,7 @@
-import { Request, Response } from 'express';
+import {
+  Request,
+  Response,
+} from 'express';
 
 import {
   Document,
@@ -12,7 +15,10 @@ import {
 
 import { isUnlocked } from '../utils/isUnlocked';
 import { invalidateCache } from './Cache';
-import { CloudTriggerCallback, getCloudTrigger } from './Cloud';
+import {
+  CloudTriggerCallback,
+  getCloudTrigger,
+} from './Cloud';
 import { parseDocForInsertion } from './parseDoc';
 import { DocQRL } from './parseQuery';
 import { parseResponse } from './parseResponse';
@@ -86,10 +92,14 @@ export async function restPostUpdate({
         payload = doc;
       }
 
-      const cursor = await collection$.findOneAndUpdate(filter || {}, payload, {
-        returnDocument: 'after',
-        readPreference: 'primary',
-      });
+      const cursor = await collection$.findOneAndUpdate(
+        filter || ({} as any),
+        payload,
+        {
+          returnDocument: 'after',
+          readPreference: 'primary',
+        }
+      );
 
       if (cursor.ok) {
         const docAfter = cursor.value ?? ({} as Document);

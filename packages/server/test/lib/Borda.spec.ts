@@ -1,41 +1,17 @@
-// import './preload';
-
+import { Elysia } from 'elysia';
 import { MongoClient } from 'mongodb';
-import { MongoMemoryServer } from 'mongodb-memory-server';
 
-import { Borda } from '../src/lib/Borda';
-
-jest.mock('../src/lib/rest', () => ({
-  createServer: jest.fn().mockReturnValue(true),
-}));
+import { Borda } from '../../src/lib/Borda';
+import { mockMongoServerWith } from '../preload';
 
 jest.mock('mongodb');
 
 let mongoServer: any;
+let borda: Borda;
 
 describe('Borda', () => {
-  let borda: Borda;
   beforeAll(async () => {
-    mongoServer = new MongoMemoryServer();
-    (MongoClient as jest.MockedClass<typeof MongoClient>).mockImplementation(
-      (url, options) =>
-        ({
-          connect: jest.fn().mockResolvedValue(true),
-          db: jest.fn().mockReturnValue({
-            collection: jest.fn().mockReturnValue({
-              insertOne: jest.fn().mockResolvedValue({ insertedId: 'some-id' }),
-              createIndex: jest.fn().mockResolvedValue(true),
-            }),
-            listCollections: jest.fn().mockReturnValue({
-              toArray: jest
-                .fn()
-                .mockResolvedValue([
-                  { type: 'collection', name: 'some-collection' },
-                ]),
-            }),
-          }),
-        } as any)
-    );
+    mongoServer = mockMongoServerWith();
   });
 
   afterAll(async () => {
@@ -60,18 +36,16 @@ describe('Borda', () => {
   });
   it('should have a custom config', () => {
     borda = new Borda({
-      params: {
-        name: 'server-01',
-        inspect: true,
-        mongoURI: 'mongodb://127.0.0.1:27017/borda-ci',
-        serverKey: 'key',
-        serverSecret: 'secret',
-        serverURL: 'http://',
-        serverHeaderPrefix: 'prefix',
-        serverPoweredBy: 'powered',
-        cacheTTL: 1000,
-        queryLimit: 10,
-      },
+      name: 'server-01',
+      inspect: true,
+      mongoURI: 'mongodb://127.0.0.1:27017/borda-ci',
+      serverKey: 'key',
+      serverSecret: 'secret',
+      serverURL: 'http://',
+      serverHeaderPrefix: 'prefix',
+      serverPoweredBy: 'powered',
+      cacheTTL: 1000,
+      queryLimit: 10,
     });
 
     expect(borda.name).toEqual('server-01');
@@ -86,11 +60,11 @@ describe('Borda', () => {
     expect(borda.queryLimit).toEqual(10);
   });
 
-  //   it('should have an elysia server', async () => {
-  //     const server = await borda.server();
-  //     expect(server).toBeDefined();
-  //     expect(server).toBeInstanceOf(Elysia);
-  //   });
+  it('should have an elysia server', async () => {
+    const server = await borda.server();
+    expect(server).toBeDefined();
+    expect(server).toBeInstanceOf(Elysia);
+  });
 
   it('should throw if db cannot connect', async () => {
     (MongoClient as jest.MockedClass<typeof MongoClient>).mockImplementation(
@@ -102,9 +76,7 @@ describe('Borda', () => {
 
     // Wrap the constructor call in an async function
     const borda = new Borda({
-      params: {
-        mongoURI: 'mongodb://',
-      },
+      mongoURI: 'mongodb://',
     });
 
     await expect(borda.server()).rejects.toThrow('some-error');

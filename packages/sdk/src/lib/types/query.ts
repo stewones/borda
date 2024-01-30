@@ -204,6 +204,8 @@ export interface QRLParams<TSchema extends Document = Document> {
   exclude?: string[];
   unlock?: boolean;
 }
+
+// @todo remove when moving to borda
 export declare interface Query<TSchema extends Document = Document> {
   params: QRLParams<TSchema>;
   options: FindOptions;

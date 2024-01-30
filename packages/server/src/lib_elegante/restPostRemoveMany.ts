@@ -1,6 +1,13 @@
-import { Request, Response } from 'express';
+import {
+  Request,
+  Response,
+} from 'express';
 
-import { EleganteError, ErrorCode, isEmpty } from '@elegante/sdk';
+import {
+  EleganteError,
+  ErrorCode,
+  isEmpty,
+} from '@elegante/sdk';
 
 import { isUnlocked } from '../utils/isUnlocked';
 import { getCloudTrigger } from './Cloud';
@@ -30,7 +37,7 @@ export async function restPostRemoveMany({
   }
 
   const updatedDocuments = await collection$
-    .find(filter ?? ({} as any))
+    .find(filter || ({} as any))
     .toArray();
 
   // console.log(
@@ -39,7 +46,7 @@ export async function restPostRemoveMany({
   // );
 
   const cursor = await collection$.updateMany(
-    filter ?? {},
+    filter || ({} as any),
     { $set: { _expires_at: new Date() } },
     {
       readPreference: 'primary',

@@ -8,7 +8,11 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { NextFunction, Request, Response } from 'express';
+import {
+  NextFunction,
+  Request,
+  Response,
+} from 'express';
 
 import {
   EleganteError,
@@ -104,7 +108,7 @@ export const routeEnsureAuth =
   ({ params }: { params: ServerParams }) =>
   async (req: Request, res: Response, next: NextFunction) => {
     let isPublicCloudFunction = false;
-    let session: Session | void;
+    let session: Session | null = null;
     let memo: Session | void;
 
     const token = req.header(

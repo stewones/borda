@@ -1,8 +1,18 @@
-import { Db, MongoClient } from 'mongodb';
+import {
+  Db,
+  Filter,
+  FindOptions,
+  MongoClient,
+  Sort,
+} from 'mongodb';
 
-import { BordaError, ErrorCode } from '@borda/sdk';
+import {
+  BordaError,
+  DocumentPipeline,
+  ErrorCode,
+} from '@borda/sdk';
 
-import { Borda } from './Borda';
+import { DocQRL } from './parseQuery';
 
 export async function mongoConnect({ mongoURI }: { mongoURI: string }) {
   try {
@@ -34,7 +44,7 @@ export async function mongoCreateIndexes({ db }: { db: Db }) {
           .collection(collection.name)
           .createIndex({ _expires_at: 1 }, { expireAfterSeconds: 0 });
 
-        Borda.print(`💽 Index created for collection ${collection.name}`);
+        console.log(`💽 Index created for collection ${collection.name}`);
       }
     }
   } catch (err) {
@@ -43,4 +53,45 @@ export async function mongoCreateIndexes({ db }: { db: Db }) {
       err as unknown as Error
     );
   }
+}
+
+export function createFindCursor<T extends Document>(docQRL: DocQRL) {
+  const { collection$, options, filter, sort, limit, skip } = docQRL;
+  const { allowDiskUse } = (options as FindOptions) || {};
+
+  const cursor = collection$.find<T>(filter || ({} as any), {
+    sort,
+    ...options,
+  });
+
+  if (allowDiskUse) {
+    cursor.allowDiskUse(true);
+  }
+
+  if (limit) {
+    cursor.limit(limit);
+  }
+
+  if (skip) {
+    cursor.skip(skip);
+  }
+
+  return cursor;
+}
+
+export function createPipeline<TSchema extends Document = Document>(bridge: {
+  filter: Filter<TSchema>;
+  pipeline?: DocumentPipeline<TSchema>;
+  sort?: Sort;
+  limit?: number;
+  skip?: number;
+}) {
+  const { filter, pipeline, sort, limit, skip } = bridge;
+  return [
+    ...(!isEmpty(filter) ? [{ $match: filter }] : []),
+    ...(pipeline ?? []),
+    ...(!isEmpty(sort) ? [{ $sort: sort }] : []),
+    ...(typeof limit === 'number' ? [{ $limit: limit }] : []),
+    ...(typeof skip === 'number' ? [{ $skip: skip }] : []),
+  ];
 }

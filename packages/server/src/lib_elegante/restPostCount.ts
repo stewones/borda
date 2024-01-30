@@ -10,5 +10,7 @@ export async function restPostCount({
   docQRL: DocQRL;
 }) {
   const { filter, collection$ } = docQRL;
-  return res.status(200).json(await collection$.countDocuments(filter || {}));
+  return res
+    .status(200)
+    .json(await collection$.countDocuments(filter || ({} as any)));
 }

@@ -37,7 +37,9 @@ import {
 import { Version } from './Version';
 
 // @todo move somewhere else
-export function createServer(options: Partial<ServerParams>): Application {
+export function createEleganteServer(
+  options: Partial<ServerParams>
+): Application {
   const app = (EleganteServer.app = express());
 
   EleganteServer.params = { ...EleganteServer.params, ...options };

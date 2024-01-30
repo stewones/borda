@@ -137,7 +137,7 @@ export class BordaError extends Error {
   }
 
   override toString() {
-    return `BordaError ${this.code}: ${this.message}`;
+    return `Error ${this.code}: ${this.message}`;
   }
 
   toJSON() {

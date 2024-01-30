@@ -1,18 +1,27 @@
-if (typeof bun !== 'undefined') {
-  Object.defineProperty(jest, 'mock', {
-    value: bun.mock.module,
-    writable: true,
-  });
+import { MongoClient } from 'mongodb';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 
-  // global.jest.mock in test file now works
-  Object.defineProperty(global.jest, 'mock', {
-    value: bun.mock.module,
-    writable: true,
-  });
+export function mockMongoServerWith() {
+  const mongoServer = new MongoMemoryServer();
+  (MongoClient as jest.MockedClass<typeof MongoClient>).mockImplementation(
+    (url, options) =>
+      ({
+        connect: jest.fn().mockResolvedValue(true),
+        db: jest.fn().mockReturnValue({
+          collection: jest.fn().mockReturnValue({
+            insertOne: jest.fn().mockResolvedValue({ insertedId: 'some-id' }),
+            createIndex: jest.fn().mockResolvedValue(true),
+          }),
+          listCollections: jest.fn().mockReturnValue({
+            toArray: jest
+              .fn()
+              .mockResolvedValue([
+                { type: 'collection', name: 'some-collection' },
+              ]),
+          }),
+        }),
+      } as any)
+  );
 
-  // window.jest.mock in test file now works
-  Object.defineProperty(window.jest, 'mock', {
-    value: bun.mock.module,
-    writable: true,
-  });
+  return mongoServer;
 }

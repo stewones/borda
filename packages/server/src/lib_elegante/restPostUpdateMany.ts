@@ -62,7 +62,7 @@ export async function restPostUpdateMany({
   }
 
   const cursor = await collection$.updateMany(
-    filter || {},
+    filter || ({} as any),
     {
       $set: doc,
     },

@@ -9,7 +9,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Application } from 'express';
-import { Db, MongoClient } from 'mongodb';
+import {
+  Db,
+  MongoClient,
+} from 'mongodb';
 
 import {
   Document,
@@ -232,7 +235,7 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
   const { collection$, options, filter, sort, limit, skip } = docQRL;
   const { allowDiskUse } = (options as FindOptions) || {};
 
-  const cursor = collection$.find<T>(filter || {}, {
+  const cursor = collection$.find<T>(filter || ({} as any), {
     sort,
     ...options,
   });
