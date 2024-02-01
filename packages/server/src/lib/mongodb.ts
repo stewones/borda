@@ -10,9 +10,10 @@ import {
   BordaError,
   DocumentPipeline,
   ErrorCode,
+  isEmpty,
 } from '@borda/sdk';
 
-import { DocQRL } from './parseQuery';
+import { DocQRL } from './parse';
 
 export async function mongoConnect({ mongoURI }: { mongoURI: string }) {
   try {
@@ -40,11 +41,24 @@ export async function mongoCreateIndexes({ db }: { db: Db }) {
          * Project-wide we should never directly delete a document if we want to keep its reference.
          * The reasoning is due to hooks like `afterDelete` where we need the document to be available for linking it back to the user.
          */
-        await db
+
+        // check if index exists first
+        const indexes = await db.collection(collection.name).indexes();
+        const indexExists = indexes.find(
+          (index) => index.name === '_expires_at_1'
+        );
+        if (indexExists) {
+          continue;
+        }
+
+        const indexResult = await db
           .collection(collection.name)
           .createIndex({ _expires_at: 1 }, { expireAfterSeconds: 0 });
 
-        console.log(`💽 Index created for collection ${collection.name}`);
+        console.log(
+          `💽 Index created for collection ${collection.name}`,
+          indexResult
+        );
       }
     }
   } catch (err) {
@@ -93,5 +107,37 @@ export function createPipeline<TSchema extends Document = Document>(bridge: {
     ...(!isEmpty(sort) ? [{ $sort: sort }] : []),
     ...(typeof limit === 'number' ? [{ $limit: limit }] : []),
     ...(typeof skip === 'number' ? [{ $skip: skip }] : []),
-  ];
+  ] as unknown as DocumentPipeline<TSchema>;
+}
+
+export function queryHasMongoOperators(doc: any): boolean {
+  if (typeof doc !== 'object' || doc === null) {
+    return false;
+  }
+
+  for (const key in doc) {
+    if (key.startsWith('$')) {
+      return true;
+    }
+
+    if (typeof doc[key] === 'object' && doc[key] !== null) {
+      const hasOperator = hasMongoOperators(doc[key]);
+      if (hasOperator) {
+        return true;
+      }
+    }
+
+    if (Array.isArray(doc[key])) {
+      for (const item of doc[key]) {
+        if (typeof item === 'object' && item !== null) {
+          const hasOperator = hasMongoOperators(item);
+          if (hasOperator) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
 }

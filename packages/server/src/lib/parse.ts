@@ -8,16 +8,16 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Response } from 'express';
 import {
   Collection,
   Document,
 } from 'mongodb';
 
 import {
+  BordaError,
+  BordaQuery,
   DocumentLiveQuery,
   DocumentQuery,
-  EleganteError,
   ErrorCode,
   ExternalFieldName,
   InternalCollectionName,
@@ -31,7 +31,6 @@ import {
   log,
   pointerObjectFrom,
   Projection,
-  query,
   removeUndefinedProperties,
 } from '@elegante/sdk';
 
@@ -43,7 +42,7 @@ export interface DocQRL<T extends Document = Document>
   collection$: Collection<T>;
   doc: T;
   docs: T[];
-  res?: Response;
+  res?: Response; // @deprecated
 }
 
 export type DocQRLFrom = DocumentQuery | DocumentLiveQuery | Document;
@@ -52,23 +51,29 @@ export function parseDoc<T extends Document>({
   obj,
   inspect,
   isUnlocked,
+  cache,
+  query,
 }: {
   obj: any;
   inspect: boolean;
   isUnlocked: boolean;
+  cache: Cache;
+  query: BordaQuery;
 }): (docQuery: DocumentQuery) => Promise<T> {
   return async (docQuery) => {
     await parseInclude({
       obj,
       inspect,
+      cache,
+      query,
     })(docQuery).catch((err) => {
-      throw new EleganteError(ErrorCode.QUERY_INCLUDE_ERROR, err.message);
+      throw new BordaError(ErrorCode.QUERY_INCLUDE_ERROR, err.message || err);
     });
     await parseExclude({
       obj,
       inspect,
     })(docQuery).catch((err) => {
-      throw new EleganteError(ErrorCode.QUERY_EXCLUDE_ERROR, err.message);
+      throw new BordaError(ErrorCode.QUERY_EXCLUDE_ERROR, err.message || err);
     });
 
     return Promise.resolve(
@@ -83,10 +88,14 @@ export function parseDocs<T extends Document[]>({
   arr,
   inspect,
   isUnlocked,
+  cache,
+  query,
 }: {
   arr: any[];
   inspect: boolean;
   isUnlocked: boolean;
+  cache: Cache;
+  query: BordaQuery;
 }): (docQuery: DocumentQuery) => Promise<T[]> {
   return async (docQuery, params, locals) => {
     for (let item of arr) {
@@ -94,6 +103,8 @@ export function parseDocs<T extends Document[]>({
         obj: item,
         inspect,
         isUnlocked,
+        cache,
+        query,
       })(docQuery);
     }
     return Promise.resolve(arr as T[]);
@@ -205,7 +216,7 @@ export function parseExclude<T extends Document>({
 
 export function parseFilter(obj: any | any[]): any | any[] {
   if (!isServer())
-    throw new EleganteError(
+    throw new BordaError(
       ErrorCode.QUERY_FILTER_SERVER_ONLY,
       'we should only parse filters in the server'
     );
@@ -314,9 +325,13 @@ export function parseFilter(obj: any | any[]): any | any[] {
 export function parseInclude<T extends Document>({
   obj,
   inspect,
+  cache,
+  query,
 }: {
   obj: any;
   inspect: boolean;
+  cache: Cache;
+  query: BordaQuery;
 }): (docQuery: DocumentQuery) => Promise<T> {
   return async (docQuery) => {
     if (!obj) return {};
@@ -367,6 +382,8 @@ export function parseInclude<T extends Document>({
             pointerField,
             pointer,
             inspect,
+            cache,
+            query,
           });
           pointerValue[index] = pointer;
         }
@@ -384,6 +401,8 @@ export function parseInclude<T extends Document>({
         pointerField,
         pointerValue,
         inspect,
+        cache,
+        query,
       });
 
       // replace pointer with the actual document
@@ -402,6 +421,8 @@ export function parseInclude<T extends Document>({
         tree,
         pointerField,
         inspect,
+        cache,
+        query,
       });
     }
     return Promise.resolve(obj);
@@ -414,32 +435,33 @@ export async function parseJoin<T extends Document>({
   tree,
   pointerField,
   pointerValue,
+  cache,
+  query,
 }: {
   docQuery: DocumentQuery;
   obj: any;
   tree: { [key: string]: string[] };
   pointerField: string;
   pointerValue: any;
+  cache: Cache;
+  query: BordaQuery;
 }) {
   let doc;
 
   const join = tree[pointerField];
   const { collection, objectId } = pointerObjectFrom(pointerValue);
-  const memo = Cache.get(collection, objectId);
+  const memo = cache.get(collection, objectId);
 
   if (!isEmpty(memo)) {
     doc = memo;
   }
 
   if (isEmpty(memo)) {
-    doc = await query<T>(collection)
-      .include(join)
-      .unlock() // here we force unlock because `parseInclude` run in the server anyways 💁‍♂️
-      .findOne(objectId);
+    doc = await query<T>(collection).include(join).findOne(objectId);
 
     // memoize
     if (!isEmpty(doc)) {
-      Cache.set(collection, objectId, doc);
+      cache.set(collection, objectId, doc);
     }
   }
   return doc;
@@ -451,12 +473,15 @@ export async function parseJoinKeep({
   tree,
   pointerField,
   inspect,
+  cache,
 }: {
   docQuery: DocumentQuery;
   obj: any;
   tree: { [key: string]: string[] };
   pointerField: string;
   inspect: boolean;
+  cache: Cache;
+  query: BordaQuery;
 }) {
   for (const pointerTreeField of tree[pointerField]) {
     const pointerTreeBase = pointerTreeField.split('.')[0];
@@ -469,6 +494,8 @@ export async function parseJoinKeep({
     await parseInclude(obj[pointerField])({
       ...docQuery,
       include: [pointerTreeField],
+      cache,
+      query,
     });
   }
 }

@@ -1,7 +1,5 @@
-import {
-  Elysia,
-  ElysiaConfig,
-} from 'elysia';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Elysia, ElysiaConfig } from 'elysia';
 import {
   AggregateOptions,
   ChangeStreamOptions,
@@ -10,10 +8,7 @@ import {
   FindOptions,
   Sort,
 } from 'mongodb';
-import {
-  Observable,
-  Subject,
-} from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 
 import {
   DocumentEvent,
@@ -34,21 +29,27 @@ import {
   QueryMethod,
 } from '@borda/sdk';
 
+import { Cache } from './Cache';
+import { BordaFieldName, BordaHeaders } from './internal';
+import { mongoConnect, mongoCreateIndexes } from './mongodb';
 import {
-  BordaFieldName,
-  BordaHeaders,
-} from './internal';
-import {
-  mongoConnect,
-  mongoCreateIndexes,
-} from './mongodb';
-import {
-  DocQRLFrom,
-  parseQuery,
-} from './parse';
-import { createServer } from './rest';
-import { serverPostFind } from './restPostFind';
-import { serverPostInsert } from './restPostInsert';
+  aggregate,
+  count,
+  find,
+  get,
+  insert,
+  insertMany,
+  put,
+  remove,
+  removeMany,
+  update,
+  updateMany,
+  upsert,
+  upsertMany,
+} from './operation';
+import { DocQRLFrom, parseQuery } from './parse';
+import { createServer } from './server';
+import { Version } from './version';
 
 export interface BordaParams {
   name?: string;
@@ -247,25 +248,26 @@ export interface BordaQuery<TSchema extends Document = Document> {
 export class Borda {
   #name!: string;
   #inspect!: boolean;
+
   #mongoURI!: string;
+  #queryLimit!: number;
+  #cacheTTL!: number;
+  #config!: Partial<ElysiaConfig>;
+
   #serverKey!: string;
   #serverSecret!: string;
   #serverURL!: string;
   #serverHeaderPrefix!: string;
   #serverPoweredBy!: string;
-  #cacheTTL!: number;
-  #queryLimit!: number;
 
   #server!: Elysia;
   #db!: Db;
-  #cache!: Map<string, Document>; // @todo move the global Cache to here
+  #cache!: Cache;
 
-  public on = {
-    databaseConnect: new Subject<{
-      db: Db;
-      name: string;
-    }>(),
-  };
+  public onDatabaseConnect = new Subject<{
+    db: Db;
+    name: string;
+  }>();
 
   get db() {
     return this.#db;
@@ -315,6 +317,10 @@ export class Borda {
     return this.#server;
   }
 
+  get config() {
+    return this.#config;
+  }
+
   constructor(params?: Partial<BordaParams>) {
     const {
       name,
@@ -327,12 +333,12 @@ export class Borda {
       serverPoweredBy,
       cacheTTL,
       queryLimit,
-      config,
     } = params || {};
+    let { config } = params || {};
 
     // set default params
     this.#inspect = inspect || false;
-    this.#name = name || 'default';
+    this.#name = name || 'main-borda';
     this.#mongoURI =
       mongoURI ||
       process.env['BORDA_MONGO_URI'] ||
@@ -355,15 +361,15 @@ export class Borda {
       1 * 1000 * 60 * 60;
     this.#queryLimit = queryLimit || 50;
 
-    // instantiate the server
-    this.#server = createServer({
-      config,
-      serverHeaderPrefix: this.#serverHeaderPrefix,
-      serverKey: this.#serverKey,
-      serverSecret: this.#serverSecret,
-      name: this.#name,
-      poweredBy: this.#serverPoweredBy,
-    });
+    if (!config) {
+      config = {
+        name: this.#name,
+      };
+    } else {
+      config.name = this.#name;
+    }
+
+    this.#config = config;
   }
 
   log(...args: unknown[]) {
@@ -383,12 +389,38 @@ export class Borda {
   }
 
   async server() {
+    // instantiate the cache
+    this.#cache = new Cache({
+      inspect: this.#inspect,
+      cacheTTL: this.#cacheTTL,
+    });
+
+    // connect to mongodb and create indexes
     this.#db = await mongoConnect({ mongoURI: this.#mongoURI });
     await mongoCreateIndexes({ db: this.#db });
-    this.on.databaseConnect.next({
+
+    // instantiate the server
+    this.#server = createServer({
+      config: this.#config,
+      serverHeaderPrefix: this.#serverHeaderPrefix,
+      serverKey: this.#serverKey,
+      serverSecret: this.#serverSecret,
+      name: this.#name,
+      poweredBy: this.#serverPoweredBy,
+      query: this.query.bind(this),
+      cache: this.#cache,
+      db: this.#db,
+    });
+
+    // broadcast the database connection
+    this.onDatabaseConnect.next({
       db: this.#db,
       name: this.#name,
     });
+
+    this.#cache.clock();
+    console.log(`📡 Borda Server v${Version}`);
+
     return this.#server;
   }
 
@@ -679,22 +711,126 @@ export class Borda {
           inspect: inspect ?? false,
         });
 
+        if (['get'].includes(method)) {
+          return get({
+            docQRL,
+            objectId: objectId || '',
+            inspect,
+            unlocked: true,
+            cache: this.#cache,
+            query: this.query.bind(this),
+          });
+        }
+
+        if (['put'].includes(method)) {
+          return put({
+            docQRL,
+            objectId: objectId || '',
+            inspect,
+            cache: this.#cache,
+            unlocked: true,
+          });
+        }
+
         if (['find', 'findOne'].includes(method)) {
-          return serverPostFind<TSchema>({
+          return find<TSchema>({
             docQRL,
             method,
             inspect,
+            unlocked: true,
+            cache: this.#cache,
+            query: this.query.bind(this),
           });
         }
 
         if (method === 'insert') {
-          return serverPostInsert<TSchema>({
+          return insert({
+            docQRL,
+            inspect,
+            unlocked: true,
+          });
+        }
+
+        if (method === 'insertMany') {
+          return insertMany({
+            docQRL,
+            inspect,
+            unlocked: true,
+          });
+        }
+
+        if (method === 'remove') {
+          return remove({
+            docQRL,
+            inspect,
+            cache: this.#cache,
+            unlocked: true,
+          });
+        }
+
+        if (method === 'removeMany') {
+          return removeMany({
+            docQRL,
+            inspect,
+            cache: this.#cache,
+            unlocked: true,
+          });
+        }
+
+        if (method === 'aggregate') {
+          return aggregate({
+            docQRL,
+            inspect,
+            cache: this.#cache,
+            query: this.query.bind(this),
+            unlocked: true,
+          });
+        }
+
+        if (method === 'count') {
+          return count({
             docQRL,
             inspect,
           });
         }
 
-        return Promise.reject('method not implemented');
+        if (method === 'update') {
+          return update({
+            docQRL,
+            inspect,
+            cache: this.#cache,
+            unlocked: true,
+          });
+        }
+
+        if (method === 'updateMany') {
+          return updateMany({
+            docQRL,
+            inspect,
+            cache: this.#cache,
+            unlocked: true,
+          });
+        }
+
+        if (method === 'upsert') {
+          return upsert({
+            docQRL,
+            inspect,
+            cache: this.#cache,
+            unlocked: true,
+          });
+        }
+
+        if (method === 'upsertMany') {
+          return upsertMany({
+            docQRL,
+            inspect,
+            cache: this.#cache,
+            unlocked: true,
+          });
+        }
+
+        return Promise.reject(`method ${method} not implemented`);
       },
 
       on: (event, options?: ChangeStreamOptions) => {

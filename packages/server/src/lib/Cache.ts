@@ -1,108 +1,154 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 
 import {
   Document,
   InternalCollectionName,
-  log,
-} from '@elegante/sdk';
+  isEmpty,
+  isNumber,
+} from '@borda/sdk';
 
-import {
-  EleganteServer,
-} from '../lib_elegante/Server'; // @todo move cache and clock to the Borda instance
-
-interface Metadata {
+interface CacheMetadata {
   doc: Document;
   expires: number;
 }
 
-const memo: Map<string, Metadata> = new Map();
+export class Cache {
+  #memo: Map<string, CacheMetadata> = new Map();
+  #enabled!: boolean;
+  #inspect!: boolean;
+  #cacheTTL!: number;
 
-/**
- * global flags
- */
-let cache = true;
-
-/**
- * Memo abstract class which provides access to the memoized data
- *
- * @export
- * @abstract
- * @class Memo
- */
-export abstract class Cache {
-  public static get enabled(): boolean {
-    return cache;
+  get enabled(): boolean {
+    return this.#enabled;
   }
 
-  public static enable(): void {
-    cache = true;
+  get size(): number {
+    return this.#memo.size;
   }
 
-  public static disable(): void {
-    cache = false;
+  constructor({
+    inspect,
+    cacheTTL,
+  }: {
+    inspect?: boolean;
+    cacheTTL?: number;
+  } = {}) {
+    this.#inspect = inspect || true;
+    this.#cacheTTL = isNumber(cacheTTL) ? cacheTTL : 1000 * 60 * 60;
+    this.#enabled = this.#cacheTTL > 0;
+
+    if (inspect && !this.#enabled) {
+      console.log('❗ Document cache has been disabled.');
+      console.log(
+        '❗ Be sure to set cacheTTL to a positive number in production to boost queries performance.'
+      );
+    }
+  }
+
+  enable(): void {
+    this.#enabled = true;
+  }
+
+  disable(): void {
+    this.#enabled = false;
   }
 
   /**
    * a running clock to automatically invalidate cache based on the TTL
    * this helps to clean up memory and avoid service disruption by memory leaks
    */
-  public static clock(): void {
-    if (!Cache.enabled) return;
-    const documentCacheTTL = EleganteServer.params.documentCacheTTL;
+  clock(): void {
+    if (!this.#enabled) return;
+    const documentCacheTTL = this.#cacheTTL;
 
     const now = Date.now();
 
-    for (const [key, value] of memo) {
+    for (const [key, value] of this.#memo) {
       if (value.expires < now) {
-        log('cache removed', key);
-        memo.delete(key);
+        if (this.#inspect) {
+          console.log('cache removed', key);
+        }
+        this.#memo.delete(key);
       }
     }
 
-    setTimeout(Cache.clock, documentCacheTTL);
+    setTimeout(this.clock.bind(this), documentCacheTTL);
   }
 
-  public static invalidate(collection: string, objectId: string): void {
-    if (!Cache.enabled) return;
+  invalidate({
+    collection,
+    objectId,
+    data,
+  }: {
+    collection: string;
+    objectId: string;
+    data?: Document;
+  }): void {
+    if (!this.#enabled) return;
     collection = InternalCollectionName[collection] ?? collection;
     const key = `doc:${collection}:${objectId}`;
-    if (Cache.has(key)) {
-      log('cache invalidated', key);
-      Cache.delete(key);
-    }
-  }
 
-  public static get size(): number {
-    return memo.size;
+    if (!isEmpty(data)) {
+      if (collection === '_Session') {
+        return this.invalidate({ collection, objectId: data['_token'] });
+      }
+
+      if (collection === '_User') {
+        /**
+         * we need to invalidate cache of all
+         * sessions that belong to this user
+         */
+        const ref$ = this.get('Session$token', data['_id']);
+        if (ref$) {
+          const { token } = ref$;
+          this.invalidate({ collection: '_Session', objectId: token });
+          this.invalidate({
+            collection: 'Session$token',
+            objectId: data['_id'],
+          });
+          return;
+        }
+      }
+
+      return this.invalidate({ collection, objectId: data['_id'] });
+    } else {
+      if (this.has(key)) {
+        if (this.#inspect) {
+          console.log('cache invalidated', key);
+        }
+        this.delete(key);
+      }
+    }
   }
 
   /**
    * get a key in the following format
    */
-  public static get<T = Document>(
-    collection: string,
-    objectId: string
-  ): T | void {
-    if (!Cache.enabled) return;
+  get<T = Document>(collection: string, objectId: string): T | void {
+    if (!this.#enabled) return;
     collection = InternalCollectionName[collection] ?? collection;
 
-    const data: Metadata | undefined = memo.get(
+    const data: Metadata | undefined = this.#memo.get(
       `doc:${collection}:${objectId}`
     );
     if (data && data.expires < Date.now()) {
-      log('cache miss', `doc:${collection}:${objectId}`);
-      Cache.delete(`doc:${collection}:${objectId}`);
+      if (this.#inspect) {
+        console.log('cache miss', `doc:${collection}:${objectId}`);
+      }
+      this.delete(`doc:${collection}:${objectId}`);
       return;
     }
 
     if (data) {
-      log('cache hit', `doc:${collection}:${objectId}`);
+      if (this.#inspect) {
+        console.log('cache hit', `doc:${collection}:${objectId}`);
+      }
       return data.doc as T;
     }
 
@@ -127,49 +173,50 @@ export abstract class Cache {
    *  'doc:_User:1337': { expires: 1234567890, data: { objectId: '1337', name: 'John' } },
    * }
    */
-  public static set(collection: string, objectId: string, doc: Document) {
-    if (!Cache.enabled) return;
-    const documentCacheTTL =
-      EleganteServer.params.documentCacheTTL ?? 1000 * 60 * 60;
+  set(collection: string, objectId: string, doc: Document) {
+    if (!this.#enabled) return;
+    const documentCacheTTL = this.#cacheTTL;
 
     collection = InternalCollectionName[collection] ?? collection;
 
     const key = `doc:${collection}:${objectId}`;
 
-    if (!Cache.has(key)) {
-      log('cache set', key);
-      memo.set(`doc:${collection}:${objectId}`, {
+    if (!this.has(key)) {
+      if (this.#inspect) {
+        console.log('cache set', key);
+      }
+      this.#memo.set(`doc:${collection}:${objectId}`, {
         doc,
         expires: Date.now() + documentCacheTTL,
       });
     }
   }
 
-  public static has(key: string): boolean {
-    return memo.has(key);
+  has(key: string): boolean {
+    return this.#memo.has(key);
   }
 
-  public static delete(key: string): boolean {
-    return memo.delete(key);
+  delete(key: string): boolean {
+    return this.#memo.delete(key);
   }
 
-  public static clear(): void {
-    return memo.clear();
+  clear(): void {
+    return this.#memo.clear();
   }
 
-  public static keys(): IterableIterator<string> {
-    return memo.keys();
+  keys(): IterableIterator<string> {
+    return this.#memo.keys();
   }
 
-  public static values(): IterableIterator<Metadata> {
-    return memo.values();
+  values(): IterableIterator<Metadata> {
+    return this.#memo.values();
   }
 
-  public static entries(): IterableIterator<[string, Metadata]> {
-    return memo.entries();
+  entries(): IterableIterator<[string, Metadata]> {
+    return this.#memo.entries();
   }
 
-  public static forEach(
+  forEach(
     callbackfn: (
       value: Metadata,
       key: string,
@@ -177,33 +224,7 @@ export abstract class Cache {
     ) => void,
     thisArg?: Metadata
   ): void {
-    return memo.forEach(callbackfn, thisArg);
+    return this.#memo.forEach(callbackfn, thisArg);
   }
 }
 
-/**
- * pure functions
- */
-export async function invalidateCache(collection: string, data: Document) {
-  collection = InternalCollectionName[collection] ?? collection;
-
-  if (collection === '_Session') {
-    return Cache.invalidate(collection, data['_token']);
-  }
-
-  if (collection === '_User') {
-    /**
-     * we need to invalidate cache of all
-     * sessions that belong to this user
-     */
-    const ref$ = Cache.get('Session$token', data['_id']);
-    if (ref$) {
-      const { token } = ref$;
-      Cache.invalidate('_Session', token);
-      Cache.invalidate('Session$token', data['_id']);
-      return;
-    }
-  }
-
-  return Cache.invalidate(collection, data['_id']);
-}
