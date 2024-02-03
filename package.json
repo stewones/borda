@@ -6,7 +6,8 @@
   "scripts": {
     "test.server": "bun test server --codeCoverage",
     "test.server.coverage": "bunx http-server coverage/packages/server -c-1",
-    "test.server.watch": "nx test server --codeCoverage --watch"
+    "test.server.watch": "nx test server --codeCoverage --watch",
+    "check.server": "tsc --emitDeclarationOnly"
   },
   "private": true,
   "devDependencies": {
@@ -82,5 +83,8 @@
     "@nx/node": "17.3.0",
     "@nx/rollup": "17.3.0",
     "@nx/angular": "17.3.0"
+  },
+  "dependencies": {
+    "@elysiajs/html": "^0.8.0"
   }
 }

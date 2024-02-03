@@ -3,19 +3,19 @@
  * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
   Collection,
+  Db,
   Document,
 } from 'mongodb';
 
 import {
   BordaError,
-  BordaQuery,
   DocumentLiveQuery,
   DocumentQuery,
   ErrorCode,
@@ -34,7 +34,8 @@ import {
   removeUndefinedProperties,
 } from '@elegante/sdk';
 
-import { Cache } from './cache';
+import { BordaQuery } from './Borda';
+import { Cache } from './Cache';
 import { BordaSensitiveFields } from './internal';
 
 export interface DocQRL<T extends Document = Document>
@@ -58,7 +59,7 @@ export function parseDoc<T extends Document>({
   inspect: boolean;
   isUnlocked: boolean;
   cache: Cache;
-  query: BordaQuery;
+  query: (collection: string) => BordaQuery;
 }): (docQuery: DocumentQuery) => Promise<T> {
   return async (docQuery) => {
     await parseInclude({
@@ -95,9 +96,9 @@ export function parseDocs<T extends Document[]>({
   inspect: boolean;
   isUnlocked: boolean;
   cache: Cache;
-  query: BordaQuery;
+  query: (collection: string) => BordaQuery;
 }): (docQuery: DocumentQuery) => Promise<T[]> {
-  return async (docQuery, params, locals) => {
+  return async (docQuery) => {
     for (let item of arr) {
       item = await parseDoc({
         obj: item,
@@ -194,7 +195,7 @@ export function parseExclude<T extends Document>({
      * parse tree and delete the last level of keys
      */
 
-    const parse = (obj: any, tree: { [key: string]: string[] }) => {
+    const parse = (obj: any, tree: Record<string, string[]>) => {
       for (const key in tree) {
         const treeValue = tree[key];
         if (treeValue.length) {
@@ -254,7 +255,7 @@ export function parseFilter(obj: any | any[]): any | any[] {
        * eg: [ '$someField.someDate', '2024-01-21T20:33:37.302Z' ]       *
        */
       if (Array.isArray(value) && value.length === 2) {
-        const [field, date] = value;
+        const [, date] = value;
         if (isISODate(date)) {
           value[1] = new Date(date);
         }
@@ -331,7 +332,7 @@ export function parseInclude<T extends Document>({
   obj: any;
   inspect: boolean;
   cache: Cache;
-  query: BordaQuery;
+  query: (collection: string) => BordaQuery;
 }): (docQuery: DocumentQuery) => Promise<T> {
   return async (docQuery) => {
     if (!obj) return {};
@@ -376,12 +377,9 @@ export function parseInclude<T extends Document>({
         for (let pointer of pointerValue) {
           const index = pointerValue.indexOf(pointer);
           pointer = await parseJoin({
-            docQuery,
-            obj,
             tree,
             pointerField,
-            pointer,
-            inspect,
+            pointerValue,
             cache,
             query,
           });
@@ -395,12 +393,9 @@ export function parseInclude<T extends Document>({
       }
 
       const doc = await parseJoin({
-        docQuery,
-        obj,
         tree,
         pointerField,
         pointerValue,
-        inspect,
         cache,
         query,
       });
@@ -429,22 +424,18 @@ export function parseInclude<T extends Document>({
   };
 }
 
-export async function parseJoin<T extends Document>({
-  docQuery,
-  obj,
+export async function parseJoin({
   tree,
   pointerField,
   pointerValue,
   cache,
   query,
 }: {
-  docQuery: DocumentQuery;
-  obj: any;
-  tree: { [key: string]: string[] };
+  tree: Record<string, string[]>;
   pointerField: string;
   pointerValue: any;
   cache: Cache;
-  query: BordaQuery;
+  query: (collection: string) => BordaQuery;
 }) {
   let doc;
 
@@ -457,7 +448,7 @@ export async function parseJoin<T extends Document>({
   }
 
   if (isEmpty(memo)) {
-    doc = await query<T>(collection).include(join).findOne(objectId);
+    doc = await query(collection).include(join).findOne(objectId);
 
     // memoize
     if (!isEmpty(doc)) {
@@ -474,14 +465,15 @@ export async function parseJoinKeep({
   pointerField,
   inspect,
   cache,
+  query,
 }: {
   docQuery: DocumentQuery;
   obj: any;
-  tree: { [key: string]: string[] };
+  tree: Record<string, string[]>;
   pointerField: string;
   inspect: boolean;
   cache: Cache;
-  query: BordaQuery;
+  query: (collection: string) => BordaQuery;
 }) {
   for (const pointerTreeField of tree[pointerField]) {
     const pointerTreeBase = pointerTreeField.split('.')[0];
@@ -491,12 +483,12 @@ export async function parseJoinKeep({
       console.log('pointerTreeBase', pointerTreeBase);
     }
 
-    await parseInclude(obj[pointerField])({
-      ...docQuery,
-      include: [pointerTreeField],
+    await parseInclude({
+      obj,
+      inspect,
       cache,
       query,
-    });
+    })(docQuery);
   }
 }
 
@@ -512,7 +504,7 @@ export function createTree(arr: string[]) {
       }
       acc[key] = acc[key].filter((item) => item);
       return acc;
-    }, {} as { [key: string]: string[] }) ?? {}
+    }, {} as Record<string, string[]>) ?? {}
   );
 }
 
@@ -687,6 +679,7 @@ export function parseQuery({
 }
 
 export function logQuery(docQRL: DocQRL) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { collection$, ...rest } = docQRL;
   console.log('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
   console.log('~~~~~~~~ QUERY INSPECTION ~~~~~~~~~');

@@ -1,10 +1,9 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Document } from 'mongodb';
 
 import {
   AggregateOptions,
   BordaError,
-  BordaQuery,
   Document,
   DocumentResponse,
   ErrorCode,
@@ -19,7 +18,6 @@ import {
 } from '@borda/sdk';
 
 import { CloudTriggerCallback, getCloudTrigger } from '../lib_elegante/Cloud'; // @todo rethink this with the Borda instance
-import { getCloudTrigger } from '../lib_elegante/Cloud'; // @todo
 import { newObjectId } from '../utils';
 import { BordaQuery } from './Borda';
 import { Cache } from './Cache';
@@ -47,7 +45,7 @@ export async function aggregate({
   docQRL: DocQRL;
   inspect: boolean;
   cache: Cache;
-  query: BordaQuery;
+  query: (collection: string) => BordaQuery;
   unlocked: boolean;
 }) {
   const { collection$, pipeline, filter, limit, skip, sort, options } = docQRL;
@@ -59,7 +57,7 @@ export async function aggregate({
     limit: limit ?? 10000,
     skip: skip ?? 0,
     sort: sort ?? {},
-  });
+  } as any);
 
   if (inspect) {
     console.log('pipeline', JSON.stringify(pipe, null, 2));
@@ -85,10 +83,10 @@ export async function aggregate({
 export async function count({ docQRL }: { docQRL: DocQRL; inspect?: boolean }) {
   const { filter, collection$ } = docQRL;
 
-  return collection$.countDocuments(filter || ({} as any)) as number;
+  return collection$.countDocuments(filter || ({} as any)) as unknown as number;
 }
 
-export async function find<TSchema = Document>({
+export async function find<TSchema extends Document = Document>({
   docQRL,
   method,
   inspect,
@@ -101,7 +99,7 @@ export async function find<TSchema = Document>({
   inspect: boolean;
   unlocked: boolean;
   cache: Cache;
-  query: BordaQuery;
+  query: (collection: string) => BordaQuery;
 }) {
   const docs: Document[] = [];
   const cursor = createFindCursor(docQRL);
@@ -110,29 +108,27 @@ export async function find<TSchema = Document>({
     docs.push(doc);
   });
 
-  return (
-    method === 'findOne'
-      ? parseProjection(
-          docQRL.projection ?? ({} as any),
-          (await parseDoc({
-            obj: docs[0],
-            inspect,
-            isUnlocked: unlocked,
-            cache,
-            query,
-          })(docQRL)) ?? {}
-        )
-      : parseProjection(
-          docQRL.projection ?? ({} as any),
-          await parseDocs({
-            arr: docs,
-            inspect,
-            isUnlocked: unlocked,
-            cache,
-            query,
-          })(docQRL)
-        ) ?? []
-  ) as DocumentResponse<TSchema>;
+  return (method === 'findOne'
+    ? parseProjection(
+        docQRL.projection ?? ({} as any),
+        (await parseDoc({
+          obj: docs[0],
+          inspect,
+          isUnlocked: unlocked,
+          cache,
+          query,
+        })(docQRL)) ?? {}
+      )
+    : parseProjection(
+        docQRL.projection ?? ({} as any),
+        await parseDocs({
+          arr: docs,
+          inspect,
+          isUnlocked: unlocked,
+          cache,
+          query,
+        })(docQRL)
+      ) ?? []) as unknown as DocumentResponse<TSchema>;
 }
 
 export async function insert({
@@ -160,7 +156,7 @@ export async function insert({
         qrl: docQRL,
         context: docQRL.options?.context ?? {},
         request,
-      });
+      } as any);
     }
 
     if (
@@ -261,7 +257,7 @@ export async function insertMany({
         qrl: docQRL,
         context: docQRL.options?.context ?? {},
         request,
-      });
+      } as any);
     }
 
     if (
@@ -506,7 +502,7 @@ export async function update({
         qrl: docQRL,
         context: docQRL.options?.context ?? {},
         request,
-      });
+      } as any);
     }
 
     if (beforeSaveCallback) {
@@ -911,6 +907,9 @@ export async function get({
   query: (collection: string) => BordaQuery;
 }) {
   try {
+    const { collection } = docQRL;
+    const collectionName = collection;
+
     /**
      * query against to any of the reserved collections
      * if not unlocked should be strictly forbidden
@@ -921,16 +920,14 @@ export async function get({
     ];
 
     if (!unlocked && reservedCollections.includes(collectionName)) {
-      return res
-        .status(405)
-        .json(
-          new BordaError(
-            ErrorCode.QUERY_NOT_ALLOWED,
-            `You can't execute the operation 'get' on '${
-              ExternalCollectionName[collectionName] ?? collectionName
-            }' because it's a reserved collection`
-          )
-        );
+      return Promise.reject(
+        new BordaError(
+          ErrorCode.QUERY_NOT_ALLOWED,
+          `You can't execute the operation 'get' on '${
+            ExternalCollectionName[collectionName] ?? collectionName
+          }' because it's a reserved collection`
+        ).toJSON()
+      );
     }
 
     /**
@@ -944,9 +941,13 @@ export async function get({
 
     return parseProjection(
       docQRL.projection ?? {},
-      await parseDoc({ obj: doc, cache, query, inspect, isUnlocked: unlocked })(
-        docQRL
-      )
+      await parseDoc({
+        obj: doc,
+        cache,
+        query,
+        inspect: inspect ?? false,
+        isUnlocked: unlocked,
+      })(docQRL)
     );
   } catch (err) {
     return new BordaError(ErrorCode.REST_GET_ERROR, err as object).toJSON();
@@ -995,7 +996,7 @@ export async function put({
         qrl: docQRL,
         context: docQRL.options?.context ?? {},
         request,
-      });
+      } as any);
     }
 
     if (
@@ -1070,7 +1071,10 @@ export async function put({
           });
         }
 
-        cache.invalidate(collectionName, docAfter);
+        cache.invalidate({
+          collection: collectionName,
+          data: docAfter,
+        });
         return {};
       } else {
         return Promise.reject(
@@ -1097,6 +1101,100 @@ export async function put({
   } catch (err) {
     return Promise.reject(
       new BordaError(ErrorCode.REST_GET_ERROR, err as object).toJSON()
+    );
+  }
+}
+
+export async function del({
+  docQRL,
+  objectId,
+  request,
+  unlocked,
+  cache,
+}: {
+  docQRL: DocQRL;
+  objectId: string;
+  inspect?: boolean;
+  unlocked?: boolean;
+  request?: Request & any;
+  cache: Cache;
+}) {
+  try {
+    const { collection$, collection } = docQRL;
+    const collectionName = collection;
+    /**
+     * query against to any of the reserved collections
+     * if not unlocked should be strictly forbidden
+     */
+    const reservedCollections = [
+      ...Object.keys(InternalCollectionName),
+      ...Object.keys(ExternalCollectionName),
+    ];
+    if (!unlocked && reservedCollections.includes(collectionName!)) {
+      return Promise.reject(
+        new BordaError(
+          ErrorCode.QUERY_NOT_ALLOWED,
+          `You can't execute the operation 'delete' on '${
+            ExternalCollectionName[collectionName!] ?? collectionName
+          }' because it's a reserved collection`
+        ).toJSON()
+      );
+    }
+
+    /**
+     * @todo run beforeDelete
+     */
+    const qrl: Partial<DocQRL<any>> = {
+      filter: {
+        _id: {
+          $eq: objectId,
+        },
+      },
+    };
+
+    const cursor = await collection$!.findOneAndUpdate(
+      { ...qrl.filter },
+      { $set: { _expires_at: new Date() } },
+      {
+        returnDocument: 'after',
+        readPreference: 'primary',
+      }
+    );
+
+    if (cursor.ok && cursor.value) {
+      const afterDeletePayload = parseResponse(
+        { before: cursor.value, doc: cursor.value, after: null },
+        {
+          removeSensitiveFields: !unlocked,
+        }
+      );
+
+      const afterDelete = getCloudTrigger(
+        collectionName as string,
+        'afterDelete'
+      );
+      if (afterDelete) {
+        afterDelete.fn({
+          ...afterDeletePayload,
+          qrl,
+          context: docQRL.options?.context ?? {},
+          request,
+        });
+      }
+
+      cache.invalidate({ collection: collectionName, data: cursor.value });
+      return {};
+    } else {
+      return Promise.reject(
+        new BordaError(
+          ErrorCode.REST_DOCUMENT_NOT_FOUND,
+          'document not found'
+        ).toJSON()
+      );
+    }
+  } catch (err) {
+    return Promise.reject(
+      new BordaError(ErrorCode.REST_DELETE_ERROR, err as object).toJSON()
     );
   }
 }

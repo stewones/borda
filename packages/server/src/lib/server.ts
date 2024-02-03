@@ -1,17 +1,65 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Elysia, ElysiaConfig } from 'elysia';
-import { Db } from 'mongodb';
+import { CollectionInfo, Db } from 'mongodb';
 
-import { BordaError, ErrorCode, isEmpty, Session } from '@borda/sdk';
-import { getCloudFunction } from '@borda/server';
+import {
+  BordaError,
+  ErrorCode,
+  InternalCollectionName,
+  isEmpty,
+  PluginHook,
+  pointer,
+  Session,
+  User,
+} from '@borda/sdk';
+import { getCloudFunction, newToken } from '@borda/server';
 
 import { BordaQuery } from './Borda';
 import { Cache } from './Cache';
 import { BordaHeaders } from './internal';
-import { restGet, restPost, restPut } from './rest';
+import {
+  restGet,
+  restPost,
+  restPut,
+  restUserMe,
+  restUserSignOut,
+} from './rest';
 
-export const addPowered = ({ server, by }: { server: Elysia; by: string }) =>
-  server.onAfterHandle(({ set }) => {
+function requestTargetsBorda({
+  request,
+  collections,
+}: {
+  request: Request & any;
+  collections: CollectionInfo[];
+}) {
+  // extract the path from request.url
+  const path = new URL(request.url).pathname;
+  const collectionRequested = path.split('/')[1];
+  const collectionTargeted =
+    InternalCollectionName[collectionRequested] || collectionRequested;
+
+  const routesAvailable = ['ping', ...collections.map((c) => c.name)];
+
+  if (!routesAvailable.includes(collectionTargeted)) {
+    return false;
+  }
+
+  return true;
+}
+
+export const addPowered = ({
+  server,
+  by,
+  collections,
+}: {
+  server: Elysia;
+  by: string;
+  collections: CollectionInfo[];
+}) =>
+  server.onAfterHandle(({ set, request }) => {
+    if (!requestTargetsBorda({ request, collections })) {
+      return;
+    }
     set.headers['X-Powered-By'] = by;
   });
 
@@ -19,12 +67,18 @@ export const ensureApiKey = ({
   server,
   serverKey,
   serverHeaderPrefix,
+  collections,
 }: {
   server: Elysia;
   serverKey: string;
   serverHeaderPrefix: string;
+  collections: CollectionInfo[];
 }) =>
   server.onRequest(({ set, request }) => {
+    if (!requestTargetsBorda({ request, collections })) {
+      return;
+    }
+
     const apiKeyHeaderKey = `${serverHeaderPrefix}-${BordaHeaders['apiKey']}`;
     const apiKey = request.headers.get(apiKeyHeaderKey?.toLowerCase());
 
@@ -48,7 +102,7 @@ export async function ensureApiSession({
   cache,
   query,
   serverHeaderPrefix,
-  collectionName,
+  params,
 }: {
   set: any;
   path: string;
@@ -56,11 +110,13 @@ export async function ensureApiSession({
   cache: Cache;
   query: (collection: string) => BordaQuery;
   serverHeaderPrefix: string;
-  collectionName: string;
+  params: any;
 }) {
   let isPublicCloudFunction = false;
   let session: Session | null = null;
   let memo: Session | void;
+
+  const { collectionName } = params || {};
 
   const token = request.headers.get(
     `${serverHeaderPrefix}-${BordaHeaders['apiToken']}`
@@ -122,7 +178,7 @@ export async function ensureApiSession({
     !isPublicCloudFunction
   ) {
     set.status = 401;
-    return new BordaError(ErrorCode.UNAUTHORIZED, 'Unauthorized').toString();
+    return new BordaError(ErrorCode.UNAUTHORIZED, 'Unauthorized').toJSON();
   }
 
   return;
@@ -132,12 +188,18 @@ export const routeUnlock = ({
   server,
   serverSecret,
   serverHeaderPrefix,
+  collections,
 }: {
   server: Elysia;
   serverSecret: string;
   serverHeaderPrefix: string;
+  collections: CollectionInfo[];
 }) =>
   server.onRequest(({ request }: { request: any }) => {
+    if (!requestTargetsBorda({ request, collections })) {
+      return;
+    }
+
     const apiSecret = request.headers.get(
       `${serverHeaderPrefix}-${BordaHeaders['apiSecret']}`
     );
@@ -153,11 +215,16 @@ export const pingRoute = ({ server }: { server: Elysia }) =>
 export const queryInspect = ({
   server,
   serverHeaderPrefix,
+  collections,
 }: {
   server: Elysia;
   serverHeaderPrefix: string;
+  collections: CollectionInfo[];
 }) =>
   server.onRequest(({ request }: { request: any }) => {
+    if (!requestTargetsBorda({ request, collections })) {
+      return;
+    }
     const apiInspect = request.headers.get(
       `${serverHeaderPrefix}-${BordaHeaders['apiInspect']}`
     );
@@ -169,36 +236,79 @@ export const queryInspect = ({
     return;
   });
 
+export async function createSession({
+  user,
+  query,
+}: {
+  user: User;
+  query: (collection: string) => BordaQuery;
+}) {
+  /**
+   * because we don't want to expose the user password
+   */
+  delete user.password;
+
+  /**
+   * expires in 1 year
+   * @todo make this an option ?
+   */
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+  /**
+   * generate a new session token
+   */
+  const token = `e:${newToken()}`;
+  const session = await query('Session').insert({
+    user: pointer('User', user.objectId),
+    token,
+    expiresAt: expiresAt.toISOString(),
+  });
+
+  return { ...session, user };
+}
+
 export function createServer({
   config,
   serverHeaderPrefix,
   serverKey,
   serverSecret,
+  serverURL,
   poweredBy,
   query,
+  plugin,
   cache,
   db,
+  collections,
 }: {
   name?: string;
   config?: Partial<ElysiaConfig>;
   serverHeaderPrefix: string;
   serverKey: string;
   serverSecret: string;
+  serverURL: string;
   poweredBy: string;
   query: (collection: string) => BordaQuery;
+  plugin: (name: PluginHook) => ((params?: any) => any) | undefined;
   cache: Cache;
   db: Db;
+  collections: CollectionInfo[];
 }) {
   const server = new Elysia(config);
   const q = query;
-  server.use(addPowered({ server, by: poweredBy }));
-  server.use(ensureApiKey({ server, serverKey, serverHeaderPrefix }));
-  server.use(routeUnlock({ server, serverSecret, serverHeaderPrefix }));
-  server.use(queryInspect({ server, serverHeaderPrefix }));
+
+  server.use(addPowered({ server, by: poweredBy, collections }));
+  server.use(
+    ensureApiKey({ server, serverKey, serverHeaderPrefix, collections })
+  );
+  server.use(
+    routeUnlock({ server, serverSecret, serverHeaderPrefix, collections })
+  );
+  server.use(queryInspect({ server, serverHeaderPrefix, collections }));
   server.use(pingRoute({ server }));
 
   /**
-   * handle rest routes
+   * define rest routes
    */
   server.post(
     '/:collectionName',
@@ -217,8 +327,10 @@ export function createServer({
         body,
         db,
         query,
+        plugin,
         cache,
         serverHeaderPrefix,
+        serverURL,
       }),
     {
       async beforeHandle({
@@ -232,14 +344,13 @@ export function createServer({
         request: Request & any;
         params: any;
       }) {
-        const { collectionName } = params;
         return ensureApiSession({
           set,
           path,
           request,
           cache,
           query,
-          collectionName,
+          params,
           serverHeaderPrefix,
         });
       },
@@ -276,14 +387,13 @@ export function createServer({
         request: Request & any;
         params: any;
       }) {
-        const { collectionName } = params;
         return ensureApiSession({
           set,
           path,
           request,
           cache,
           query,
-          collectionName,
+          params,
           serverHeaderPrefix,
         });
       },
@@ -330,19 +440,84 @@ export function createServer({
         request: Request & any;
         params: any;
       }) {
-        const { collectionName } = params;
         return ensureApiSession({
           set,
           path,
+          params,
           request,
           cache,
           query,
-          collectionName,
           serverHeaderPrefix,
         });
       },
     }
   );
 
+  server.get(
+    '/me',
+    async ({ request }: { request: Request & any }) =>
+      restUserMe({
+        request,
+      }),
+    {
+      async beforeHandle({
+        set,
+        path,
+        request,
+        params,
+      }: {
+        set: any;
+        path: string;
+        request: Request & any;
+        params: any;
+      }) {
+        return ensureApiSession({
+          set,
+          path,
+          params,
+          request,
+          cache,
+          query,
+          serverHeaderPrefix,
+        });
+      },
+    }
+  );
+
+  server.delete(
+    '/me',
+    async ({ request }: { request: Request & any }) =>
+      restUserSignOut({
+        request,
+        query,
+      }),
+    {
+      async beforeHandle({
+        set,
+        path,
+        request,
+        params,
+      }: {
+        set: any;
+        path: string;
+        request: Request & any;
+        params: any;
+      }) {
+        return ensureApiSession({
+          set,
+          path,
+          params,
+          request,
+          cache,
+          query,
+          serverHeaderPrefix,
+        });
+      },
+    }
+  );
+
+  /**
+   * return the server to be extended by the consumer
+   */
   return server;
 }

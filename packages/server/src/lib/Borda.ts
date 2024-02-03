@@ -11,6 +11,7 @@ import {
 import { Observable, Subject } from 'rxjs';
 
 import {
+  Auth,
   DocumentEvent,
   DocumentExtraOptions,
   DocumentFilter,
@@ -24,10 +25,12 @@ import {
   ManyInsertResponse,
   ManyUpdateResponse,
   ManyUpsertResponse,
+  PluginHook,
   Projection,
   QRLParams,
   QueryMethod,
-} from '@borda/sdk';
+  User,
+} from '@borda/client';
 
 import { Cache } from './Cache';
 import { BordaFieldName, BordaHeaders } from './internal';
@@ -35,6 +38,7 @@ import { mongoConnect, mongoCreateIndexes } from './mongodb';
 import {
   aggregate,
   count,
+  del,
   find,
   get,
   insert,
@@ -48,6 +52,11 @@ import {
   upsertMany,
 } from './operation';
 import { DocQRLFrom, parseQuery } from './parse';
+import {
+  BordaEmailPasswordResetTemplatePlugin,
+  BordaEmailPlugin,
+  ServerPlugin,
+} from './plugin';
 import { createServer } from './server';
 import { Version } from './version';
 
@@ -83,6 +92,9 @@ export interface BordaParams {
 
   // custom Elysia config
   config?: Partial<ElysiaConfig>;
+
+  // custom Borda plugins
+  plugins?: ServerPlugin[];
 }
 
 export interface BordaQuery<TSchema extends Document = Document> {
@@ -263,6 +275,8 @@ export class Borda {
   #server!: Elysia;
   #db!: Db;
   #cache!: Cache;
+  #plugins!: ServerPlugin[];
+  #auth!: Auth;
 
   public onDatabaseConnect = new Subject<{
     db: Db;
@@ -321,6 +335,14 @@ export class Borda {
     return this.#config;
   }
 
+  get plugins() {
+    return this.#plugins;
+  }
+
+  get auth() {
+    return this.#auth;
+  }
+
   constructor(params?: Partial<BordaParams>) {
     const {
       name,
@@ -333,10 +355,12 @@ export class Borda {
       serverPoweredBy,
       cacheTTL,
       queryLimit,
+      plugins,
     } = params || {};
     let { config } = params || {};
 
     // set default params
+
     this.#inspect = inspect || false;
     this.#name = name || 'main-borda';
     this.#mongoURI =
@@ -370,6 +394,8 @@ export class Borda {
     }
 
     this.#config = config;
+
+    this.addPlugins(plugins || []);
   }
 
   log(...args: unknown[]) {
@@ -389,6 +415,14 @@ export class Borda {
   }
 
   async server() {
+    // instantiate auth
+    this.#auth = new Auth({
+      serverKey: this.#serverKey,
+      serverSecret: this.#serverSecret,
+      serverURL: this.#serverURL,
+      serverHeaderPrefix: this.#serverHeaderPrefix,
+    });
+
     // instantiate the cache
     this.#cache = new Cache({
       inspect: this.#inspect,
@@ -400,16 +434,21 @@ export class Borda {
     await mongoCreateIndexes({ db: this.#db });
 
     // instantiate the server
+    const collections = await this.#db.listCollections().toArray();
+
     this.#server = createServer({
       config: this.#config,
       serverHeaderPrefix: this.#serverHeaderPrefix,
       serverKey: this.#serverKey,
+      serverURL: this.#serverURL,
       serverSecret: this.#serverSecret,
       name: this.#name,
       poweredBy: this.#serverPoweredBy,
       query: this.query.bind(this),
+      plugin: this.plugin.bind(this),
       cache: this.#cache,
       db: this.#db,
+      collections,
     });
 
     // broadcast the database connection
@@ -422,6 +461,64 @@ export class Borda {
     console.log(`📡 Borda Server v${Version}`);
 
     return this.#server;
+  }
+
+  plugin<T = undefined, Y = T>(
+    hook: PluginHook
+  ): ((params?: T) => Y) | undefined {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    let fn = undefined;
+    this.plugins.find((plugin: ServerPlugin) => {
+      const ph = plugin[hook as keyof ServerPlugin];
+
+      if (ph && typeof ph === 'function') {
+        fn = ph;
+      }
+    });
+
+    return fn;
+  }
+
+  addPlugins(plugins: ServerPlugin[]) {
+    const defaultEmailPlugin = {
+      name: 'EmailProvider',
+      version: '0.0.0',
+      EmailProvider() {
+        // implement your own email provider
+        // the default one is just a console log
+        return BordaEmailPlugin();
+      },
+    };
+
+    const defaultEmailTemplatePlugin = {
+      name: 'EmailPasswordResetTemplate',
+      version: '0.0.0',
+      EmailPasswordResetTemplate({
+        token,
+        user,
+        baseUrl,
+      }: {
+        token: string;
+        user: User;
+        baseUrl: string;
+      }) {
+        // customize the reset password email template
+        // the default one is a unstylized html
+        return BordaEmailPasswordResetTemplatePlugin({ token, user, baseUrl });
+      },
+    };
+
+    if (!plugins.find((it) => it['EmailProvider' as keyof typeof it])) {
+      plugins.push(defaultEmailPlugin);
+    }
+
+    if (
+      !plugins.find((it) => it['EmailPasswordResetTemplate' as keyof typeof it])
+    ) {
+      plugins.push(defaultEmailTemplatePlugin);
+    }
+
+    this.#plugins = plugins;
   }
 
   query<TSchema extends Document = Document>(collection: string) {
@@ -755,6 +852,16 @@ export class Borda {
           return insertMany({
             docQRL,
             inspect,
+            unlocked: true,
+          });
+        }
+
+        if (method === 'delete') {
+          return del({
+            docQRL,
+            objectId: objectId || '',
+            inspect,
+            cache: this.#cache,
             unlocked: true,
           });
         }

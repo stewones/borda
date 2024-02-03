@@ -19,7 +19,9 @@ interface CacheMetadata {
 }
 
 export class Cache {
+  // eslint-disable-next-line @typescript-eslint/consistent-generic-constructors
   #memo: Map<string, CacheMetadata> = new Map();
+
   #enabled!: boolean;
   #inspect!: boolean;
   #cacheTTL!: number;
@@ -39,8 +41,8 @@ export class Cache {
     inspect?: boolean;
     cacheTTL?: number;
   } = {}) {
-    this.#inspect = inspect || true;
-    this.#cacheTTL = isNumber(cacheTTL) ? cacheTTL : 1000 * 60 * 60;
+    this.#inspect = inspect || false;
+    this.#cacheTTL = cacheTTL && isNumber(cacheTTL) ? cacheTTL : 1000 * 60 * 60;
     this.#enabled = this.#cacheTTL > 0;
 
     if (inspect && !this.#enabled) {
@@ -87,14 +89,14 @@ export class Cache {
     data,
   }: {
     collection: string;
-    objectId: string;
+    objectId?: string;
     data?: Document;
   }): void {
     if (!this.#enabled) return;
     collection = InternalCollectionName[collection] ?? collection;
     const key = `doc:${collection}:${objectId}`;
 
-    if (!isEmpty(data)) {
+    if (data && !isEmpty(data)) {
       if (collection === '_Session') {
         return this.invalidate({ collection, objectId: data['_token'] });
       }
@@ -134,7 +136,7 @@ export class Cache {
     if (!this.#enabled) return;
     collection = InternalCollectionName[collection] ?? collection;
 
-    const data: Metadata | undefined = this.#memo.get(
+    const data: CacheMetadata | undefined = this.#memo.get(
       `doc:${collection}:${objectId}`
     );
     if (data && data.expires < Date.now()) {
@@ -208,21 +210,21 @@ export class Cache {
     return this.#memo.keys();
   }
 
-  values(): IterableIterator<Metadata> {
+  values(): IterableIterator<CacheMetadata> {
     return this.#memo.values();
   }
 
-  entries(): IterableIterator<[string, Metadata]> {
+  entries(): IterableIterator<[string, CacheMetadata]> {
     return this.#memo.entries();
   }
 
   forEach(
     callbackfn: (
-      value: Metadata,
+      value: CacheMetadata,
       key: string,
-      map: Map<string, Metadata>
+      map: Map<string, CacheMetadata>
     ) => void,
-    thisArg?: Metadata
+    thisArg?: CacheMetadata
   ): void {
     return this.#memo.forEach(callbackfn, thisArg);
   }

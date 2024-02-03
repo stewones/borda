@@ -1,17 +1,7 @@
-import {
-  Db,
-  Filter,
-  FindOptions,
-  MongoClient,
-  Sort,
-} from 'mongodb';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Db, Document, Filter, FindOptions, MongoClient, Sort } from 'mongodb';
 
-import {
-  BordaError,
-  DocumentPipeline,
-  ErrorCode,
-  isEmpty,
-} from '@borda/sdk';
+import { BordaError, DocumentPipeline, ErrorCode, isEmpty } from '@borda/sdk';
 
 import { DocQRL } from './parse';
 
@@ -45,7 +35,7 @@ export async function mongoCreateIndexes({ db }: { db: Db }) {
         // check if index exists first
         const indexes = await db.collection(collection.name).indexes();
         const indexExists = indexes.find(
-          (index) => index.name === '_expires_at_1'
+          (index) => index['name'] === '_expires_at_1'
         );
         if (indexExists) {
           continue;
@@ -107,7 +97,7 @@ export function createPipeline<TSchema extends Document = Document>(bridge: {
     ...(!isEmpty(sort) ? [{ $sort: sort }] : []),
     ...(typeof limit === 'number' ? [{ $limit: limit }] : []),
     ...(typeof skip === 'number' ? [{ $skip: skip }] : []),
-  ] as unknown as DocumentPipeline<TSchema>;
+  ] as unknown as any;
 }
 
 export function queryHasMongoOperators(doc: any): boolean {
@@ -121,7 +111,7 @@ export function queryHasMongoOperators(doc: any): boolean {
     }
 
     if (typeof doc[key] === 'object' && doc[key] !== null) {
-      const hasOperator = hasMongoOperators(doc[key]);
+      const hasOperator = queryHasMongoOperators(doc[key]);
       if (hasOperator) {
         return true;
       }
@@ -130,7 +120,7 @@ export function queryHasMongoOperators(doc: any): boolean {
     if (Array.isArray(doc[key])) {
       for (const item of doc[key]) {
         if (typeof item === 'object' && item !== null) {
-          const hasOperator = hasMongoOperators(item);
+          const hasOperator = queryHasMongoOperators(item);
           if (hasOperator) {
             return true;
           }

@@ -43,11 +43,12 @@ interface CloudTriggerFactory<T = any> {
   docs?: T[];
   before?: T;
   after?: T;
-  qrl: DocQRL;
+  qrl: DocQRL & any; // @todo
   user: User;
   context: Record<string, any>;
-  req: Request;
-  res: Response;
+  req: Request; // @deprecated
+  res: Response; // @deprecated
+  request: Request & any;
 }
 
 export type CloudTriggerCallback<T = any> =

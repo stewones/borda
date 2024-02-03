@@ -2,21 +2,80 @@ import { Elysia } from 'elysia';
 
 import { pointer } from '@borda/sdk';
 import { Borda, memoryUsage } from '@borda/server';
+import { html } from '@elysiajs/html';
 
-const borda = new Borda({
+import { passwordResetGet, passwordResetPost } from './routes/password';
+
+export const borda = new Borda({
   name: 'borda-on-elysia',
-  inspect: true,
-  cacheTTL: 1000 * 1 * 60, // lower this number to see the auto cache removal in action
+  inspect: false,
+  cacheTTL: 1000 * 1 * 20, // lower this number to see the auto cache removal in action
+  plugins: [
+    {
+      name: 'MyCustomEmailProvider',
+      version: '0.0.0',
+      EmailProvider() {
+        return {
+          send(params: {
+            to: { name: string; email: string };
+            subject: string;
+            html: string;
+          }) {
+            console.log(`
+              -------------------
+              @todo implement your own email provider
+              -------------------
+              # to: ${params.to.name} <${params.to.email}>
+              # subject: ${params.subject}
+              # html: ${params.html}
+            `);
+            return Promise.resolve();
+          },
+        };
+      },
+    },
+    {
+      name: 'MyCustomEmailPasswordResetTemplate',
+      version: '0.0.0',
+      EmailPasswordResetTemplate({ token, user, baseUrl }) {
+        return {
+          subject: 'Custom Password Reset',
+          html: `
+              <p>Hello ${user.name},</p>
+              <p>Here is your password reset link:</p>
+              <p>${baseUrl}/password/reset?token=${token}</p>
+              <br />
+              <br />
+              <p>Best,</p>
+              <p>Your Co.</p>
+          `,
+        };
+      },
+    },
+  ],
 });
 
 (async () => {
   const app = new Elysia()
     .use(await borda.server())
+    .use(html())
     .get('/', () => 'Hello Elysia')
-    .get('/lol', () => 'Lol Elysia')
-    .post('/body', ({ body }) => {
-      return { body, ok: true };
-    })
+    .get('/password/reset', ({ set, query, html }) =>
+      html(
+        passwordResetGet({
+          set,
+          query,
+        })
+      )
+    )
+    .post('/password/reset', ({ set, body, html }) =>
+      html(
+        passwordResetPost({
+          set,
+          body,
+        })
+      )
+    )
     .listen(1337);
 
   console.log(
@@ -42,7 +101,7 @@ borda.onDatabaseConnect.subscribe(async ({ db, name }) => {
     })
     .catch((err) => console.log(err));
 
-  await runQueryTests();
+  // await runQueryTests();
 });
 
 async function runQueryTests() {
@@ -269,7 +328,7 @@ async function runQueryTests() {
     .catch((err) => console.log(err));
 
   // insert + include
-  const userToInclude = await borda
+  const userToInclude: any = await borda
     .query('User')
     .insert({
       name: 'Elon',
@@ -339,3 +398,5 @@ async function runQueryTests() {
 //     `Borda standalone is running at ${app.server?.hostname}:${app.server?.port}`
 //   );
 // })();
+
+
