@@ -12,7 +12,7 @@ import {
 import { hash, validate } from '../utils/password';
 import { CloudTriggerCallback, getCloudBeforeSignUpTrigger } from './Cloud';
 import { DocQRL } from './parseQuery';
-import { createSession } from './public';
+import { createSessionOld } from './public';
 
 export async function restPostSignUp({
   res,
@@ -110,7 +110,7 @@ export async function restPostSignUp({
         user: res.locals['session']?.user,
         req,
         res,
-      });
+      } as any);
     }
 
     if (beforeSignUpCallback) {
@@ -153,7 +153,7 @@ export async function restPostSignUp({
       })
       .findOne();
 
-    const session = await createSession(currentUser);
+    const session = await createSessionOld(currentUser);
     return res.status(201).json(session);
   } catch (err) {
     return res.status(500).json(err);

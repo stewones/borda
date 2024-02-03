@@ -7,5 +7,5 @@
   },
   "files": ["./package.json"],
   "include": ["**/*.ts", "./package.json"],
-  "exclude": ["jest.config.ts", "**/*.spec.ts", "**/*.test.ts"]
+  "exclude": ["jest.config.ts", "**/*.spec.ts", "**/*.test.ts", "node_modules"]
 }

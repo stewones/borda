@@ -940,11 +940,14 @@ export class Borda {
         return Promise.reject(`method ${method} not implemented`);
       },
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       on: (event, options?: ChangeStreamOptions) => {
         //
+        return {} as any;
       },
       once: () => {
         //
+        return {} as any;
       },
 
       //   on: (event, options?: ChangeStreamOptions) => {

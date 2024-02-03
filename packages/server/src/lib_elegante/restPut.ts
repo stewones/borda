@@ -98,7 +98,7 @@ export function restPut({
           user: res.locals['session']?.user,
           req,
           res,
-        });
+        } as any);
       }
 
       if (

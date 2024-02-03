@@ -35,7 +35,7 @@ export async function restPostInsertMany({
         user: res.locals['session']?.user,
         req,
         res,
-      });
+      } as any);
     }
 
     if (

@@ -17,7 +17,6 @@ export * from './Cloud';
 export * from './Error';
 export * from './external';
 export * from './fetch';
-export * from './init';
 export * from './internal';
 export * from './log';
 export * from './ping';

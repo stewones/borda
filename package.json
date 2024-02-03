@@ -4,10 +4,11 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
+    "check.server": "tsc --noEmit -p packages/server/tsconfig.lib.json",
     "test.server": "bun test server --codeCoverage",
     "test.server.coverage": "bunx http-server coverage/packages/server -c-1",
     "test.server.watch": "nx test server --codeCoverage --watch",
-    "check.server": "tsc --emitDeclarationOnly"
+    "serve.elysia": "bun run --watch apps/elysia/index.ts"
   },
   "private": true,
   "devDependencies": {

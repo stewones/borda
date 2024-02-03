@@ -41,7 +41,7 @@ export async function restPostInsert({
         user: res.locals['session']?.user,
         req,
         res,
-      });
+      } as any);
     }
 
     if (

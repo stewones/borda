@@ -118,7 +118,7 @@ export function createEleganteServer(
 }
 
 // @todo move somewhere else
-export async function createSession<T = Session>(user: User) {
+export async function createSessionOld<T = Session>(user: User) {
   /**
    * because we don't want to expose the user password
    */

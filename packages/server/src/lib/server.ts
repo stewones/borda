@@ -12,8 +12,9 @@ import {
   Session,
   User,
 } from '@borda/sdk';
-import { getCloudFunction, newToken } from '@borda/server';
 
+import { getCloudFunction } from '../lib_elegante/Cloud';
+import { newToken } from '../utils';
 import { BordaQuery } from './Borda';
 import { Cache } from './Cache';
 import { BordaHeaders } from './internal';

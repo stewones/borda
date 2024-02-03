@@ -11,7 +11,7 @@ import {
 
 import { compare } from '../utils/password';
 import { DocQRL } from './parseQuery';
-import { createSession } from './public';
+import { createSessionOld } from './public';
 
 export async function restPostSignIn({
   res,
@@ -91,7 +91,7 @@ export async function restPostSignIn({
       );
   }
 
-  const session = await createSession(user);
+  const session = await createSessionOld(user);
 
   return res.status(200).json(session);
 }

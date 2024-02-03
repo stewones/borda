@@ -14,7 +14,7 @@ import {
 import { compare, hash, validate } from '../utils/password';
 import { Cache } from './Cache';
 import { DocQRL } from './parseQuery';
-import { createSession } from './public';
+import { createSessionOld } from './public';
 
 export async function restPostUpdatePassword({
   res,
@@ -170,7 +170,7 @@ export async function restPostUpdatePassword({
   // invalidate all cached users
   Cache.invalidate('_User', currentUser.objectId);
 
-  const newSession = await createSession({
+  const newSession = await createSessionOld({
     ...currentUser,
     email: currentUser.email,
   });

@@ -50,7 +50,7 @@ export async function restPostUpdate({
         user: res.locals['session']?.user,
         req,
         res,
-      });
+      } as any);
     }
 
     if (beforeSaveCallback) {
