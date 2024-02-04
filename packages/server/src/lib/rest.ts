@@ -15,7 +15,7 @@ import {
   Session,
   User,
   validateEmail,
-} from '@borda/sdk';
+} from '@borda/client';
 
 import {
   CloudTriggerCallback,
@@ -25,9 +25,11 @@ import { newToken } from '../utils/crypto';
 import { compare, hash, validate } from '../utils/password';
 import { BordaQuery } from './Borda';
 import { Cache } from './Cache';
+import { Cloud } from './Cloud';
 import {
   aggregate,
   count,
+  del,
   find,
   get,
   insert,
@@ -43,7 +45,83 @@ import {
 import { DocQRL, DocQRLFrom, parseQuery, parseResponse } from './parse';
 import { createSession } from './server';
 
-export function restPost({
+export function restCollectionGet({
+  params,
+  request,
+  db,
+  query,
+  cache,
+  q,
+}: {
+  params: any;
+  request: Request & any;
+  db: Db;
+  query: any;
+  cache: Cache;
+  q: (collection: string) => BordaQuery;
+}) {
+  try {
+    const inspect = request.inspect;
+    const unlocked = request.unlocked;
+
+    const { include, exclude } = query;
+
+    const { objectId } = params;
+
+    const collectionName =
+      InternalCollectionName[params['collectionName']] ??
+      params['collectionName'];
+
+    /**
+     * query against to any of the reserved collections
+     * if not unlocked should be strictly forbidden
+     */
+    const reservedCollections = [
+      ...Object.keys(InternalCollectionName),
+      ...Object.keys(ExternalCollectionName),
+    ];
+
+    if (!unlocked && reservedCollections.includes(collectionName)) {
+      return Promise.reject(
+        new BordaError(
+          ErrorCode.QUERY_NOT_ALLOWED,
+          `You can't execute the operation 'get' on '${
+            ExternalCollectionName[collectionName] ?? collectionName
+          }' because it's a reserved collection`
+        ).toJSON()
+      );
+    }
+
+    const docQRLFrom: DocQRLFrom = {
+      include,
+      exclude,
+      method: 'get',
+      collection: collectionName,
+    };
+
+    const docQRL = parseQuery({
+      from: docQRLFrom,
+      db,
+      inspect,
+    });
+
+    // call the operation
+    return get({
+      docQRL,
+      objectId,
+      unlocked,
+      inspect,
+      cache,
+      query: q,
+    });
+  } catch (err) {
+    return Promise.reject(
+      new BordaError(ErrorCode.REST_GET_ERROR, err as object).toJSON()
+    );
+  }
+}
+
+export function restCollectionPost({
   params,
   request,
   body,
@@ -53,6 +131,7 @@ export function restPost({
   cache,
   serverHeaderPrefix,
   serverURL,
+  cloud,
 }: {
   params: any;
   request: Request & any;
@@ -63,6 +142,7 @@ export function restPost({
   cache: Cache;
   serverHeaderPrefix: string;
   serverURL: string;
+  cloud: Cloud;
 }) {
   try {
     const inspect = request.inspect;
@@ -145,6 +225,7 @@ export function restPost({
         inspect,
         cache,
         unlocked,
+        cloud,
       });
     }
 
@@ -164,6 +245,7 @@ export function restPost({
         cache,
         unlocked,
         request,
+        cloud,
       });
     }
 
@@ -174,6 +256,7 @@ export function restPost({
         cache,
         unlocked,
         request,
+        cloud,
       });
     }
 
@@ -199,6 +282,7 @@ export function restPost({
         docQRL,
         request,
         unlocked,
+        cloud,
       });
     }
 
@@ -207,6 +291,7 @@ export function restPost({
         docQRL,
         request,
         unlocked,
+        cloud,
       });
     }
 
@@ -304,18 +389,20 @@ export function restPost({
   }
 }
 
-export function restPut({
+export function restCollectionPut({
   params,
   request,
   body,
   db,
   cache,
+  cloud,
 }: {
   params: any;
   request: Request & any;
   body: any;
   db: Db;
   cache: Cache;
+  cloud: Cloud;
 }) {
   try {
     const inspect = request.inspect;
@@ -369,35 +456,35 @@ export function restPut({
       unlocked,
       cache,
       request,
+      cloud,
     });
   } catch (err) {
     return Promise.reject(
-      new BordaError(ErrorCode.REST_POST_ERROR, err as object).toJSON()
+      new BordaError(ErrorCode.REST_PUT_ERROR, err as object).toJSON()
     );
   }
 }
 
-export function restGet({
+export function restCollectionDelete({
   params,
   request,
+  body,
   db,
-  query,
   cache,
-  q,
+  cloud,
 }: {
   params: any;
   request: Request & any;
+  body: any;
   db: Db;
-  query: any;
   cache: Cache;
-  q: (collection: string) => BordaQuery;
+  cloud: Cloud;
 }) {
   try {
     const inspect = request.inspect;
     const unlocked = request.unlocked;
 
-    const { include, exclude } = query;
-
+    const { doc, options } = body;
     const { objectId } = params;
 
     const collectionName =
@@ -417,7 +504,7 @@ export function restGet({
       return Promise.reject(
         new BordaError(
           ErrorCode.QUERY_NOT_ALLOWED,
-          `You can't execute the operation 'get' on '${
+          `You can't execute the operation 'delete' on '${
             ExternalCollectionName[collectionName] ?? collectionName
           }' because it's a reserved collection`
         ).toJSON()
@@ -425,10 +512,10 @@ export function restGet({
     }
 
     const docQRLFrom: DocQRLFrom = {
-      include,
-      exclude,
-      method: 'get',
+      doc,
+      method: 'delete',
       collection: collectionName,
+      options,
     };
 
     const docQRL = parseQuery({
@@ -438,17 +525,18 @@ export function restGet({
     });
 
     // call the operation
-    return get({
+    return del({
       docQRL,
       objectId,
-      unlocked,
       inspect,
+      unlocked,
       cache,
-      query: q,
+      request,
+      cloud,
     });
   } catch (err) {
     return Promise.reject(
-      new BordaError(ErrorCode.REST_GET_ERROR, err as object).toJSON()
+      new BordaError(ErrorCode.REST_DELETE_ERROR, err as object).toJSON()
     );
   }
 }
@@ -1161,11 +1249,59 @@ export async function restUserMe({
 }: {
   request: Request & { session: Session };
 }) {
-  console.log(123, request);
   const { session } = request;
   const { user } = session;
 
   return parseResponse(user, {
     removeSensitiveFields: true,
   });
+}
+
+export async function restFunctionRun({
+  params,
+  request,
+  inspect,
+  cloud,
+}: {
+  params: any;
+  request: Request & any;
+  inspect: boolean;
+  cloud: Cloud;
+}) {
+  const { functionName } = params;
+  // get the function
+  const cloudFn = cloud.getCloudFunction(functionName);
+
+  if (!cloudFn) {
+    return Promise.reject(
+      new BordaError(
+        ErrorCode.REST_FUNCTION_NOT_FOUND,
+        `Function '${functionName}' not found`
+      ).toJSON()
+    );
+  }
+  const { name, fn } = cloudFn;
+
+  if (inspect) {
+    console.time(`function duration: ${name}`);
+  }
+
+  try {
+    await fn({
+      request,
+    });
+
+    if (inspect) {
+      console.timeEnd(`function duration: ${name}`);
+    }
+  } catch (err: any) {
+    if (inspect) {
+      console.log(err);
+      console.timeEnd(`function duration: ${name}`);
+    }
+
+    return Promise.reject(
+      new BordaError(ErrorCode.SERVER_FUNCTION_ERROR, err as object).toJSON()
+    );
+  }
 }

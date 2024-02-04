@@ -29,10 +29,12 @@ import {
   Projection,
   QRLParams,
   QueryMethod,
+  Session,
   User,
 } from '@borda/client';
 
 import { Cache } from './Cache';
+import { Cloud } from './Cloud';
 import { BordaFieldName, BordaHeaders } from './internal';
 import { mongoConnect, mongoCreateIndexes } from './mongodb';
 import {
@@ -60,6 +62,7 @@ import {
 import { createServer } from './server';
 import { Version } from './version';
 
+export type BordaRequest = Request & { session: Session };
 export interface BordaParams {
   name?: string;
   inspect?: boolean;
@@ -274,17 +277,23 @@ export class Borda {
 
   #server!: Elysia;
   #db!: Db;
+  #cloud!: Cloud;
   #cache!: Cache;
   #plugins!: ServerPlugin[];
   #auth!: Auth;
 
-  public onDatabaseConnect = new Subject<{
+  public onReady = new Subject<{
     db: Db;
     name: string;
+    server: Elysia;
   }>();
 
   get db() {
     return this.#db;
+  }
+
+  get cloud() {
+    return this.#cloud;
   }
 
   get name() {
@@ -395,7 +404,11 @@ export class Borda {
 
     this.#config = config;
 
+    // instantiate plugins
     this.addPlugins(plugins || []);
+
+    // instantiate cloud
+    this.#cloud = new Cloud();
   }
 
   log(...args: unknown[]) {
@@ -449,14 +462,17 @@ export class Borda {
       cache: this.#cache,
       db: this.#db,
       collections,
+      cloud: this.#cloud,
+      inspect: this.#inspect,
     });
-
-    // broadcast the database connection
-    this.onDatabaseConnect.next({
+    // broadcast event
+    this.onReady.next({
       db: this.#db,
       name: this.#name,
+      server: this.#server,
     });
 
+    // start cache invalidation
     this.#cache.clock();
     console.log(`📡 Borda Server v${Version}`);
 
@@ -826,6 +842,7 @@ export class Borda {
             inspect,
             cache: this.#cache,
             unlocked: true,
+            cloud: this.#cloud,
           });
         }
 
@@ -845,6 +862,7 @@ export class Borda {
             docQRL,
             inspect,
             unlocked: true,
+            cloud: this.#cloud,
           });
         }
 
@@ -853,6 +871,7 @@ export class Borda {
             docQRL,
             inspect,
             unlocked: true,
+            cloud: this.#cloud,
           });
         }
 
@@ -863,6 +882,7 @@ export class Borda {
             inspect,
             cache: this.#cache,
             unlocked: true,
+            cloud: this.#cloud,
           });
         }
 
@@ -872,6 +892,7 @@ export class Borda {
             inspect,
             cache: this.#cache,
             unlocked: true,
+            cloud: this.#cloud,
           });
         }
 
@@ -881,6 +902,7 @@ export class Borda {
             inspect,
             cache: this.#cache,
             unlocked: true,
+            cloud: this.#cloud,
           });
         }
 
@@ -907,6 +929,7 @@ export class Borda {
             inspect,
             cache: this.#cache,
             unlocked: true,
+            cloud: this.#cloud,
           });
         }
 

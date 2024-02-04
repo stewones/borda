@@ -5,6 +5,12 @@ import { Borda, memoryUsage } from '@borda/server';
 import { html } from '@elysiajs/html';
 
 import { passwordResetGet, passwordResetPost } from './routes/password';
+import {
+  afterDeletePublicUser,
+  afterSaveUser,
+  beforeSaveUser,
+  beforeSignUp,
+} from './triggers';
 
 export const borda = new Borda({
   name: 'borda-on-elysia',
@@ -55,35 +61,23 @@ export const borda = new Borda({
   ],
 });
 
-(async () => {
-  const app = new Elysia()
-    .use(await borda.server())
-    .use(html())
-    .get('/', () => 'Hello Elysia')
-    .get('/password/reset', ({ set, query, html }) =>
-      html(
-        passwordResetGet({
-          set,
-          query,
-        })
-      )
-    )
-    .post('/password/reset', ({ set, body, html }) =>
-      html(
-        passwordResetPost({
-          set,
-          body,
-        })
-      )
-    )
-    .listen(1337);
+/**
+ * attach database triggers
+ */
+borda.cloud.beforeSignUp(beforeSignUp);
+borda.cloud.beforeSave('User', beforeSaveUser);
+borda.cloud.afterSave('User',afterSaveUser)
+borda.cloud.afterDelete('PublicUser',afterDeletePublicUser)
 
-  console.log(
-    `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
-  );
-})();
+/** 
+ * attach server functions
+ */
+// 
 
-borda.onDatabaseConnect.subscribe(async ({ db, name }) => {
+/**
+ * subscribe to the ready event
+ */
+borda.onReady.subscribe(async ({ db, name }) => {
   const stats = await db.stats();
   console.log(`Borda is connected to the database ${stats['db']} from ${name}`);
 
@@ -101,8 +95,40 @@ borda.onDatabaseConnect.subscribe(async ({ db, name }) => {
     })
     .catch((err) => console.log(err));
 
-  // await runQueryTests();
+  await runQueryTests();
 });
+
+/**
+ * start the client server
+ * with borda as a plugin
+ */
+const app = new Elysia()
+  .use(await borda.server())
+  .use(html())
+  .get('/', () => 'Hello Elysia')
+  .get('/password/reset', ({ set, query, html }) =>
+    html(
+      passwordResetGet({
+        set,
+        query,
+      })
+    )
+  )
+  .post('/password/reset', ({ set, body, html }) =>
+    html(
+      passwordResetPost({
+        set,
+        body,
+      })
+    )
+  )
+  .listen(1337);
+
+console.log(
+  `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
+);
+
+
 
 async function runQueryTests() {
   // insert
@@ -382,21 +408,15 @@ async function runQueryTests() {
     .findOne(userToInclude.objectId)
     .then((user) => console.log('user', user))
     .catch((err) => console.log(err));
-}
 
-// iife
-// (async () => {
-//   const borda = new Borda({
-//     params: {
-//       name: 'borda-standalone',
-//       inspect: true,
-//     },
-//   });
-//   const app = await borda.server();
-//   app.listen(1338);
-//   console.log(
-//     `Borda standalone is running at ${app.server?.hostname}:${app.server?.port}`
-//   );
-// })();
+  // update
+  await borda
+    .query('User')
+    .update(userToInclude.objectId, {
+      name: 'Elon Musk',
+    })
+    .then((user) => console.log('updated user', user))
+    .catch((err) => console.log(err));
+}
 
 

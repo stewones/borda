@@ -11,17 +11,19 @@ import {
   pointer,
   Session,
   User,
-} from '@borda/sdk';
+} from '@borda/client';
 
-import { getCloudFunction } from '../lib_elegante/Cloud';
 import { newToken } from '../utils';
-import { BordaQuery } from './Borda';
+import { BordaQuery, BordaRequest } from './Borda';
 import { Cache } from './Cache';
+import { Cloud } from './Cloud';
 import { BordaHeaders } from './internal';
 import {
-  restGet,
-  restPost,
-  restPut,
+  restCollectionDelete,
+  restCollectionGet,
+  restCollectionPost,
+  restCollectionPut,
+  restFunctionRun,
   restUserMe,
   restUserSignOut,
 } from './rest';
@@ -30,7 +32,7 @@ function requestTargetsBorda({
   request,
   collections,
 }: {
-  request: Request & any;
+  request: BordaRequest & any;
   collections: CollectionInfo[];
 }) {
   // extract the path from request.url
@@ -96,7 +98,7 @@ export const ensureApiKey = ({
     return;
   });
 
-export async function ensureApiSession({
+export async function ensureApiToken({
   set,
   path,
   request,
@@ -104,14 +106,16 @@ export async function ensureApiSession({
   query,
   serverHeaderPrefix,
   params,
+  cloud,
 }: {
   set: any;
   path: string;
-  request: Request & any;
+  request: BordaRequest & any;
   cache: Cache;
   query: (collection: string) => BordaQuery;
   serverHeaderPrefix: string;
   params: any;
+  cloud: Cloud;
 }) {
   let isPublicCloudFunction = false;
   let session: Session | null = null;
@@ -136,7 +140,7 @@ export async function ensureApiSession({
   if (path.startsWith('/run')) {
     // extract function name from `/run/:functionName`
     const functionName = path.split('/').pop() ?? '';
-    const cloudFunction = getCloudFunction(functionName); // @todo move getCloudFunction Borda
+    const cloudFunction = cloud.getCloudFunction(functionName); // @todo move getCloudFunction Borda
     if (cloudFunction && cloudFunction.isPublic) {
       isPublicCloudFunction = true;
     }
@@ -259,7 +263,7 @@ export async function createSession({
   /**
    * generate a new session token
    */
-  const token = `e:${newToken()}`;
+  const token = `b:${newToken()}`;
   const session = await query('Session').insert({
     user: pointer('User', user.objectId),
     token,
@@ -281,6 +285,8 @@ export function createServer({
   cache,
   db,
   collections,
+  cloud,
+  inspect,
 }: {
   name?: string;
   config?: Partial<ElysiaConfig>;
@@ -294,6 +300,8 @@ export function createServer({
   cache: Cache;
   db: Db;
   collections: CollectionInfo[];
+  cloud: Cloud;
+  inspect: boolean;
 }) {
   const server = new Elysia(config);
   const q = query;
@@ -308,9 +316,7 @@ export function createServer({
   server.use(queryInspect({ server, serverHeaderPrefix, collections }));
   server.use(pingRoute({ server }));
 
-  /**
-   * define rest routes
-   */
+  // collection
   server.post(
     '/:collectionName',
     async ({
@@ -319,10 +325,10 @@ export function createServer({
       body,
     }: {
       params: any;
-      request: Request & any;
+      request: BordaRequest & any;
       body: any;
     }) =>
-      restPost({
+      restCollectionPost({
         params,
         request,
         body,
@@ -332,6 +338,7 @@ export function createServer({
         cache,
         serverHeaderPrefix,
         serverURL,
+        cloud,
       }),
     {
       async beforeHandle({
@@ -342,10 +349,10 @@ export function createServer({
       }: {
         set: any;
         path: string;
-        request: Request & any;
+        request: BordaRequest & any;
         params: any;
       }) {
-        return ensureApiSession({
+        return ensureApiToken({
           set,
           path,
           request,
@@ -353,6 +360,7 @@ export function createServer({
           query,
           params,
           serverHeaderPrefix,
+          cloud,
         });
       },
     }
@@ -366,15 +374,16 @@ export function createServer({
       body,
     }: {
       params: any;
-      request: Request & any;
+      request: BordaRequest & any;
       body: any;
     }) =>
-      restPut({
+      restCollectionPut({
         params,
         request,
         body,
         db,
         cache,
+        cloud,
       }),
     {
       async beforeHandle({
@@ -385,10 +394,10 @@ export function createServer({
       }: {
         set: any;
         path: string;
-        request: Request & any;
+        request: BordaRequest & any;
         params: any;
       }) {
-        return ensureApiSession({
+        return ensureApiToken({
           set,
           path,
           request,
@@ -396,6 +405,7 @@ export function createServer({
           query,
           params,
           serverHeaderPrefix,
+          cloud,
         });
       },
     }
@@ -409,10 +419,10 @@ export function createServer({
       query,
     }: {
       params: any;
-      request: Request & any;
+      request: BordaRequest & any;
       query: any;
     }) =>
-      restGet({
+      restCollectionGet({
         params,
         request,
         db,
@@ -438,10 +448,10 @@ export function createServer({
       }: {
         set: any;
         path: string;
-        request: Request & any;
+        request: BordaRequest & any;
         params: any;
       }) {
-        return ensureApiSession({
+        return ensureApiToken({
           set,
           path,
           params,
@@ -449,14 +459,70 @@ export function createServer({
           cache,
           query,
           serverHeaderPrefix,
+          cloud,
         });
       },
     }
   );
 
+  server.delete(
+    '/:collectionName/:objectId',
+    async ({
+      params,
+      request,
+      body,
+    }: {
+      params: any;
+      request: BordaRequest & any;
+      body: any;
+    }) =>
+      restCollectionDelete({
+        params,
+        request,
+        body,
+        db,
+        cache,
+        cloud,
+      }),
+    {
+      transform({ query }: { query: any }) {
+        // transform include and exclude to array
+        if (query['include']) {
+          query['include'] = query['include'].split(',');
+        }
+        if (query['exclude']) {
+          query['exclude'] = query['exclude'].split(',');
+        }
+      },
+      async beforeHandle({
+        set,
+        path,
+        request,
+        params,
+      }: {
+        set: any;
+        path: string;
+        request: BordaRequest & any;
+        params: any;
+      }) {
+        return ensureApiToken({
+          set,
+          path,
+          params,
+          request,
+          cache,
+          query,
+          serverHeaderPrefix,
+          cloud,
+        });
+      },
+    }
+  );
+
+  // me
   server.get(
     '/me',
-    async ({ request }: { request: Request & any }) =>
+    async ({ request }: { request: BordaRequest }) =>
       restUserMe({
         request,
       }),
@@ -469,10 +535,10 @@ export function createServer({
       }: {
         set: any;
         path: string;
-        request: Request & any;
+        request: BordaRequest & any;
         params: any;
       }) {
-        return ensureApiSession({
+        return ensureApiToken({
           set,
           path,
           params,
@@ -480,6 +546,7 @@ export function createServer({
           cache,
           query,
           serverHeaderPrefix,
+          cloud,
         });
       },
     }
@@ -487,7 +554,7 @@ export function createServer({
 
   server.delete(
     '/me',
-    async ({ request }: { request: Request & any }) =>
+    async ({ request }: { request: BordaRequest }) =>
       restUserSignOut({
         request,
         query,
@@ -501,10 +568,10 @@ export function createServer({
       }: {
         set: any;
         path: string;
-        request: Request & any;
+        request: BordaRequest & any;
         params: any;
       }) {
-        return ensureApiSession({
+        return ensureApiToken({
           set,
           path,
           params,
@@ -512,6 +579,43 @@ export function createServer({
           cache,
           query,
           serverHeaderPrefix,
+          cloud,
+        });
+      },
+    }
+  );
+
+  // run
+  server.post(
+    '/run/:functionName',
+    async ({ params, request }: { params: any; request: BordaRequest & any }) =>
+      restFunctionRun({
+        params,
+        request,
+        inspect,
+        cloud,
+      }),
+    {
+      async beforeHandle({
+        set,
+        path,
+        request,
+        params,
+      }: {
+        set: any;
+        path: string;
+        request: BordaRequest & any;
+        params: any;
+      }) {
+        return ensureApiToken({
+          set,
+          path,
+          request,
+          cache,
+          query,
+          params,
+          serverHeaderPrefix,
+          cloud,
         });
       },
     }

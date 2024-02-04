@@ -17,10 +17,10 @@ import {
   QueryMethod,
 } from '@borda/sdk';
 
-import { CloudTriggerCallback, getCloudTrigger } from '../lib_elegante/Cloud'; // @todo rethink this with the Borda instance
 import { newObjectId } from '../utils';
 import { BordaQuery } from './Borda';
 import { Cache } from './Cache';
+import { Cloud } from './Cloud';
 import {
   createFindCursor,
   createPipeline,
@@ -135,18 +135,20 @@ export async function insert({
   docQRL,
   request,
   unlocked,
+  cloud,
 }: {
   docQRL: DocQRL;
   inspect?: boolean;
   request?: Request & any;
   unlocked: boolean;
+  cloud: Cloud;
 }) {
   try {
     const { collection$, collection } = docQRL;
 
-    let beforeSaveCallback: CloudTriggerCallback = true;
+    let beforeSaveCallback: any = true;
 
-    const beforeSave = getCloudTrigger(collection, 'beforeSave');
+    const beforeSave = cloud.getCloudTrigger(collection, 'beforeSave');
 
     if (beforeSave) {
       beforeSaveCallback = await beforeSave.fn({
@@ -198,7 +200,7 @@ export async function insert({
           }
         );
 
-        const afterSave = getCloudTrigger(collection, 'afterSave');
+        const afterSave = cloud.getCloudTrigger(collection, 'afterSave');
         if (afterSave) {
           afterSave.fn({
             ...afterSavePayload,
@@ -236,17 +238,19 @@ export async function insertMany({
   docQRL,
   unlocked,
   request,
+  cloud,
 }: {
   docQRL: DocQRL;
   inspect?: boolean;
   unlocked: boolean;
   request?: Request & any;
+  cloud: Cloud;
 }) {
   try {
     const { collection$, collection } = docQRL;
-    let beforeSaveCallback: CloudTriggerCallback = true;
+    let beforeSaveCallback: any = true;
 
-    const beforeSave = getCloudTrigger(collection, 'beforeSaveMany');
+    const beforeSave = cloud.getCloudTrigger(collection, 'beforeSaveMany');
 
     if (beforeSave) {
       beforeSaveCallback = await beforeSave.fn({
@@ -302,7 +306,7 @@ export async function insertMany({
           }
         );
 
-        const afterSave = getCloudTrigger(collection, 'afterSaveMany');
+        const afterSave = cloud.getCloudTrigger(collection, 'afterSaveMany');
         if (afterSave) {
           afterSave.fn({
             ...afterSavePayload,
@@ -340,12 +344,14 @@ export async function remove({
   cache,
   unlocked,
   request,
+  cloud,
 }: {
   docQRL: DocQRL;
   inspect?: boolean;
   cache: Cache;
   unlocked: boolean;
   request?: Request & any;
+  cloud: Cloud;
 }) {
   const { collection, filter, collection$ } = docQRL;
 
@@ -367,7 +373,7 @@ export async function remove({
         removeSensitiveFields: !unlocked,
       }
     );
-    const afterDelete = getCloudTrigger(collection, 'afterDelete');
+    const afterDelete = cloud.getCloudTrigger(collection, 'afterDelete');
     if (afterDelete) {
       afterDelete.fn({
         ...afterDeletePayload,
@@ -396,12 +402,14 @@ export async function removeMany({
   cache,
   unlocked,
   request,
+  cloud,
 }: {
   docQRL: DocQRL;
   inspect?: boolean;
   cache: Cache;
   unlocked: boolean;
   request?: Request & any;
+  cloud: Cloud;
 }) {
   const { collection, filter, collection$ } = docQRL;
 
@@ -428,7 +436,7 @@ export async function removeMany({
 
   if (cursor.acknowledged) {
     // now we need to trigger afterDelete hooks
-    const afterDelete = getCloudTrigger(collection, 'afterDelete');
+    const afterDelete = cloud.getCloudTrigger(collection, 'afterDelete');
     if (afterDelete) {
       updatedDocuments.map((doc) => {
         const afterDeletePayload = parseResponse(
@@ -468,12 +476,14 @@ export async function update({
   cache,
   request,
   unlocked,
+  cloud,
 }: {
   docQRL: DocQRL;
   inspect?: boolean;
   cache: Cache;
   request?: Request & any;
   unlocked: boolean;
+  cloud: Cloud;
 }) {
   try {
     const { collection$, collection, filter } = docQRL;
@@ -491,8 +501,8 @@ export async function update({
       readPreference: 'primary',
     });
 
-    let beforeSaveCallback: CloudTriggerCallback = true;
-    const beforeSave = getCloudTrigger(collection, 'beforeSave');
+    let beforeSaveCallback: any = true;
+    const beforeSave = cloud.getCloudTrigger(collection, 'beforeSave');
 
     if (beforeSave) {
       beforeSaveCallback = await beforeSave.fn({
@@ -578,7 +588,7 @@ export async function update({
           }
         );
 
-        const afterSave = getCloudTrigger(collection, 'afterSave');
+        const afterSave = cloud.getCloudTrigger(collection, 'afterSave');
 
         if (afterSave) {
           afterSave.fn({
@@ -960,6 +970,7 @@ export async function put({
   request,
   unlocked,
   cache,
+  cloud,
 }: {
   docQRL: DocQRL;
   objectId: string;
@@ -967,14 +978,15 @@ export async function put({
   unlocked?: boolean;
   request?: Request & any;
   cache: Cache;
+  cloud: Cloud;
 }) {
   try {
     const { doc, collection$ } = docQRL;
     const { collection } = docQRL;
     const collectionName = collection;
 
-    const beforeSave = getCloudTrigger(collectionName, 'beforeSave');
-    let beforeSaveCallback: CloudTriggerCallback = true;
+    const beforeSave = cloud.getCloudTrigger(collectionName, 'beforeSave');
+    let beforeSaveCallback: any = true;
     let document = doc;
 
     const docBefore = await collection$.findOne(
@@ -1061,7 +1073,7 @@ export async function put({
           }
         );
 
-        const afterSave = getCloudTrigger(collectionName, 'afterSave');
+        const afterSave = cloud.getCloudTrigger(collectionName, 'afterSave');
         if (afterSave) {
           afterSave.fn({
             ...afterSavePayload,
@@ -1111,6 +1123,7 @@ export async function del({
   request,
   unlocked,
   cache,
+  cloud,
 }: {
   docQRL: DocQRL;
   objectId: string;
@@ -1118,6 +1131,7 @@ export async function del({
   unlocked?: boolean;
   request?: Request & any;
   cache: Cache;
+  cloud: Cloud;
 }) {
   try {
     const { collection$, collection } = docQRL;
@@ -1149,6 +1163,9 @@ export async function del({
         _id: {
           $eq: objectId,
         },
+        _expires_at: {
+          $exists: false,
+        },
       },
     };
 
@@ -1169,7 +1186,7 @@ export async function del({
         }
       );
 
-      const afterDelete = getCloudTrigger(
+      const afterDelete = cloud.getCloudTrigger(
         collectionName as string,
         'afterDelete'
       );
