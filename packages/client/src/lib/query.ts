@@ -3,7 +3,8 @@ import {
   BordaError,
   ErrorCode,
 } from './Error';
-import { InternalFieldName } from './internal';
+import { fetcher, HttpMethod } from './fetcher';
+import { InternalFieldName, InternalHeaders } from './internal';
 import {
   AggregateOptions,
   BulkWriteResult,
@@ -14,6 +15,7 @@ import {
   DocumentOptions,
   DocumentPipeline,
   DocumentQuery,
+  DocumentResponse,
   FindOptions,
   ManyInsertResponse,
   ManyUpdateResponse,
@@ -22,7 +24,7 @@ import {
   QueryMethod,
   Sort,
 } from './types';
-import { isEmpty } from './utils';
+import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
 
 export type RunResult<TSchema> =
   | number
@@ -47,14 +49,14 @@ export class BordaQuery<TSchema extends Document = Document> {
   #pipeline: DocumentPipeline<TSchema>[] = [];
   #include: string[] = [];
   #exclude: string[] = [];
-  #unlock = false; // @todo
+  #unlock = false;
 
-get collection() {
-  return this.#collection;
-}
-get inspect() {
-  return this.#inspect;
-}
+  get collection() {
+    return this.#collection;
+  }
+  get inspect() {
+    return this.#inspect;
+  }
 
   constructor({
     inspect,
@@ -83,9 +85,26 @@ get inspect() {
 
     this.#collection = collection;
     this.#inspect = inspect ?? false;
+  }
 
-    //bridge.params['collection'] = collection;
-    // return Object.freeze(bridge);
+  /**
+   * unlock can only be used in server environment
+   * with proper ApiKey+ApiSecret defined
+   */
+  unlock(isUnlocked?: boolean) {
+    if (!isBoolean(isUnlocked)) {
+      isUnlocked = true;
+    }
+
+    if (!isServer() && isUnlocked) {
+      throw new BordaError(
+        ErrorCode.SERVER_UNLOCK_ONLY,
+        `unlock can only be used in server environment`
+      );
+    }
+
+    this.#unlock = isUnlocked;
+    return this;
   }
 
   /**
@@ -394,7 +413,8 @@ get inspect() {
     }
 
     const docQuery: DocumentQuery<TSchema> = {
-      options,
+      unlock: this.#unlock,
+      collection: this.#collection,
       filter: this.#filter,
       projection: this.#projection,
       sort: this.#sort,
@@ -403,17 +423,15 @@ get inspect() {
       include: this.#include,
       exclude: this.#exclude,
       pipeline: this.#pipeline,
+      options,
+      method,
       doc,
       docs,
-      collection: this.#collection,
       objectId,
-      method,
     };
 
-    // execute by the bridge
+    // executed by the bridge
     return this.bridge(docQuery);
-
-    // return Promise.reject(`method ${method} not implemented`);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -677,4 +695,154 @@ get inspect() {
   //       })
   //     );
   //   },
+}
+
+export class BordaClientQuery<
+  TSchema extends Document = Document
+> extends BordaQuery {
+  #serverURL!: string;
+  #serverKey!: string;
+  #serverSecret!: string;
+  #serverHeaderPrefix!: string;
+
+  constructor({
+    inspect,
+    collection,
+    serverURL,
+    serverKey,
+    serverSecret,
+    serverHeaderPrefix,
+  }: {
+    collection: string;
+    inspect?: boolean;
+    serverURL: string;
+    serverKey: string;
+    serverSecret: string;
+    serverHeaderPrefix: string;
+  }) {
+    super({
+      inspect,
+      collection,
+    });
+    this.#serverURL = serverURL;
+    this.#serverKey = serverKey;
+    this.#serverSecret = serverSecret;
+    this.#serverHeaderPrefix = serverHeaderPrefix;
+  }
+
+  public override bridge({
+    collection,
+    pipeline,
+    method,
+    objectId,
+    filter,
+    doc,
+    docs,
+    options,
+    unlock,
+    projection,
+    sort,
+    limit,
+    skip,
+    include,
+    exclude,
+  }: DocumentQuery) {
+    if (filter && filter['expiresAt'] && isEmpty(filter['expiresAt'])) {
+      const f = filter as Document;
+      f['expiresAt'] = {
+        $exists: false,
+      };
+    }
+
+    if (!this.#serverURL) {
+      throw new BordaError(
+        ErrorCode.SERVER_URL_UNDEFINED,
+        'serverURL is not defined on client'
+      );
+    }
+
+    if (['update', 'remove'].includes(method)) {
+      if (isEmpty(filter)) {
+        throw new BordaError(
+          ErrorCode.QUERY_FILTER_REQUIRED,
+          'a filter is required for doc mutation. ie: update and delete'
+        );
+      }
+    }
+
+    if (!isEmpty(pipeline) && method !== 'aggregate') {
+      throw new BordaError(
+        ErrorCode.QUERY_PIPELINE_AGGREGATE_ONLY,
+        `pipeline can only be used for aggregate. you're trying to use "${method}()"`
+      );
+    }
+
+    const { inspect } = options ?? {};
+
+    const headers = {
+      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
+        this.#serverKey,
+      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]: method,
+    };
+
+    if (inspect) {
+      headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiInspect']}`] =
+        'true';
+    }
+
+    if (unlock) {
+      headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiSecret']}`] =
+        this.#serverSecret ?? '👀';
+    }
+
+    if (!isServer()) {
+      const token = LocalStorage.get(
+        `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+      );
+
+      if (token) {
+        headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`] =
+          token;
+      }
+    }
+
+    const docQuery: Document | DocumentQuery<TSchema> = {
+      options,
+      filter,
+      projection,
+      sort,
+      limit,
+      skip,
+      include,
+      exclude,
+      pipeline,
+      doc,
+      docs,
+    };
+
+    const source = fetcher<DocumentResponse<TSchema>>(
+      `${this.#serverURL}/${collection}${
+        ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
+      }`,
+      {
+        headers,
+        body: method === 'get' ? null : docQuery,
+        method: ['get', 'put', 'delete'].includes(method)
+          ? (method.toUpperCase() as HttpMethod)
+          : 'POST',
+        direct: true,
+      }
+    );
+
+    Reflect.defineMetadata(
+      'key',
+      cleanKey({
+        collection,
+        ...docQuery,
+      }),
+      source
+    );
+
+    return source;
+  }
 }

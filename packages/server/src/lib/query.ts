@@ -22,12 +22,11 @@ import {
 } from './operation';
 import { DocQRLFrom, parseQuery } from './parse';
 
-export class BordaServerQuery<
-  TSchema extends Document = Document
-> extends BordaQuery {
+export class BordaServerQuery<TSchema extends Document = Document> extends BordaQuery {
   #db!: Db;
   #cache!: Cache;
   #cloud!: Cloud;
+  #queryLimit!: number;
 
   constructor({
     inspect,
@@ -35,12 +34,14 @@ export class BordaServerQuery<
     db,
     cache,
     cloud,
+    queryLimit,
   }: {
     collection: string;
     inspect?: boolean;
     db: Db;
     cache: Cache;
     cloud: Cloud;
+    queryLimit: number;
   }) {
     super({
       inspect,
@@ -50,6 +51,7 @@ export class BordaServerQuery<
     this.#db = db;
     this.#cache = cache;
     this.#cloud = cloud;
+    this.#queryLimit = queryLimit;
   }
 
   load(collectionName: string) {
@@ -59,6 +61,7 @@ export class BordaServerQuery<
       db: this.#db,
       cache: this.#cache,
       cloud: this.#cloud,
+      queryLimit: this.#queryLimit,
     });
   }
 
@@ -105,6 +108,7 @@ export class BordaServerQuery<
         unlocked: true,
         cache: this.#cache,
         query: (collectionName: string) => this.load(collectionName),
+        queryLimit: this.#queryLimit,
       });
     }
 

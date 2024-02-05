@@ -1,7 +1,7 @@
 import { Elysia } from 'elysia';
 
-import { pointer } from '@borda/client';
-import { Borda, memoryUsage } from '@borda/server';
+import { Borda as BordaClient, pointer } from '@borda/client';
+import { Borda as BordaServer, memoryUsage } from '@borda/server';
 import { html } from '@elysiajs/html';
 
 import { passwordResetGet, passwordResetPost } from './routes/password';
@@ -12,7 +12,17 @@ import {
   beforeSignUp,
 } from './triggers';
 
-export const borda = new Borda({
+// instantiate a borda client on server
+// useful if you need to connect to another borda server remotely
+const client = new BordaClient({
+  name: 'borda-on-elysia',
+  inspect: false,
+  // serverSecret: 'my-secret', // uncomment to throw error
+});
+
+// export borda server to use as client
+// from within the same server
+export const borda = new BordaServer({
   name: 'borda-on-elysia',
   inspect: false,
   cacheTTL: 1000 * 1 * 20,
@@ -96,7 +106,8 @@ borda.onReady.subscribe(async ({ db, name }) => {
     })
     .catch((err) => console.log(err));
 
-  await runQueryTests();
+  await runQueryClientTests();
+  // await runQueryServerTests();
 });
 
 /**
@@ -129,10 +140,12 @@ console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
 );
 
-async function runQueryTests() {
-  // insert
-  await borda
+
+async function runQueryClientTests() {
+  // insert using client + unlock
+  await client
     .query('Person')
+    .unlock()
     .insert({
       name: 'John',
       age: 30,
@@ -140,13 +153,16 @@ async function runQueryTests() {
     .then((person) => console.log('new person', person))
     .catch((err) => console.log(err));
 
-  // find
-  await borda
+  // find using client + unlock
+  await client
     .query('Person')
+    .unlock()
     .find()
     .then((people) => console.log('people', people))
     .catch((err) => console.log(err));
+}
 
+async function runQueryServerTests() {
   // findOne
   await borda
     .query('Person')

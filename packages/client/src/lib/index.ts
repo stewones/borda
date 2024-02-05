@@ -10,7 +10,7 @@ import 'reflect-metadata';
 export * from './types';
 export * from './utils';
 export * from './Auth';
-// export * from './Borda';
+export * from './Borda';
 export * from './Error';
 export * from './external';
 export * from './internal';

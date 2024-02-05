@@ -283,6 +283,7 @@ export function createServer({
   serverURL,
   poweredBy,
   query,
+  queryLimit,
   plugin,
   cache,
   db,
@@ -297,6 +298,7 @@ export function createServer({
   serverSecret: string;
   serverURL: string;
   poweredBy: string;
+  queryLimit: number;
   query: (collection: string) => BordaServerQuery;
   plugin: (name: PluginHook) => ((params?: any) => any) | undefined;
   cache: Cache;
@@ -336,6 +338,7 @@ export function createServer({
         body,
         db,
         query,
+        queryLimit,
         plugin,
         cache,
         serverHeaderPrefix,

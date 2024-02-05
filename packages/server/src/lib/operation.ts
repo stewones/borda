@@ -93,17 +93,29 @@ export async function find<TSchema extends Document = Document>({
   unlocked,
   cache,
   query,
+  queryLimit,
 }: {
   docQRL: DocQRL;
   method: QueryMethod;
   inspect: boolean;
   unlocked: boolean;
   cache: Cache;
+  queryLimit: number;
   query: (collection: string) => BordaServerQuery;
 }) {
   const docs: Document[] = [];
-  const cursor = createFindCursor(docQRL);
 
+  /**
+   * apply a hard limit if not set and only *if* locals env is not unlocked
+   * also ensures that the limit being passed is not greater than the max one defined in the server instance
+   */
+  if (!docQRL.limit && !unlocked) {
+    docQRL.limit = queryLimit;
+  } else if (docQRL.limit && docQRL.limit > queryLimit && !unlocked) {
+    docQRL.limit = queryLimit;
+  }
+
+  const cursor = createFindCursor(docQRL);
   await cursor.forEach((doc) => {
     docs.push(doc);
   });

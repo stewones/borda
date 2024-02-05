@@ -71,12 +71,13 @@ export interface DocumentQuery<TSchema = Document> {
   collection: string;
   objectId?: string;
   method: QueryMethod;
+  unlock?: boolean;
 }
 
 export type DocumentRootFilter<TSchema = Document> =
   RootFilterOperators<TSchema> & { $expr?: Record<string, any> };
 
-export type DocumentPipe<TSchema = Document> =
+export type DocumentPipeline<TSchema = Document> =
   | { $explain: ExplainVerbosityLike }
   | { $group: Document }
   | { $limit: number }
@@ -102,7 +103,7 @@ export type DocumentPipe<TSchema = Document> =
   | { $geoNear: Document }
   | { $addFields: Document };
 
-export type DocumentPipeline<TSchema = Document> = DocumentPipe<TSchema>[];
+
 
 export interface DocumentUpdate<TSchema = Document> {
   // Sets the value of a field to current date, either as a Date or a Timestamp.

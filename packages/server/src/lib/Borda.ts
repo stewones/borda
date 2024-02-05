@@ -207,12 +207,6 @@ export class Borda {
     this.#cloud = new Cloud();
   }
 
-  log(...args: unknown[]) {
-    if (this.#inspect) {
-      console.log(...args);
-    }
-  }
-
   ping() {
     return fetch(`${this.#serverURL}/ping`, {
       headers: {
@@ -254,6 +248,7 @@ export class Borda {
       name: this.#name,
       poweredBy: this.#serverPoweredBy,
       query: this.query.bind(this),
+      queryLimit: this.#queryLimit,
       plugin: this.plugin.bind(this),
       cache: this.#cache,
       db: this.#db,
@@ -340,6 +335,7 @@ export class Borda {
       db: this.#db,
       cache: this.#cache,
       cloud: this.#cloud,
+      queryLimit: this.#queryLimit,
     });
   }
 }

@@ -123,6 +123,7 @@ export function restCollectionPost({
   body,
   db,
   query,
+  queryLimit,
   plugin,
   cache,
   serverHeaderPrefix,
@@ -133,6 +134,7 @@ export function restCollectionPost({
   request: Request & any;
   body: any;
   db: Db;
+  queryLimit: number;
   query: (collection: string) => BordaServerQuery;
   plugin: (name: PluginHook) => ((params?: any) => any) | undefined;
   cache: Cache;
@@ -212,6 +214,7 @@ export function restCollectionPost({
         unlocked,
         cache,
         query,
+        queryLimit,
       });
     }
 
