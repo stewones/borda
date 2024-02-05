@@ -9,8 +9,8 @@ import 'reflect-metadata';
 
 export * from './types';
 export * from './utils';
-export * from './Auth';
-export * from './Borda';
+// export * from './Auth';
+// export * from './Borda';
 export * from './Client';
 export * from './Active';
 export * from './Cloud';
@@ -25,6 +25,6 @@ export * from './Plugin';
 export * from './pointer';
 export * from './Provider';
 export * from './pubsub';
-export * from './query';
+// export * from './query';
 export * from './Version';
 export * from './websocket';

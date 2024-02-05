@@ -7,5 +7,11 @@
   },
   "files": ["./package.json"],
   "include": ["**/*.ts", "./package.json"],
-  "exclude": ["jest.config.ts", "**/*.spec.ts", "**/*.test.ts", "node_modules"]
+  "exclude": [
+    "jest.config.ts",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "node_modules",
+    "src/lib_elegante"
+  ]
 }

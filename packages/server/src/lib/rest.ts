@@ -9,7 +9,6 @@ import {
   InternalHeaders,
   isEmpty,
   Password,
-  PluginHook,
   pointer,
   QueryMethod,
   Session,
@@ -17,13 +16,8 @@ import {
   validateEmail,
 } from '@borda/client';
 
-import {
-  CloudTriggerCallback,
-  getCloudBeforeSignUpTrigger,
-} from '../lib_elegante';
 import { newToken } from '../utils/crypto';
 import { compare, hash, validate } from '../utils/password';
-import { BordaQuery } from './Borda';
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
 import {
@@ -43,6 +37,8 @@ import {
   upsertMany,
 } from './operation';
 import { DocQRL, DocQRLFrom, parseQuery, parseResponse } from './parse';
+import { PluginHook } from './plugin';
+import { BordaServerQuery } from './query';
 import { createSession } from './server';
 
 export function restCollectionGet({
@@ -58,7 +54,7 @@ export function restCollectionGet({
   db: Db;
   query: any;
   cache: Cache;
-  q: (collection: string) => BordaQuery;
+  q: (collection: string) => BordaServerQuery;
 }) {
   try {
     const inspect = request.inspect;
@@ -137,7 +133,7 @@ export function restCollectionPost({
   request: Request & any;
   body: any;
   db: Db;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
   plugin: (name: PluginHook) => ((params?: any) => any) | undefined;
   cache: Cache;
   serverHeaderPrefix: string;
@@ -316,6 +312,7 @@ export function restCollectionPost({
         docQRL,
         request,
         query,
+        cloud,
       });
     }
 
@@ -545,11 +542,13 @@ export async function restUserSignUp({
   docQRL,
   request,
   query,
+  cloud,
 }: {
   docQRL: DocQRL;
   inspect?: boolean;
   request?: Request & any;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
+  cloud: Cloud;
 }) {
   try {
     const { projection, include, exclude, doc } = docQRL;
@@ -610,8 +609,8 @@ export async function restUserSignUp({
     }
 
     // run beforeSignUp hooks
-    let beforeSignUpCallback: CloudTriggerCallback = true;
-    const beforeSignUp = getCloudBeforeSignUpTrigger();
+    let beforeSignUpCallback: any = true;
+    const beforeSignUp = cloud.getCloudBeforeSignUpTrigger();
     if (beforeSignUp) {
       beforeSignUpCallback = await beforeSignUp.fn({
         before: undefined,
@@ -674,7 +673,7 @@ export async function restUserSignIn({
 }: {
   docQRL: DocQRL;
   inspect?: boolean;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   const { projection, include, exclude, doc } = docQRL;
   const { email, password } = doc ?? {};
@@ -748,7 +747,7 @@ export async function restUserSignOut({
   query,
 }: {
   request: Request & { session: Session };
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   try {
     const { session } = request;
@@ -771,7 +770,7 @@ export async function restUserUpdateEmail({
   request: Request & { session: Session };
   inspect?: boolean;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   const { projection, include, exclude, doc } = docQRL;
 
@@ -903,7 +902,7 @@ export async function restUserUpdatePassword({
   request: Request & { session: Session };
   inspect?: boolean;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   const { projection, include, exclude, doc } = docQRL;
   const { currentPassword, newPassword } = doc ?? {};
@@ -1049,7 +1048,7 @@ export async function restUserForgotPassword({
 }: {
   docQRL: DocQRL;
   inspect?: boolean;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
   plugin: (name: PluginHook) => ((params?: any) => any) | undefined;
   serverURL: string;
 }) {
@@ -1148,7 +1147,7 @@ export async function restUserResetPassword({
   query,
 }: {
   docQRL: DocQRL;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   const { doc } = docQRL;
   const { token, password } = doc ?? {};

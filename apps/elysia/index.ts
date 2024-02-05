@@ -1,6 +1,6 @@
 import { Elysia } from 'elysia';
 
-import { pointer } from '@borda/sdk';
+import { pointer } from '@borda/client';
 import { Borda, memoryUsage } from '@borda/server';
 import { html } from '@elysiajs/html';
 
@@ -15,7 +15,7 @@ import {
 export const borda = new Borda({
   name: 'borda-on-elysia',
   inspect: false,
-  cacheTTL: 1000 * 1 * 20, // lower this number to see the auto cache removal in action
+  cacheTTL: 1000 * 1 * 20,
   plugins: [
     {
       name: 'MyCustomEmailProvider',
@@ -66,13 +66,13 @@ export const borda = new Borda({
  */
 borda.cloud.beforeSignUp(beforeSignUp);
 borda.cloud.beforeSave('User', beforeSaveUser);
-borda.cloud.afterSave('User',afterSaveUser)
-borda.cloud.afterDelete('PublicUser',afterDeletePublicUser)
+borda.cloud.afterSave('User', afterSaveUser);
+borda.cloud.afterDelete('PublicUser', afterDeletePublicUser);
 
-/** 
+/**
  * attach server functions
  */
-// 
+//
 
 /**
  * subscribe to the ready event
@@ -87,6 +87,7 @@ borda.onReady.subscribe(async ({ db, name }) => {
   console.table(stats);
   console.timeEnd('startup');
   console.time('ping');
+
   await borda
     .ping()
     .then(() => {
@@ -128,53 +129,51 @@ console.log(
   `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
 );
 
-
-
 async function runQueryTests() {
   // insert
   await borda
-    .query('User')
+    .query('Person')
     .insert({
       name: 'John',
       age: 30,
     })
-    .then((user) => console.log('new user', user))
+    .then((person) => console.log('new person', person))
     .catch((err) => console.log(err));
 
   // find
   await borda
-    .query('User')
+    .query('Person')
     .find()
-    .then((users) => console.log('users', users))
+    .then((people) => console.log('people', people))
     .catch((err) => console.log(err));
 
   // findOne
   await borda
-    .query('User')
+    .query('Person')
     .filter({
       age: {
         $gte: 29,
       },
     })
     .findOne()
-    .then((user) => console.log('a user', user))
+    .then((person) => console.log('a person', person))
     .catch((err) => console.log(err));
 
   // removeMany
   await borda
-    .query('User')
+    .query('Person')
     .filter({
       age: {
         $gte: 18,
       },
     })
     .deleteMany()
-    .then((response) => console.log('users deleted', response))
+    .then((response) => console.log('people deleted', response))
     .catch((err) => console.log(err));
 
   // insertMany
   await borda
-    .query('User')
+    .query('Person')
     .insertMany([
       {
         name: 'John',
@@ -185,12 +184,12 @@ async function runQueryTests() {
         age: 25,
       },
     ])
-    .then((users) => console.log('many inserted users', users))
+    .then((people) => console.log('many inserted people', people))
     .catch((err) => console.log(err));
 
   // aggregate
   await borda
-    .query('User')
+    .query('Person')
     .pipeline([
       {
         $match: {
@@ -226,53 +225,53 @@ async function runQueryTests() {
       },
     ])
     .aggregate()
-    .then((agg) => console.log('aggregated users', agg))
+    .then((agg) => console.log('aggregated people', agg))
     .catch((err) => console.log(err));
 
   // count
   await borda
-    .query('User')
+    .query('Person')
     .filter({
       age: {
         $gte: 29,
       },
     })
     .count()
-    .then((count) => console.log('count', count))
+    .then((count) => console.log('count people', count))
     .catch((err) => console.log(err));
 
   // insert + remove
   await borda
-    .query('User')
+    .query('Person')
     .insert({
       name: 'Jane',
       age: 25,
     })
-    .then((user) => console.log('jane user inserted', user))
+    .then((person) => console.log('jane person inserted', person))
     .catch((err) => console.log(err));
 
   await borda
-    .query('User')
+    .query('Person')
     .filter({
       name: 'Jane',
     })
     .delete()
-    .then(() => console.log('jane user removed'))
+    .then(() => console.log('jane person removed'))
     .catch((err) => console.log(err));
 
   // insert john
   await borda
-    .query('User')
+    .query('Person')
     .insert({
       name: 'John',
       age: 30,
     })
-    .then((user) => console.log('john user inserted', user))
+    .then((person) => console.log('john person inserted', person))
     .catch((err) => console.log(err));
 
   // update
   await borda
-    .query('User')
+    .query('Person')
     .filter({
       name: 'John',
     })
@@ -284,19 +283,19 @@ async function runQueryTests() {
         _updated_at: new Date(),
       },
     })
-    .then((response) => console.log('users updated', response))
+    .then((response) => console.log('people updated', response))
     .catch((err) => console.log(err));
 
   // find again
   await borda
-    .query('User')
+    .query('Person')
     .find()
-    .then((users) => console.log('users', users))
+    .then((people) => console.log('people', people))
     .catch((err) => console.log(err));
 
   // update many
   await borda
-    .query('User')
+    .query('Person')
     .filter({
       name: {
         $exists: true,
@@ -310,12 +309,12 @@ async function runQueryTests() {
         _updated_at: new Date(),
       },
     })
-    .then((response) => console.log('users updated', response))
+    .then((response) => console.log('people updated', response))
     .catch((err) => console.log(err));
 
   // upsert
   await borda
-    .query('User')
+    .query('Person')
     .filter({
       name: 'Joe',
     })
@@ -324,13 +323,13 @@ async function runQueryTests() {
       age: 18,
     })
     .then((response) =>
-      console.log('user upserted', JSON.stringify(response, null, 2))
+      console.log('person upserted', JSON.stringify(response, null, 2))
     )
     .catch((err) => console.log(err));
 
   // upsertMany
   await borda
-    .query('User')
+    .query('Person')
     .filter({
       name: '$$name',
     })
@@ -349,13 +348,13 @@ async function runQueryTests() {
       },
     ])
     .then((response) =>
-      console.log('users upserted', JSON.stringify(response, null, 2))
+      console.log('people upserted', JSON.stringify(response, null, 2))
     )
     .catch((err) => console.log(err));
 
   // insert + include
   const userToInclude: any = await borda
-    .query('User')
+    .query('Person')
     .insert({
       name: 'Elon',
       age: 42,
@@ -374,7 +373,7 @@ async function runQueryTests() {
 
   // query posts
   await borda
-    .query('Post')
+    .query<{ title: string; user: any }>('Post')
     .include(['user'])
     .find()
     .then((posts) => console.log('posts', posts))
@@ -394,28 +393,28 @@ async function runQueryTests() {
 
   // update by id (put)
   await borda
-    .query('User')
+    .query('Person')
     .update(userToInclude.objectId, {
       name: 'John',
       age: 33,
     })
-    .then((user) => console.log('updated user', user))
+    .then(() => console.log('updated person'))
     .catch((err) => console.log(err));
 
   // get by id (get)
   await borda
-    .query('User')
+    .query<{ name: string; age: number }>('Person')
     .findOne(userToInclude.objectId)
-    .then((user) => console.log('user', user))
+    .then((person) => console.log('person', person))
     .catch((err) => console.log(err));
 
   // update
   await borda
-    .query('User')
+    .query('Person')
     .update(userToInclude.objectId, {
       name: 'Elon Musk',
     })
-    .then((user) => console.log('updated user', user))
+    .then(() => console.log('updated person'))
     .catch((err) => console.log(err));
 }
 

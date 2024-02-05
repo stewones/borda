@@ -22,21 +22,20 @@ import {
   ExternalFieldName,
   InternalCollectionName,
   InternalFieldName,
+  InternalSensitiveFields,
   isArrayPointer,
   isEmpty,
   isISODate,
   isNumber,
   isPointer,
   isServer,
-  log,
   pointerObjectFrom,
   Projection,
   removeUndefinedProperties,
-} from '@elegante/sdk';
+} from '@borda/client';
 
-import { BordaQuery } from './Borda';
 import { Cache } from './Cache';
-import { BordaSensitiveFields } from './internal';
+import { BordaServerQuery } from './query';
 
 export interface DocQRL<T extends Document = Document>
   extends DocumentQuery<T> {
@@ -59,7 +58,7 @@ export function parseDoc<T extends Document>({
   inspect: boolean;
   isUnlocked: boolean;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }): (docQuery: DocumentQuery) => Promise<T> {
   return async (docQuery) => {
     await parseInclude({
@@ -96,7 +95,7 @@ export function parseDocs<T extends Document[]>({
   inspect: boolean;
   isUnlocked: boolean;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }): (docQuery: DocumentQuery) => Promise<T[]> {
   return async (docQuery) => {
     for (let item of arr) {
@@ -332,7 +331,7 @@ export function parseInclude<T extends Document>({
   obj: any;
   inspect: boolean;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }): (docQuery: DocumentQuery) => Promise<T> {
   return async (docQuery) => {
     if (!obj) return {};
@@ -435,7 +434,7 @@ export async function parseJoin({
   pointerField: string;
   pointerValue: any;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   let doc;
 
@@ -473,7 +472,7 @@ export async function parseJoinKeep({
   pointerField: string;
   inspect: boolean;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   for (const pointerTreeField of tree[pointerField]) {
     const pointerTreeBase = pointerTreeField.split('.')[0];
@@ -718,7 +717,7 @@ export function parseResponse(
          *  sensitive fields should only be accessible by the server
          */
         if (
-          BordaSensitiveFields.includes(field) &&
+          InternalSensitiveFields.includes(field) &&
           options.removeSensitiveFields
         ) {
           delete obj[field];
@@ -732,7 +731,7 @@ export function parseResponse(
 
     return obj;
   } catch (err: any) {
-    log(err);
-    throw err.toString();
+    console.log(err);
+    throw err.toString(); // @todo ??
   }
 }

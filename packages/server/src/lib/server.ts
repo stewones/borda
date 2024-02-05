@@ -6,18 +6,19 @@ import {
   BordaError,
   ErrorCode,
   InternalCollectionName,
+  InternalHeaders,
   isEmpty,
-  PluginHook,
   pointer,
   Session,
   User,
 } from '@borda/client';
 
 import { newToken } from '../utils';
-import { BordaQuery, BordaRequest } from './Borda';
+import { BordaRequest } from './Borda';
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
-import { BordaHeaders } from './internal';
+import { PluginHook } from './plugin';
+import { BordaServerQuery } from './query';
 import {
   restCollectionDelete,
   restCollectionGet,
@@ -82,7 +83,7 @@ export const ensureApiKey = ({
       return;
     }
 
-    const apiKeyHeaderKey = `${serverHeaderPrefix}-${BordaHeaders['apiKey']}`;
+    const apiKeyHeaderKey = `${serverHeaderPrefix}-${InternalHeaders['apiKey']}`;
     const apiKey = request.headers.get(apiKeyHeaderKey?.toLowerCase());
 
     if (!apiKey) {
@@ -112,7 +113,7 @@ export async function ensureApiToken({
   path: string;
   request: BordaRequest & any;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
   serverHeaderPrefix: string;
   params: any;
   cloud: Cloud;
@@ -124,11 +125,12 @@ export async function ensureApiToken({
   const { collectionName } = params || {};
 
   const token = request.headers.get(
-    `${serverHeaderPrefix}-${BordaHeaders['apiToken']}`
+    `${serverHeaderPrefix}-${InternalHeaders['apiToken']}`
   );
   const method =
-    request.headers.get(`${serverHeaderPrefix}-${BordaHeaders['apiMethod']}`) ??
-    '';
+    request.headers.get(
+      `${serverHeaderPrefix}-${InternalHeaders['apiMethod']}`
+    ) ?? '';
 
   const isUserSpecialRoutes =
     collectionName === 'User' &&
@@ -206,7 +208,7 @@ export const routeUnlock = ({
     }
 
     const apiSecret = request.headers.get(
-      `${serverHeaderPrefix}-${BordaHeaders['apiSecret']}`
+      `${serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
     );
     if (apiSecret === serverSecret) {
       request.unlocked = true;
@@ -231,7 +233,7 @@ export const queryInspect = ({
       return;
     }
     const apiInspect = request.headers.get(
-      `${serverHeaderPrefix}-${BordaHeaders['apiInspect']}`
+      `${serverHeaderPrefix}-${InternalHeaders['apiInspect']}`
     );
     // parse boolean
     const inspect = apiInspect === 'true' || apiInspect === true;
@@ -246,7 +248,7 @@ export async function createSession({
   query,
 }: {
   user: User;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   /**
    * because we don't want to expose the user password
@@ -295,7 +297,7 @@ export function createServer({
   serverSecret: string;
   serverURL: string;
   poweredBy: string;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
   plugin: (name: PluginHook) => ((params?: any) => any) | undefined;
   cache: Cache;
   db: Db;

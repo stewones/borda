@@ -1,9 +1,28 @@
-import {
-  EmailPasswordResetParams,
-  EmailPasswordResetParamsCallback,
-  EmailProvider,
-  EmailProviderParams,
-} from '@borda/sdk';
+import { User } from '@borda/client';
+
+export type PluginHook = 'EmailProvider' | 'EmailPasswordResetTemplate';
+export interface EmailProviderParams {
+  to: {
+    name: string;
+    email: string;
+  };
+  subject: string;
+  html: string;
+}
+export interface EmailProvider {
+  send: (params: EmailProviderParams) => Promise<void>;
+}
+
+export interface EmailPasswordResetParams {
+  user: User;
+  token: string;
+  baseUrl: string;
+}
+
+export interface EmailPasswordResetParamsCallback {
+  subject: string;
+  html: string;
+}
 
 export interface ServerPlugin {
   name: string;

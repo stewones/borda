@@ -63,12 +63,14 @@ export interface DocumentQuery<TSchema = Document> {
     [key in keyof TSchema]: number;
   }>;
   options?: DocumentOptions;
-  pipeline?: DocumentPipeline<TSchema>;
+  pipeline?: DocumentPipeline<TSchema>[];
   include?: string[];
   exclude?: string[];
   doc?: Document | null;
   docs?: Document[] | null;
   collection: string;
+  objectId?: string;
+  method: QueryMethod;
 }
 
 export type DocumentRootFilter<TSchema = Document> =
@@ -1414,4 +1416,157 @@ export declare class AggregationCursor<TSchema = any> {
   unwind($unwind: Document | string): this;
   /** Add a geoNear stage to the aggregation pipeline */
   geoNear($geoNear: Document): this;
+}
+
+export declare class BulkWriteResult {
+  private readonly result;
+  /** Number of documents inserted. */
+  readonly insertedCount: number;
+  /** Number of documents matched for update. */
+  readonly matchedCount: number;
+  /** Number of documents modified. */
+  readonly modifiedCount: number;
+  /** Number of documents deleted. */
+  readonly deletedCount: number;
+  /** Number of documents upserted. */
+  readonly upsertedCount: number;
+  /** Upserted document generated Id's, hash key is the index of the originating operation */
+  readonly upsertedIds: {
+    [key: number]: any;
+  };
+  /** Inserted document generated Id's, hash key is the index of the originating operation */
+  readonly insertedIds: {
+    [key: number]: any;
+  };
+  private static generateIdMap;
+  /* Excluded from this release type: __constructor */
+  /* Excluded from this release type: getSuccessfullyInsertedIds */
+  /** Evaluates to true if the bulk operation correctly executes */
+  get ok(): number;
+  /**
+   * The number of inserted documents
+   * @deprecated Use insertedCount instead.
+   */
+  get nInserted(): number;
+  /**
+   * Number of upserted documents
+   * @deprecated User upsertedCount instead.
+   */
+  get nUpserted(): number;
+  /**
+   * Number of matched documents
+   * @deprecated Use matchedCount instead.
+   */
+  get nMatched(): number;
+  /**
+   * Number of documents updated physically on disk
+   * @deprecated Use modifiedCount instead.
+   */
+  get nModified(): number;
+  /**
+   * Number of removed documents
+   * @deprecated Use deletedCount instead.
+   */
+  get nRemoved(): number;
+  /**
+   * Returns an array of all inserted ids
+   * @deprecated Use insertedIds instead.
+   */
+  getInsertedIds(): Document[];
+  /**
+   * Returns an array of all upserted ids
+   * @deprecated Use upsertedIds instead.
+   */
+  getUpsertedIds(): Document[];
+  /** Returns the upserted id at the given index */
+  getUpsertedIdAt(index: number): Document | undefined;
+  /** Returns raw internal result */
+  getRawResponse(): Document;
+  /** Returns true if the bulk operation contains a write error */
+  hasWriteErrors(): boolean;
+  /** Returns the number of write errors off the bulk operation */
+  getWriteErrorCount(): number;
+  /** Returns a specific write error object */
+  getWriteErrorAt(index: number): WriteError | undefined;
+  /** Retrieve all write errors */
+  getWriteErrors(): WriteError[];
+  /** Retrieve the write concern error if one exists */
+  getWriteConcernError(): WriteConcernError | undefined;
+  toString(): string;
+  isOk(): boolean;
+}
+export declare class WriteError {
+  err: BulkWriteOperationError;
+  constructor(err: BulkWriteOperationError);
+  /** WriteError code. */
+  get code(): number;
+  /** WriteError original bulk operation index. */
+  get index(): number;
+  /** WriteError message. */
+  get errmsg(): string | undefined;
+  /** WriteError details. */
+  get errInfo(): Document | undefined;
+  /** Returns the underlying operation that caused the error */
+  getOperation(): Document;
+  toJSON(): {
+    code: number;
+    index: number;
+    errmsg?: string;
+    op: Document;
+  };
+  toString(): string;
+}
+
+export declare interface BulkWriteOperationError {
+  index: number;
+  code: number;
+  errmsg: string;
+  errInfo: Document;
+  op: Document | UpdateStatement | DeleteStatement;
+}
+
+export declare interface UpdateStatement {
+  /** The query that matches documents to update. */
+  q: Document;
+  /** The modifications to apply. */
+  u: Document | Document[];
+  /**  If true, perform an insert if no documents match the query. */
+  upsert?: boolean;
+  /** If true, updates all documents that meet the query criteria. */
+  multi?: boolean;
+  /** Specifies the collation to use for the operation. */
+  collation?: CollationOptions;
+  /** An array of filter documents that determines which array elements to modify for an update operation on an array field. */
+  arrayFilters?: Document[];
+  /** A document or string that specifies the index to use to support the query predicate. */
+  hint?: Hint;
+}
+
+export declare interface DeleteStatement {
+  /** The query that matches documents to delete. */
+  q: Document;
+  /** The number of matching documents to delete. */
+  limit: number;
+  /** Specifies the collation to use for the operation. */
+  collation?: CollationOptions;
+  /** A document or string that specifies the index to use to support the query predicate. */
+  hint?: Hint;
+}
+
+export declare class WriteConcernError {
+  /* Excluded from this release type: [kServerError] */
+  constructor(error: WriteConcernErrorData);
+  /** Write concern error code. */
+  get code(): number | undefined;
+  /** Write concern error message. */
+  get errmsg(): string | undefined;
+  /** Write concern error info. */
+  get errInfo(): Document | undefined;
+  toJSON(): WriteConcernErrorData;
+  toString(): string;
+}
+export declare interface WriteConcernErrorData {
+  code: number;
+  errmsg: string;
+  errInfo?: Document;
 }

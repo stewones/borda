@@ -1,656 +1,680 @@
-/**
- * @license
- * Copyright Elegante All Rights Reserved.
- *
- * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
- */
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-import WebSocket, { MessageEvent } from 'isomorphic-ws';
-import { finalize, Observable } from 'rxjs';
-
-import { EleganteClient } from './Client';
-import { EleganteError, ErrorCode } from './Error';
-import { fetch, HttpMethod } from './fetch';
-import { InternalFieldName, InternalHeaders, memo } from './internal';
-import { log } from './log';
-import { DocumentLiveQuery, LiveQueryMessage } from './types';
 import {
+  BordaError,
+  ErrorCode,
+} from './Error';
+import { InternalFieldName } from './internal';
+import {
+  AggregateOptions,
+  BulkWriteResult,
   ChangeStreamOptions,
   Document,
+  DocumentExtraOptions,
+  DocumentFilter,
+  DocumentOptions,
+  DocumentPipeline,
   DocumentQuery,
-  DocumentResponse,
+  FindOptions,
   ManyInsertResponse,
   ManyUpdateResponse,
   ManyUpsertResponse,
-  Query,
-} from './types/query';
-import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
-import { getUrl, WebSocketFactory, webSocketServer } from './websocket';
+  Projection,
+  QueryMethod,
+  Sort,
+} from './types';
+import { isEmpty } from './utils';
 
-export function query<TSchema extends Document = Document>(collection: string) {
-  const bridge: Query<TSchema> = {
-    params: {
-      collection: '',
-      filter: {},
-      include: [],
-      exclude: [],
-      unlock: false,
-    },
+export type RunResult<TSchema> =
+  | number
+  | TSchema
+  | TSchema[]
+  | ManyInsertResponse<TSchema>
+  | ManyUpdateResponse
+  | ManyUpsertResponse
+  | BulkWriteResult
+  | void;
 
-    options: {},
+export class BordaQuery<TSchema extends Document = Document> {
+  #inspect!: boolean;
+  #collection: string;
+  #filter: DocumentFilter<TSchema> = {};
+  #projection: Partial<{
+    [key in keyof TSchema]: number;
+  }> = {};
+  #sort: Sort = {};
+  #limit = 20;
+  #skip = 0;
+  #pipeline: DocumentPipeline<TSchema>[] = [];
+  #include: string[] = [];
+  #exclude: string[] = [];
+  #unlock = false; // @todo
 
-    unlock: (isUnlocked?: boolean) => {
-      if (!isBoolean(isUnlocked)) {
-        isUnlocked = true;
-      }
+get collection() {
+  return this.#collection;
+}
+get inspect() {
+  return this.#inspect;
+}
 
-      /**
-       * unlock can only be used in server environment
-       * with proper ApiKey+ApiSecret defined
-       */
-      if (!isServer() && isUnlocked) {
-        throw new EleganteError(
-          ErrorCode.SERVER_UNLOCK_ONLY,
-          `unlock can only be used in server environment`
-        );
-      }
+  constructor({
+    inspect,
+    collection,
+  }: {
+    collection: string;
+    inspect?: boolean;
+  }) {
+    // ensure collection name doesn't end with "s" because
+    // it's already means plural and for good db hygiene
+    // we should keep it as singular
+    if (collection.endsWith('s')) {
+      throw new BordaError(
+        ErrorCode.QUERY_SINGULAR_COLLECTION_NAME,
+        `collection name should be singular. eg: 'User' instead of 'Users'`
+      );
+    }
 
-      bridge.params['unlock'] = isUnlocked;
-      return bridge;
-    },
+    // ensure collection name is in TitleCase
+    if (collection !== collection[0].toUpperCase() + collection.slice(1)) {
+      throw new BordaError(
+        ErrorCode.QUERY_TITLE_CASE_COLLECTION_NAME,
+        `collection name should be TitleCase. eg: 'User' instead of 'user'`
+      );
+    }
+
+    this.#collection = collection;
+    this.#inspect = inspect ?? false;
+
+    //bridge.params['collection'] = collection;
+    // return Object.freeze(bridge);
+  }
+
+  /**
+   * doc modifiers
+   */
+  projection(project: Partial<Projection<TSchema>>) {
+    const newProject = {
+      ...project,
+    } as any;
 
     /**
-     * doc modifiers
+     * deal with internal field names
      */
-    projection: (project) => {
-      const newProject = {
-        ...project,
+    const keys = Object.keys(newProject);
+    for (const key in InternalFieldName) {
+      if (keys.includes(key)) {
+        newProject[InternalFieldName[key]] = newProject[key];
+      }
+    }
+
+    this.#projection = newProject;
+    return this;
+  }
+
+  sort(by: Sort) {
+    this.#sort = by;
+    return this;
+  }
+
+  filter(by: DocumentFilter<TSchema>) {
+    this.#filter = by;
+    return this;
+  }
+
+  limit(by: number) {
+    this.#limit = by;
+    return this;
+  }
+
+  skip(by: number) {
+    this.#skip = by;
+    return this;
+  }
+
+  include(fields: string[]) {
+    this.#include = fields;
+    return this;
+  }
+
+  exclude(fields: string[]) {
+    this.#exclude = fields;
+    return this;
+  }
+
+  pipeline(docs: DocumentPipeline<TSchema>[]) {
+    this.#pipeline = docs ? docs : [];
+    return this;
+  }
+
+  /**
+   * find documents using mongo-like queries
+   */
+  find(options?: FindOptions & DocumentExtraOptions): Promise<TSchema[]> {
+    return this.run('find', options) as Promise<TSchema[]>;
+  }
+
+  /**
+   * find a document using mongo-like queries
+   * or direclty by passing its objectId
+   */
+  findOne(objectId: string): Promise<TSchema>;
+  findOne(
+    objectId: string,
+    options?: FindOptions & DocumentExtraOptions
+  ): Promise<TSchema>;
+  findOne(options?: DocumentExtraOptions): Promise<TSchema>;
+  findOne(optionsOrObjectId: any, options?: any) {
+    const hasDocModifier =
+      !isEmpty(this.#projection) ||
+      !isEmpty(this.#include) ||
+      !isEmpty(this.#filter) ||
+      !isEmpty(this.#pipeline);
+
+    /**
+     * in case we have objectId and modifiers
+     * we need to run as findOne to make include and others work
+     */
+    if (typeof optionsOrObjectId === 'string' && hasDocModifier) {
+      this.#filter = {
+        _id: {
+          $eq: optionsOrObjectId,
+        },
       } as any;
+    }
 
-      /**
-       * deal with internal field names
-       */
-      const keys = Object.keys(newProject);
-      for (const key in InternalFieldName) {
-        if (keys.includes(key)) {
-          newProject[InternalFieldName[key]] = newProject[key];
-        }
-      }
+    return this.run(
+      typeof optionsOrObjectId === 'string' && !hasDocModifier
+        ? 'get'
+        : 'findOne',
+      typeof optionsOrObjectId === 'string' ? options ?? {} : optionsOrObjectId,
+      {},
+      typeof optionsOrObjectId === 'string' ? optionsOrObjectId : undefined
+    ) as Promise<TSchema>;
+  }
 
-      bridge.params['projection'] = newProject;
-      return bridge;
-    },
+  /**
+   * update a document using mongo-like queries
+   * or direclty by passing its objectId
+   */
+  update(doc: TSchema, options?: DocumentExtraOptions): Promise<void>;
+  update(
+    objectId: string,
+    doc: TSchema,
+    options?: DocumentExtraOptions
+  ): Promise<void>;
+  update(objectIdOrDoc: any, docOrOptions?: Partial<TSchema>, options?: any) {
+    return this.run(
+      // method
+      typeof objectIdOrDoc === 'string' ? 'put' : 'update',
+      // options
+      typeof objectIdOrDoc !== 'string' ? docOrOptions : options ?? {},
+      // optional: doc
+      typeof objectIdOrDoc !== 'string'
+        ? objectIdOrDoc
+        : docOrOptions
+        ? docOrOptions
+        : {},
+      // optional: objectId
+      typeof objectIdOrDoc === 'string' ? objectIdOrDoc : undefined
+    ) as Promise<void>;
+  }
 
-    sort: (by) => {
-      bridge.params['sort'] = by;
-      return bridge;
-    },
+  updateMany(
+    doc: TSchema,
+    options?: DocumentExtraOptions
+  ): Promise<ManyUpdateResponse> {
+    return this.run(
+      'updateMany',
+      options ?? {},
+      doc ?? {}
+    ) as Promise<ManyUpdateResponse>;
+  }
 
-    filter: (by) => {
-      bridge.params['filter'] = by as any;
-      return bridge;
-    },
+  insert(
+    doc: Partial<TSchema>,
+    options?: DocumentExtraOptions
+  ): Promise<TSchema> {
+    return this.run('insert', options ?? {}, doc) as Promise<TSchema>;
+  }
 
-    limit: (by) => {
-      bridge.params['limit'] = by;
-      return bridge;
-    },
+  /**
+   * insert many documents
+   * The number of operations in each group cannot exceed the value of the maxWriteBatchSize of the database. As of MongoDB 3.6, this value is 100,000.
+   * learn more https://www.mongodb.com/docs/manual/reference/method/db.collection.insertMany/
+   */
+  insertMany(
+    docs: Partial<TSchema>[],
+    options?: DocumentExtraOptions
+  ): Promise<ManyInsertResponse<TSchema>> {
+    return this.run('insertMany', options ?? {}, docs ?? []) as Promise<
+      ManyInsertResponse<TSchema>
+    >;
+  }
 
-    skip: (by) => {
-      bridge.params['skip'] = by;
-      return bridge;
-    },
+  /**
+   * update or insert a document
+   */
+  upsert(
+    doc: Partial<TSchema>,
+    options?: DocumentExtraOptions
+  ): Promise<BulkWriteResult> {
+    return this.run('upsert', options ?? {}, doc) as Promise<BulkWriteResult>;
+  }
 
-    include: (fields) => {
-      bridge.params['include'] = fields;
-      return bridge;
-    },
+  /**
+   * update or insert many documents
+   */
+  upsertMany(
+    docs: Partial<TSchema>[],
+    options?: DocumentExtraOptions
+  ): Promise<ManyUpsertResponse> {
+    return this.run(
+      'upsertMany',
+      options ?? {},
+      docs ?? []
+    ) as Promise<ManyUpsertResponse>;
+  }
 
-    exclude: (fields) => {
-      bridge.params['exclude'] = fields;
-      return bridge;
-    },
+  /**
+   * delete a document using mongo-like queries
+   * or direclty by passing its objectId
+   */
+  delete(options?: DocumentExtraOptions): Promise<void>;
+  delete(objectId: string, options?: DocumentExtraOptions): Promise<void>;
+  delete(objectIdOrOptions?: any, options?: any) {
+    return this.run(
+      // method
+      typeof objectIdOrOptions === 'string' ? 'delete' : 'remove',
+      // options
+      typeof objectIdOrOptions === 'object' && objectIdOrOptions['context']
+        ? objectIdOrOptions
+        : options ?? {},
+      // doc
+      {},
+      // objectId
+      typeof objectIdOrOptions === 'string' ? objectIdOrOptions : undefined
+    ) as Promise<void>;
+  }
 
-    pipeline: (docs) => {
-      bridge.params['pipeline'] = docs ? docs : ([] as any);
-      return bridge;
-    },
+  deleteMany(options?: DocumentExtraOptions): Promise<ManyUpdateResponse> {
+    return this.run('removeMany', options) as Promise<ManyUpdateResponse>;
+  }
 
-    /**
-     * doc methods
-     */
-    find: (options) => {
-      return bridge.run('find', options) as Promise<TSchema[]>;
-    },
+  /**
+   * count documents using mongo-like queries
+   */
+  count(options?: FindOptions & DocumentExtraOptions): Promise<number> {
+    return this.run('count', options) as Promise<number>;
+  }
 
-    findOne: (optionsOrObjectId, options?) => {
-      const hasDocModifier =
-        !isEmpty(bridge.params['projection']) ||
-        !isEmpty(bridge.params['include']) ||
-        !isEmpty(bridge.params['filter']) ||
-        !isEmpty(bridge.params['pipeline']);
+  /**
+   * aggregate documents using mongo-like queries
+   */
+  aggregate(
+    options?: AggregateOptions & DocumentExtraOptions
+  ): Promise<TSchema[]> {
+    return this.run('aggregate', options) as Promise<TSchema[]>;
+  }
 
-      /**
-       * in case we have objectId and modifiers
-       * we need to run as findOne to make include and others work
-       */
-      if (typeof optionsOrObjectId === 'string' && hasDocModifier) {
-        bridge['params']['filter'] = {
-          _id: {
-            $eq: optionsOrObjectId,
-          },
-        } as any;
-      }
-
-      return bridge.run(
-        typeof optionsOrObjectId === 'string' && !hasDocModifier
-          ? 'get'
-          : 'findOne',
-        typeof optionsOrObjectId === 'string'
-          ? options ?? {}
-          : optionsOrObjectId,
-        {},
-        typeof optionsOrObjectId === 'string' ? optionsOrObjectId : undefined
-      ) as Promise<TSchema>;
-    },
-
-    update: (objectIdOrDoc, docOrOptions?: Partial<TSchema>, options?) => {
-      return bridge.run(
-        // method
-        typeof objectIdOrDoc === 'string' ? 'put' : 'update',
-        // options
-        typeof objectIdOrDoc !== 'string' ? docOrOptions : options ?? {},
-        // optional: doc
-        typeof objectIdOrDoc !== 'string'
-          ? objectIdOrDoc
-          : docOrOptions
-          ? docOrOptions
-          : {},
-        // optional: objectId
-        typeof objectIdOrDoc === 'string' ? objectIdOrDoc : undefined
-      ) as Promise<void>;
-    },
-
-    updateMany: (doc, options?) => {
-      return bridge.run(
-        'updateMany',
-        options ?? {},
-        doc ?? {}
-      ) as Promise<ManyUpdateResponse>;
-    },
-
-    insert: (doc, options?) => {
-      return bridge.run('insert', options ?? {}, doc) as Promise<TSchema>;
-    },
-
-    insertMany: (docs, options?) => {
-      return bridge.run('insertMany', options ?? {}, docs ?? []) as Promise<
-        ManyInsertResponse<TSchema>
-      >;
-    },
-
-    upsert: (doc, options?) => {
-      return bridge.run('upsert', options ?? {}, doc) as Promise<TSchema>;
-    },
-
-    upsertMany: (docs, options?) => {
-      return bridge.run(
-        'upsertMany',
-        options ?? {},
-        docs ?? []
-      ) as Promise<ManyUpsertResponse>;
-    },
-
-    delete: (objectIdOrOptions?, options?) => {
-      return bridge.run(
-        // method
-        typeof objectIdOrOptions === 'string' ? 'delete' : 'remove',
-        // options
-        typeof objectIdOrOptions === 'object' && objectIdOrOptions['context']
-          ? objectIdOrOptions
-          : options ?? {},
-        // doc
-        {},
-        // objectId
-        typeof objectIdOrOptions === 'string' ? objectIdOrOptions : undefined
-      ) as Promise<void>;
-    },
-
-    deleteMany: (options) => {
-      return bridge.run('removeMany', options) as Promise<ManyUpdateResponse>;
-    },
-
-    count: (options) => {
-      return bridge.run('count', options) as Promise<number>;
-    },
-
-    aggregate: (options) => {
-      return bridge.run('aggregate', options) as Promise<TSchema[]>;
-    },
-
-    /**
-     * doc retrieval
-     */
-    run: (method, options, docOrDocs?, objectId?) => {
-      if (
-        bridge.params.filter &&
-        bridge.params.filter['expiresAt'] &&
-        isEmpty(bridge.params.filter['expiresAt'])
-      ) {
-        const f = bridge.params.filter as Document;
-        f['expiresAt'] = {
-          $exists: false,
-        };
-      }
-
-      let doc: Document = {};
-      let docs: Document[] = [];
-      if (docOrDocs && Array.isArray(docOrDocs)) {
-        docs = docOrDocs as Document[];
-      }
-
-      if (docOrDocs && !Array.isArray(docOrDocs)) {
-        doc = docOrDocs as Document;
-      }
-
-      options = {
-        ...bridge.options,
-        ...options,
+  /**
+   * doc retrieval
+   */
+  run(
+    method: QueryMethod,
+    options?: DocumentOptions,
+    docOrDocs?: Partial<TSchema> | Partial<TSchema>[],
+    objectId?: string
+  ): Promise<RunResult<TSchema>> {
+    if (!options) {
+      options = {};
+    }
+    if (
+      this.#filter &&
+      this.#filter['expiresAt'] &&
+      isEmpty(this.#filter['expiresAt'])
+    ) {
+      const f = this.#filter as Document;
+      f['expiresAt'] = {
+        $exists: false,
       };
+    }
 
-      if (!EleganteClient.params.serverURL) {
-        throw new EleganteError(
-          ErrorCode.SERVER_URL_UNDEFINED,
-          'serverURL is not defined on client'
+    let doc: Document = {};
+    let docs: Document[] = [];
+    if (docOrDocs && Array.isArray(docOrDocs)) {
+      docs = docOrDocs as Document[];
+    }
+
+    if (docOrDocs && !Array.isArray(docOrDocs)) {
+      doc = docOrDocs as Document;
+    }
+
+    if (!this.#collection) {
+      throw new BordaError(
+        ErrorCode.QUERY_REQUIRED_COLLECTION_NAME,
+        'a collection name is required'
+      );
+    }
+
+    if (['update', 'remove'].includes(method)) {
+      if (isEmpty(this.#filter)) {
+        throw new BordaError(
+          ErrorCode.QUERY_FILTER_REQUIRED,
+          'a filter is required for doc mutation. ie: update and delete'
         );
       }
+    }
 
-      if (!bridge.params['collection']) {
-        throw new EleganteError(
-          ErrorCode.QUERY_REQUIRED_COLLECTION_NAME,
-          'a collection name is required'
-        );
-      }
+    if (!isEmpty(this.#pipeline) && method !== 'aggregate') {
+      throw new BordaError(
+        ErrorCode.QUERY_PIPELINE_AGGREGATE_ONLY,
+        `pipeline can only be used for aggregate. you're trying to use "${method}()"`
+      );
+    }
 
-      if (['update', 'remove'].includes(method)) {
-        if (isEmpty(bridge.params['filter'])) {
-          throw new EleganteError(
-            ErrorCode.QUERY_FILTER_REQUIRED,
-            'a filter is required for doc mutation. ie: update and delete'
-          );
-        }
-      }
+    let { inspect } = options;
 
-      if (!isEmpty(bridge.params['pipeline']) && method !== 'aggregate') {
-        throw new EleganteError(
-          ErrorCode.QUERY_PIPELINE_AGGREGATE_ONLY,
-          `pipeline can only be used for aggregate. you're trying to use "${method}()"`
-        );
-      }
+    inspect = inspect ?? this.#inspect;
 
-      const {
-        filter,
-        limit,
-        skip,
-        sort,
-        projection,
-        include,
-        exclude,
-        pipeline,
-        unlock,
-      } = bridge.params;
-
-      const { inspect } = options;
-      const headers = {
-        [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-          EleganteClient.params.apiKey,
-        [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
-          method,
-      };
-
-      if (inspect) {
-        headers[
-          `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiInspect']}`
-        ] = 'true';
-      }
-
-      if (unlock) {
-        headers[
-          `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
-        ] = EleganteClient.params.apiSecret ?? '👀';
-      }
-
-      if (!isServer()) {
-        const token = LocalStorage.get(
-          `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-        );
-
-        if (token) {
-          headers[
-            `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-          ] = token;
-        }
-      }
-
-      log(method, 'params', JSON.stringify(bridge.params));
-      log(method, 'options', JSON.stringify(options));
+    if (inspect) {
+      console.log(method, 'query', JSON.stringify(this, null, 2));
+      console.log(method, 'options', JSON.stringify(options, null, 2));
 
       if (!isEmpty(doc)) {
-        log(method, 'doc', JSON.stringify(doc));
+        console.log(method, 'doc', JSON.stringify(doc, null, 2));
       }
 
       if (!isEmpty(docs)) {
-        log(method, 'docs', docs.length, docs[0]);
+        console.log(
+          method,
+          'docs',
+          docs.length,
+          JSON.stringify(docs[0], null, 2)
+        );
       }
+    }
 
-      const docQuery: Document | DocumentQuery<TSchema> = {
-        options,
-        filter,
-        projection,
-        sort,
-        limit,
-        skip,
-        include,
-        exclude,
-        pipeline,
-        doc,
-        docs,
-      };
+    const docQuery: DocumentQuery<TSchema> = {
+      options,
+      filter: this.#filter,
+      projection: this.#projection,
+      sort: this.#sort,
+      limit: this.#limit,
+      skip: this.#skip,
+      include: this.#include,
+      exclude: this.#exclude,
+      pipeline: this.#pipeline,
+      doc,
+      docs,
+      collection: this.#collection,
+      objectId,
+      method,
+    };
 
-      const source = fetch<DocumentResponse<TSchema>>(
-        `${EleganteClient.params.serverURL}/${bridge.params['collection']}${
-          ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
-        }`,
-        {
-          headers,
-          body: method === 'get' ? null : docQuery,
-          method: ['get', 'put', 'delete'].includes(method)
-            ? (method.toUpperCase() as HttpMethod)
-            : 'POST',
-        }
-      );
+    // execute by the bridge
+    return this.bridge(docQuery);
 
-      Reflect.defineMetadata(
-        'key',
-        cleanKey({
-          collection: bridge.params['collection'],
-          ...docQuery,
-        }),
-        source
-      );
-      return source;
-    },
-
-    on: (event, options?: ChangeStreamOptions) => {
-      let wss: WebSocket;
-      let wssFinished = false;
-      let wssConnected = false;
-
-      let hasConnected = false;
-
-      const {
-        filter,
-        limit,
-        skip,
-        sort,
-        projection,
-        include,
-        exclude,
-        pipeline,
-        unlock,
-        collection,
-      } = bridge.params;
-
-      const body: DocumentLiveQuery = {
-        options,
-        projection,
-        sort,
-        limit,
-        skip,
-        include,
-        exclude,
-        collection,
-        event,
-        filter: filter ?? ({} as any),
-        pipeline: pipeline ?? ([] as any),
-        unlock: unlock ?? false,
-        method: 'on',
-      };
-
-      const key = `websocket:${cleanKey(body)}`;
-
-      const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
-        if (!EleganteClient.params.serverURL) {
-          throw new EleganteError(
-            ErrorCode.SERVER_URL_UNDEFINED,
-            'serverURL is not defined on client'
-          );
-        }
-
-        const socketURLPathname = `/${bridge.params['collection']}`;
-        const socketURL = getUrl() + socketURLPathname;
-
-        const webSocket: WebSocketFactory = {
-          onOpen: (ws, ev) => {
-            wss = ws;
-            wssConnected = true;
-            memo.set(key, wss);
-            log('on', event, bridge.params['collection'], bridge.params);
-          },
-
-          onError: (ws, err) => {
-            log('error', err, 'on', event, err, bridge.params['collection']);
-          },
-
-          onConnect: (ws) => {
-            hasConnected = true;
-            // send query to the server
-            ws.send(JSON.stringify(body));
-          },
-
-          onMessage: (ws: WebSocket, message: MessageEvent) => {
-            const data = message.data;
-            try {
-              observer.next(JSON.parse(data as string));
-            } catch (err) {
-              log('on', event, bridge.params['collection'], 'error', err);
-              ws.close();
-            }
-          },
-
-          onClose: (ws, ev) => {
-            if (
-              wssFinished ||
-              ev?.code === 1008 ||
-              [
-                'Invalid secret',
-                'Invalid key',
-                'Invalid session',
-                'Collection not allowed',
-                'Invalid query method',
-                'stream closed',
-              ].includes(ev?.reason) ||
-              !hasConnected
-            ) {
-              ws.close();
-              observer.error(
-                `${ErrorCode.LIVE_QUERY_SOCKET_CLOSE}: ${
-                  ev.reason || 'network error'
-                }`
-              );
-              observer.complete();
-              return;
-            }
-
-            if (wssConnected) {
-              wssConnected = false;
-              log(
-                'on',
-                event,
-                bridge.params['collection'],
-                'disconnected',
-                ev.reason,
-                bridge.params
-              );
-            }
-
-            setTimeout(() => {
-              log(
-                'on',
-                event,
-                bridge.params['collection'],
-                'trying to reconnect',
-                bridge.params
-              );
-              webSocketServer(
-                socketURL,
-                EleganteClient.params.apiKey,
-                EleganteClient.params.sessionToken || null,
-                unlock ? EleganteClient.params.apiSecret : null
-              )(webSocket);
-            }, 1 * 500);
-          },
-        };
-
-        /**
-         * connect to the server
-         */
-        webSocketServer(
-          socketURL,
-          EleganteClient.params.apiKey,
-          EleganteClient.params.sessionToken || null,
-          unlock ? EleganteClient.params.apiSecret : null
-        )(webSocket);
-      }).pipe(
-        finalize(() => {
-          log('on', event, 'unsubscribed', bridge.params);
-          wssFinished = true;
-          memo.delete(key);
-          wss && wss.close();
-        })
-      );
-
-      Reflect.defineMetadata('key', cleanKey(body), source);
-      return source;
-    },
-
-    once: () => {
-      let wss: WebSocket;
-      const { unlock } = bridge.params;
-      return new Observable<LiveQueryMessage<TSchema>>((observer) => {
-        if (!EleganteClient.params.serverURL) {
-          throw new EleganteError(
-            ErrorCode.SERVER_URL_UNDEFINED,
-            'serverURL is not defined on client'
-          );
-        }
-        const socketURLPathname = `/${bridge.params['collection']}`;
-        const socketURL = getUrl() + socketURLPathname;
-
-        webSocketServer(
-          socketURL,
-          EleganteClient.params.apiKey,
-          EleganteClient.params.sessionToken || null,
-          unlock ? EleganteClient.params.apiSecret : null
-        )({
-          onOpen: (ws, ev) => {
-            wss = ws;
-            log('once', bridge.params['collection'], bridge.params);
-          },
-
-          onError: (ws, err) => {
-            log('error', 'once', bridge.params['collection'], err);
-            observer.error(err);
-            ws.close();
-          },
-
-          onConnect: (ws) => {
-            const {
-              filter,
-              limit,
-              skip,
-              sort,
-              projection,
-              include,
-              exclude,
-              pipeline,
-              unlock,
-              collection,
-            } = bridge.params;
-
-            const body: DocumentLiveQuery = {
-              projection,
-              sort,
-              limit,
-              skip,
-              include,
-              exclude,
-              pipeline,
-              collection,
-              filter: filter ?? ({} as any),
-              unlock: unlock ?? false,
-              method: 'once',
-            };
-
-            // send query to the server
-            ws.send(JSON.stringify(body));
-          },
-
-          onMessage: (ws, message) => {
-            ws.close(); // this is a one-time query
-            const data = message.data ?? '';
-
-            try {
-              observer.next(JSON.parse(data as string));
-              observer.complete(); // this is a one time query
-            } catch (err) {
-              log('once', bridge.params['collection'], err);
-              observer.error(err);
-            }
-          },
-
-          onClose: (ws, ev) => {
-            // since it's a one-time query, we don't need to reconnect
-            observer.complete();
-          },
-        });
-      }).pipe(
-        finalize(() => {
-          log(
-            'once',
-            bridge.params['collection'],
-            'unsubscribed',
-            bridge.params
-          );
-          wss.close();
-        })
-      );
-    },
-  };
-
-  // ensure collection name doesn't end with "s" because
-  // it's already means plural and for good db hygiene
-  // we should keep it as singular
-  if (collection.endsWith('s')) {
-    throw new EleganteError(
-      ErrorCode.QUERY_SINGULAR_COLLECTION_NAME,
-      `collection name should be singular. ie: 'User' instead of 'Users'`
-    );
+    // return Promise.reject(`method ${method} not implemented`);
   }
 
-  // ensure collection name is in TitleCase
-  if (collection !== collection[0].toUpperCase() + collection.slice(1)) {
-    throw new EleganteError(
-      ErrorCode.QUERY_TITLE_CASE_COLLECTION_NAME,
-      `collection name should be TitleCase. ie: 'User' instead of 'user'`
-    );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  on(event: any, options?: ChangeStreamOptions) {
+    //
+    return {} as any;
   }
 
-  bridge.params['collection'] = collection;
+  once() {
+    //
+    return {} as any;
+  }
 
-  return Object.freeze(bridge);
+  bridge(docQuery: DocumentQuery<TSchema>) {
+    console.log('bridge shoud be implemented from a consumer class', docQuery);
+    return Promise.resolve({} as Promise<RunResult<TSchema>>);
+  }
+
+  //   on: (event, options?: ChangeStreamOptions) => {
+  //     let wss: WebSocket;
+  //     let wssFinished = false;
+  //     let wssConnected = false;
+
+  //     let hasConnected = false;
+
+  //     const {
+  //       filter,
+  //       limit,
+  //       skip,
+  //       sort,
+  //       projection,
+  //       include,
+  //       exclude,
+  //       pipeline,
+  //       unlock,
+  //       collection,
+  //     } = bridge.params;
+
+  //     const body: DocumentLiveQuery = {
+  //       options,
+  //       projection,
+  //       sort,
+  //       limit,
+  //       skip,
+  //       include,
+  //       exclude,
+  //       collection,
+  //       event,
+  //       filter: filter ?? ({} as any),
+  //       pipeline: pipeline ?? ([] as any),
+  //       unlock: unlock ?? false,
+  //       method: 'on',
+  //     };
+
+  //     const key = `websocket:${cleanKey(body)}`;
+
+  //     const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
+  //       if (!EleganteClient.params.serverURL) {
+  //         throw new BordaError(
+  //           ErrorCode.SERVER_URL_UNDEFINED,
+  //           'serverURL is not defined on client'
+  //         );
+  //       }
+
+  //       const socketURLPathname = `/${bridge.params['collection']}`;
+  //       const socketURL = getUrl() + socketURLPathname;
+
+  //       const webSocket: WebSocketFactory = {
+  //         onOpen: (ws, ev) => {
+  //           wss = ws;
+  //           wssConnected = true;
+  //           memo.set(key, wss);
+  //           log('on', event, bridge.params['collection'], bridge.params);
+  //         },
+
+  //         onError: (ws, err) => {
+  //           log('error', err, 'on', event, err, bridge.params['collection']);
+  //         },
+
+  //         onConnect: (ws) => {
+  //           hasConnected = true;
+  //           // send query to the server
+  //           ws.send(JSON.stringify(body));
+  //         },
+
+  //         onMessage: (ws: WebSocket, message: MessageEvent) => {
+  //           const data = message.data;
+  //           try {
+  //             observer.next(JSON.parse(data as string));
+  //           } catch (err) {
+  //             log('on', event, bridge.params['collection'], 'error', err);
+  //             ws.close();
+  //           }
+  //         },
+
+  //         onClose: (ws, ev) => {
+  //           if (
+  //             wssFinished ||
+  //             ev?.code === 1008 ||
+  //             [
+  //               'Invalid secret',
+  //               'Invalid key',
+  //               'Invalid session',
+  //               'Collection not allowed',
+  //               'Invalid query method',
+  //               'stream closed',
+  //             ].includes(ev?.reason) ||
+  //             !hasConnected
+  //           ) {
+  //             ws.close();
+  //             observer.error(
+  //               `${ErrorCode.LIVE_QUERY_SOCKET_CLOSE}: ${
+  //                 ev.reason || 'network error'
+  //               }`
+  //             );
+  //             observer.complete();
+  //             return;
+  //           }
+
+  //           if (wssConnected) {
+  //             wssConnected = false;
+  //             log(
+  //               'on',
+  //               event,
+  //               bridge.params['collection'],
+  //               'disconnected',
+  //               ev.reason,
+  //               bridge.params
+  //             );
+  //           }
+
+  //           setTimeout(() => {
+  //             log(
+  //               'on',
+  //               event,
+  //               bridge.params['collection'],
+  //               'trying to reconnect',
+  //               bridge.params
+  //             );
+  //             webSocketServer(
+  //               socketURL,
+  //               EleganteClient.params.apiKey,
+  //               EleganteClient.params.sessionToken || null,
+  //               unlock ? EleganteClient.params.apiSecret : null
+  //             )(webSocket);
+  //           }, 1 * 500);
+  //         },
+  //       };
+
+  //       /**
+  //        * connect to the server
+  //        */
+  //       webSocketServer(
+  //         socketURL,
+  //         EleganteClient.params.apiKey,
+  //         EleganteClient.params.sessionToken || null,
+  //         unlock ? EleganteClient.params.apiSecret : null
+  //       )(webSocket);
+  //     }).pipe(
+  //       finalize(() => {
+  //         log('on', event, 'unsubscribed', bridge.params);
+  //         wssFinished = true;
+  //         memo.delete(key);
+  //         wss && wss.close();
+  //       })
+  //     );
+
+  //     Reflect.defineMetadata('key', cleanKey(body), source);
+  //     return source;
+  //   },
+
+  //   once: () => {
+  //     let wss: WebSocket;
+  //     const { unlock } = bridge.params;
+  //     return new Observable<LiveQueryMessage<TSchema>>((observer) => {
+  //       if (!EleganteClient.params.serverURL) {
+  //         throw new BordaError(
+  //           ErrorCode.SERVER_URL_UNDEFINED,
+  //           'serverURL is not defined on client'
+  //         );
+  //       }
+  //       const socketURLPathname = `/${bridge.params['collection']}`;
+  //       const socketURL = getUrl() + socketURLPathname;
+
+  //       webSocketServer(
+  //         socketURL,
+  //         EleganteClient.params.apiKey,
+  //         EleganteClient.params.sessionToken || null,
+  //         unlock ? EleganteClient.params.apiSecret : null
+  //       )({
+  //         onOpen: (ws, ev) => {
+  //           wss = ws;
+  //           log('once', bridge.params['collection'], bridge.params);
+  //         },
+
+  //         onError: (ws, err) => {
+  //           log('error', 'once', bridge.params['collection'], err);
+  //           observer.error(err);
+  //           ws.close();
+  //         },
+
+  //         onConnect: (ws) => {
+  //           const {
+  //             filter,
+  //             limit,
+  //             skip,
+  //             sort,
+  //             projection,
+  //             include,
+  //             exclude,
+  //             pipeline,
+  //             unlock,
+  //             collection,
+  //           } = bridge.params;
+
+  //           const body: DocumentLiveQuery = {
+  //             projection,
+  //             sort,
+  //             limit,
+  //             skip,
+  //             include,
+  //             exclude,
+  //             pipeline,
+  //             collection,
+  //             filter: filter ?? ({} as any),
+  //             unlock: unlock ?? false,
+  //             method: 'once',
+  //           };
+
+  //           // send query to the server
+  //           ws.send(JSON.stringify(body));
+  //         },
+
+  //         onMessage: (ws, message) => {
+  //           ws.close(); // this is a one-time query
+  //           const data = message.data ?? '';
+
+  //           try {
+  //             observer.next(JSON.parse(data as string));
+  //             observer.complete(); // this is a one time query
+  //           } catch (err) {
+  //             log('once', bridge.params['collection'], err);
+  //             observer.error(err);
+  //           }
+  //         },
+
+  //         onClose: (ws, ev) => {
+  //           // since it's a one-time query, we don't need to reconnect
+  //           observer.complete();
+  //         },
+  //       });
+  //     }).pipe(
+  //       finalize(() => {
+  //         log(
+  //           'once',
+  //           bridge.params['collection'],
+  //           'unsubscribed',
+  //           bridge.params
+  //         );
+  //         wss.close();
+  //       })
+  //     );
+  //   },
 }

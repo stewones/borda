@@ -18,7 +18,6 @@ import {
 } from '@borda/sdk';
 
 import { newObjectId } from '../utils';
-import { BordaQuery } from './Borda';
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
 import {
@@ -34,6 +33,7 @@ import {
   parseProjection,
   parseResponse,
 } from './parse';
+import { BordaServerQuery } from './query';
 
 export async function aggregate({
   docQRL,
@@ -45,7 +45,7 @@ export async function aggregate({
   docQRL: DocQRL;
   inspect: boolean;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
   unlocked: boolean;
 }) {
   const { collection$, pipeline, filter, limit, skip, sort, options } = docQRL;
@@ -99,7 +99,7 @@ export async function find<TSchema extends Document = Document>({
   inspect: boolean;
   unlocked: boolean;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   const docs: Document[] = [];
   const cursor = createFindCursor(docQRL);
@@ -914,7 +914,7 @@ export async function get({
   inspect?: boolean;
   unlocked: boolean;
   cache: Cache;
-  query: (collection: string) => BordaQuery;
+  query: (collection: string) => BordaServerQuery;
 }) {
   try {
     const { collection } = docQRL;
