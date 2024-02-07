@@ -421,7 +421,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
         method: 'on',
       };
 
-      const key = `websocket:${cleanKey(body)}`;
+      const key = `livequery:${cleanKey(body)}`;
 
       const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
         if (!EleganteClient.params.serverURL) {

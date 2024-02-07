@@ -4,7 +4,7 @@ import { Cloud } from '@elegante/server';
 Cloud.addFunction(
   'getPublicUsers',
   {
-    isPublic: true,
+    public: true,
   },
   async ({ req, res }) => {
     try {

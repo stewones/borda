@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { finalize, Observable } from 'rxjs';
+
 import {
   BordaError,
   ErrorCode,
@@ -10,13 +12,15 @@ import {
   BulkWriteResult,
   ChangeStreamOptions,
   Document,
+  DocumentEvent,
   DocumentExtraOptions,
   DocumentFilter,
+  DocumentLiveQuery,
   DocumentOptions,
   DocumentPipeline,
   DocumentQuery,
-  DocumentResponse,
   FindOptions,
+  LiveQueryMessage,
   ManyInsertResponse,
   ManyUpdateResponse,
   ManyUpsertResponse,
@@ -25,16 +29,24 @@ import {
   Sort,
 } from './types';
 import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
+import {
+  getWebsocketUrl,
+  WebSocketFactory,
+  webSocketServer,
+} from './websocket';
 
-export type RunResult<TSchema> =
+export type MaybeArray<T> = T | T[];
+
+export type RunResult<TSchema extends Document = Document> =
   | number
-  | TSchema
-  | TSchema[]
+  | MaybeArray<TSchema>
   | ManyInsertResponse<TSchema>
   | ManyUpdateResponse
   | ManyUpsertResponse
   | BulkWriteResult
   | void;
+
+export const BordaQueryMemo = new Map<string, WebSocket>();
 
 export class BordaQuery<TSchema extends Document = Document> {
   #inspect!: boolean;
@@ -56,6 +68,9 @@ export class BordaQuery<TSchema extends Document = Document> {
   }
   get inspect() {
     return this.#inspect;
+  }
+  get unlocked() {
+    return this.#unlock;
   }
 
   constructor({
@@ -249,10 +264,14 @@ export class BordaQuery<TSchema extends Document = Document> {
   }
 
   insert(
-    doc: Partial<TSchema>,
+    doc: Partial<Document>,
     options?: DocumentExtraOptions
   ): Promise<TSchema> {
-    return this.run('insert', options ?? {}, doc) as Promise<TSchema>;
+    return this.run(
+      'insert',
+      options ?? {},
+      doc as Partial<TSchema>
+    ) as Promise<TSchema>;
   }
 
   /**
@@ -412,7 +431,7 @@ export class BordaQuery<TSchema extends Document = Document> {
       }
     }
 
-    const docQuery: DocumentQuery<TSchema> = {
+    const query: DocumentQuery<TSchema> = {
       unlock: this.#unlock,
       collection: this.#collection,
       filter: this.#filter,
@@ -430,276 +449,51 @@ export class BordaQuery<TSchema extends Document = Document> {
       objectId,
     };
 
-    // executed by the bridge
-    return this.bridge(docQuery);
+    // execute by the bridge
+    return this.bridge.run(query);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  on(event: any, options?: ChangeStreamOptions) {
-    //
-    return {} as any;
+  on(
+    event: DocumentEvent,
+    options?: ChangeStreamOptions
+  ): Observable<LiveQueryMessage<TSchema>> {
+    const query: DocumentLiveQuery<TSchema> = {
+      collection: this.#collection,
+      filter: this.#filter,
+      projection: this.#projection,
+      sort: this.#sort,
+      limit: this.#limit,
+      skip: this.#skip,
+      include: this.#include,
+      exclude: this.#exclude,
+      pipeline: this.#pipeline,
+      options,
+      event,
+    };
+    return this.bridge.on(query);
   }
 
-  once() {
-    //
-    return {} as any;
+  once(): Observable<LiveQueryMessage<TSchema>> {
+    return this.bridge.once();
   }
 
-  bridge(docQuery: DocumentQuery<TSchema>) {
-    console.log('bridge shoud be implemented from a consumer class', docQuery);
-    return Promise.resolve({} as Promise<RunResult<TSchema>>);
+  get bridge() {
+    console.log('bridge shoud be implemented from a consumer class');
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      run: (query: DocumentQuery<TSchema>) =>
+        Promise.resolve({} as RunResult<TSchema>),
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      on: (query: DocumentLiveQuery<TSchema>) =>
+        new Observable<LiveQueryMessage<TSchema>>(),
+      once: () => new Observable<LiveQueryMessage<TSchema>>(),
+    };
   }
-
-  //   on: (event, options?: ChangeStreamOptions) => {
-  //     let wss: WebSocket;
-  //     let wssFinished = false;
-  //     let wssConnected = false;
-
-  //     let hasConnected = false;
-
-  //     const {
-  //       filter,
-  //       limit,
-  //       skip,
-  //       sort,
-  //       projection,
-  //       include,
-  //       exclude,
-  //       pipeline,
-  //       unlock,
-  //       collection,
-  //     } = bridge.params;
-
-  //     const body: DocumentLiveQuery = {
-  //       options,
-  //       projection,
-  //       sort,
-  //       limit,
-  //       skip,
-  //       include,
-  //       exclude,
-  //       collection,
-  //       event,
-  //       filter: filter ?? ({} as any),
-  //       pipeline: pipeline ?? ([] as any),
-  //       unlock: unlock ?? false,
-  //       method: 'on',
-  //     };
-
-  //     const key = `websocket:${cleanKey(body)}`;
-
-  //     const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
-  //       if (!EleganteClient.params.serverURL) {
-  //         throw new BordaError(
-  //           ErrorCode.SERVER_URL_UNDEFINED,
-  //           'serverURL is not defined on client'
-  //         );
-  //       }
-
-  //       const socketURLPathname = `/${bridge.params['collection']}`;
-  //       const socketURL = getUrl() + socketURLPathname;
-
-  //       const webSocket: WebSocketFactory = {
-  //         onOpen: (ws, ev) => {
-  //           wss = ws;
-  //           wssConnected = true;
-  //           memo.set(key, wss);
-  //           log('on', event, bridge.params['collection'], bridge.params);
-  //         },
-
-  //         onError: (ws, err) => {
-  //           log('error', err, 'on', event, err, bridge.params['collection']);
-  //         },
-
-  //         onConnect: (ws) => {
-  //           hasConnected = true;
-  //           // send query to the server
-  //           ws.send(JSON.stringify(body));
-  //         },
-
-  //         onMessage: (ws: WebSocket, message: MessageEvent) => {
-  //           const data = message.data;
-  //           try {
-  //             observer.next(JSON.parse(data as string));
-  //           } catch (err) {
-  //             log('on', event, bridge.params['collection'], 'error', err);
-  //             ws.close();
-  //           }
-  //         },
-
-  //         onClose: (ws, ev) => {
-  //           if (
-  //             wssFinished ||
-  //             ev?.code === 1008 ||
-  //             [
-  //               'Invalid secret',
-  //               'Invalid key',
-  //               'Invalid session',
-  //               'Collection not allowed',
-  //               'Invalid query method',
-  //               'stream closed',
-  //             ].includes(ev?.reason) ||
-  //             !hasConnected
-  //           ) {
-  //             ws.close();
-  //             observer.error(
-  //               `${ErrorCode.LIVE_QUERY_SOCKET_CLOSE}: ${
-  //                 ev.reason || 'network error'
-  //               }`
-  //             );
-  //             observer.complete();
-  //             return;
-  //           }
-
-  //           if (wssConnected) {
-  //             wssConnected = false;
-  //             log(
-  //               'on',
-  //               event,
-  //               bridge.params['collection'],
-  //               'disconnected',
-  //               ev.reason,
-  //               bridge.params
-  //             );
-  //           }
-
-  //           setTimeout(() => {
-  //             log(
-  //               'on',
-  //               event,
-  //               bridge.params['collection'],
-  //               'trying to reconnect',
-  //               bridge.params
-  //             );
-  //             webSocketServer(
-  //               socketURL,
-  //               EleganteClient.params.apiKey,
-  //               EleganteClient.params.sessionToken || null,
-  //               unlock ? EleganteClient.params.apiSecret : null
-  //             )(webSocket);
-  //           }, 1 * 500);
-  //         },
-  //       };
-
-  //       /**
-  //        * connect to the server
-  //        */
-  //       webSocketServer(
-  //         socketURL,
-  //         EleganteClient.params.apiKey,
-  //         EleganteClient.params.sessionToken || null,
-  //         unlock ? EleganteClient.params.apiSecret : null
-  //       )(webSocket);
-  //     }).pipe(
-  //       finalize(() => {
-  //         log('on', event, 'unsubscribed', bridge.params);
-  //         wssFinished = true;
-  //         memo.delete(key);
-  //         wss && wss.close();
-  //       })
-  //     );
-
-  //     Reflect.defineMetadata('key', cleanKey(body), source);
-  //     return source;
-  //   },
-
-  //   once: () => {
-  //     let wss: WebSocket;
-  //     const { unlock } = bridge.params;
-  //     return new Observable<LiveQueryMessage<TSchema>>((observer) => {
-  //       if (!EleganteClient.params.serverURL) {
-  //         throw new BordaError(
-  //           ErrorCode.SERVER_URL_UNDEFINED,
-  //           'serverURL is not defined on client'
-  //         );
-  //       }
-  //       const socketURLPathname = `/${bridge.params['collection']}`;
-  //       const socketURL = getUrl() + socketURLPathname;
-
-  //       webSocketServer(
-  //         socketURL,
-  //         EleganteClient.params.apiKey,
-  //         EleganteClient.params.sessionToken || null,
-  //         unlock ? EleganteClient.params.apiSecret : null
-  //       )({
-  //         onOpen: (ws, ev) => {
-  //           wss = ws;
-  //           log('once', bridge.params['collection'], bridge.params);
-  //         },
-
-  //         onError: (ws, err) => {
-  //           log('error', 'once', bridge.params['collection'], err);
-  //           observer.error(err);
-  //           ws.close();
-  //         },
-
-  //         onConnect: (ws) => {
-  //           const {
-  //             filter,
-  //             limit,
-  //             skip,
-  //             sort,
-  //             projection,
-  //             include,
-  //             exclude,
-  //             pipeline,
-  //             unlock,
-  //             collection,
-  //           } = bridge.params;
-
-  //           const body: DocumentLiveQuery = {
-  //             projection,
-  //             sort,
-  //             limit,
-  //             skip,
-  //             include,
-  //             exclude,
-  //             pipeline,
-  //             collection,
-  //             filter: filter ?? ({} as any),
-  //             unlock: unlock ?? false,
-  //             method: 'once',
-  //           };
-
-  //           // send query to the server
-  //           ws.send(JSON.stringify(body));
-  //         },
-
-  //         onMessage: (ws, message) => {
-  //           ws.close(); // this is a one-time query
-  //           const data = message.data ?? '';
-
-  //           try {
-  //             observer.next(JSON.parse(data as string));
-  //             observer.complete(); // this is a one time query
-  //           } catch (err) {
-  //             log('once', bridge.params['collection'], err);
-  //             observer.error(err);
-  //           }
-  //         },
-
-  //         onClose: (ws, ev) => {
-  //           // since it's a one-time query, we don't need to reconnect
-  //           observer.complete();
-  //         },
-  //       });
-  //     }).pipe(
-  //       finalize(() => {
-  //         log(
-  //           'once',
-  //           bridge.params['collection'],
-  //           'unsubscribed',
-  //           bridge.params
-  //         );
-  //         wss.close();
-  //       })
-  //     );
-  //   },
 }
 
 export class BordaClientQuery<
   TSchema extends Document = Document
-> extends BordaQuery {
+> extends BordaQuery<TSchema> {
   #serverURL!: string;
   #serverKey!: string;
   #serverSecret!: string;
@@ -730,119 +524,306 @@ export class BordaClientQuery<
     this.#serverHeaderPrefix = serverHeaderPrefix;
   }
 
-  public override bridge({
-    collection,
-    pipeline,
-    method,
-    objectId,
-    filter,
-    doc,
-    docs,
-    options,
-    unlock,
-    projection,
-    sort,
-    limit,
-    skip,
-    include,
-    exclude,
-  }: DocumentQuery) {
-    if (filter && filter['expiresAt'] && isEmpty(filter['expiresAt'])) {
-      const f = filter as Document;
-      f['expiresAt'] = {
-        $exists: false,
-      };
-    }
-
-    if (!this.#serverURL) {
-      throw new BordaError(
-        ErrorCode.SERVER_URL_UNDEFINED,
-        'serverURL is not defined on client'
-      );
-    }
-
-    if (['update', 'remove'].includes(method)) {
-      if (isEmpty(filter)) {
-        throw new BordaError(
-          ErrorCode.QUERY_FILTER_REQUIRED,
-          'a filter is required for doc mutation. ie: update and delete'
-        );
-      }
-    }
-
-    if (!isEmpty(pipeline) && method !== 'aggregate') {
-      throw new BordaError(
-        ErrorCode.QUERY_PIPELINE_AGGREGATE_ONLY,
-        `pipeline can only be used for aggregate. you're trying to use "${method}()"`
-      );
-    }
-
-    const { inspect } = options ?? {};
-
-    const headers = {
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-        this.#serverKey,
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]: method,
-    };
-
-    if (inspect) {
-      headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiInspect']}`] =
-        'true';
-    }
-
-    if (unlock) {
-      headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiSecret']}`] =
-        this.#serverSecret ?? '👀';
-    }
-
-    if (!isServer()) {
-      const token = LocalStorage.get(
-        `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-      );
-
-      if (token) {
-        headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`] =
-          token;
-      }
-    }
-
-    const docQuery: Document | DocumentQuery<TSchema> = {
-      options,
-      filter,
-      projection,
-      sort,
-      limit,
-      skip,
-      include,
-      exclude,
-      pipeline,
-      doc,
-      docs,
-    };
-
-    const source = fetcher<DocumentResponse<TSchema>>(
-      `${this.#serverURL}/${collection}${
-        ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
-      }`,
-      {
-        headers,
-        body: method === 'get' ? null : docQuery,
-        method: ['get', 'put', 'delete'].includes(method)
-          ? (method.toUpperCase() as HttpMethod)
-          : 'POST',
-        direct: true,
-      }
-    );
-
-    Reflect.defineMetadata(
-      'key',
-      cleanKey({
+  public override get bridge() {
+    return {
+      run: ({
         collection,
-        ...docQuery,
-      }),
-      source
-    );
+        pipeline,
+        method,
+        objectId,
+        filter,
+        doc,
+        docs,
+        options,
+        unlock,
+        projection,
+        sort,
+        limit,
+        skip,
+        include,
+        exclude,
+      }: DocumentQuery<TSchema>) => {
+        if (['update', 'remove'].includes(method)) {
+          if (isEmpty(filter)) {
+            throw new BordaError(
+              ErrorCode.QUERY_FILTER_REQUIRED,
+              'a filter is required for doc mutation. ie: update and delete'
+            );
+          }
+        }
 
-    return source;
+        if (!isEmpty(pipeline) && method !== 'aggregate') {
+          throw new BordaError(
+            ErrorCode.QUERY_PIPELINE_AGGREGATE_ONLY,
+            `pipeline can only be used for aggregate. you're trying to use "${method}()"`
+          );
+        }
+
+        const { inspect } = options ?? {};
+
+        const headers = {
+          [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
+            this.#serverKey,
+          [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
+            method,
+        };
+
+        if (inspect) {
+          headers[
+            `${this.#serverHeaderPrefix}-${InternalHeaders['apiInspect']}`
+          ] = 'true';
+        }
+
+        if (unlock) {
+          headers[
+            `${this.#serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
+          ] = this.#serverSecret ?? '👀';
+        }
+
+        if (!isServer()) {
+          const token = LocalStorage.get(
+            `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+          );
+
+          if (token) {
+            headers[
+              `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+            ] = token;
+          }
+        }
+
+        const docQuery: Document | DocumentQuery<TSchema> = {
+          options,
+          filter,
+          projection,
+          sort,
+          limit,
+          skip,
+          include,
+          exclude,
+          pipeline,
+          doc,
+          docs,
+        };
+
+        const source = fetcher<RunResult<TSchema>>(
+          `${this.#serverURL}/${collection}${
+            ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
+          }`,
+          {
+            headers,
+            body: method === 'get' ? null : docQuery,
+            method: ['get', 'put', 'delete'].includes(method)
+              ? (method.toUpperCase() as HttpMethod)
+              : 'POST',
+            direct: true,
+          }
+        );
+
+        Reflect.defineMetadata(
+          'key',
+          cleanKey({
+            collection,
+            ...docQuery,
+          }),
+          source
+        );
+
+        // for some reason TS is hatin' on the RunResult type (precisely the T from the union in MaybeArray<T>)
+        // so we're casting for now
+        return source as Promise<
+          | number
+          | TSchema[]
+          | ManyInsertResponse<TSchema>
+          | ManyUpdateResponse
+          | ManyUpsertResponse
+          | BulkWriteResult
+          | void
+        >;
+      },
+      on: (
+        liveQuery: DocumentLiveQuery<TSchema>,
+        options?: ChangeStreamOptions
+      ) => {
+        let wss: WebSocket;
+        let wssFinished = false;
+        let wssConnected = false;
+        let hasConnected = false;
+
+        const {
+          filter,
+          limit,
+          skip,
+          sort,
+          projection,
+          include,
+          exclude,
+          pipeline,
+          collection,
+          event,
+        } = liveQuery;
+
+        const body: DocumentLiveQuery = {
+          options,
+          projection,
+          sort,
+          limit,
+          skip,
+          include,
+          exclude,
+          collection,
+          event,
+          filter: filter ?? ({} as any),
+          pipeline: pipeline ?? ([] as any),
+          unlock: this.unlocked ?? false,
+        };
+
+        const key = `livequery:${cleanKey(body)}`;
+
+        const token = !isServer()
+          ? LocalStorage.get(
+              `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+            )
+          : null;
+
+        const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
+          const socketURLPathname = `/${collection}`;
+          const socketURL =
+            getWebsocketUrl({
+              serverURL: this.#serverURL,
+            }) + socketURLPathname;
+
+          const webSocket: WebSocketFactory = {
+            onOpen: (ws) => {
+              wss = ws;
+              wssConnected = true;
+              BordaQueryMemo.set(key, wss);
+              if (this.inspect) {
+                console.log(
+                  'on',
+                  event,
+                  this.collection,
+                  JSON.stringify(this, null, 2)
+                );
+              }
+            },
+
+            onError: (ws, err) => {
+              if (this.inspect) {
+                console.log(
+                  'on error',
+                  event,
+                  this.collection,
+                  err,
+                  JSON.stringify(this, null, 2)
+                );
+              }
+            },
+
+            onConnect: (ws) => {
+              hasConnected = true;
+              // send query to the server
+              ws.send(JSON.stringify(body));
+            },
+
+            onMessage: (ws: WebSocket, message: MessageEvent) => {
+              const data = message.data;
+              try {
+                observer.next(JSON.parse(data as string));
+              } catch (err) {
+                if (this.inspect) {
+                  console.log(
+                    'on err',
+                    event,
+                    this.collection,
+                    err,
+                    JSON.stringify(this, null, 2)
+                  );
+                }
+                ws.close();
+              }
+            },
+
+            onClose: (ws, ev) => {
+              if (
+                wssFinished ||
+                ev?.code === 1008 ||
+                [
+                  'Invalid secret',
+                  'Invalid key',
+                  'Invalid session',
+                  'Collection not allowed',
+                  'Invalid query method',
+                  'stream closed',
+                ].includes(ev?.reason) ||
+                !hasConnected
+              ) {
+                ws.close();
+                observer.error(
+                  `${ErrorCode.LIVE_QUERY_SOCKET_CLOSE}: ${
+                    ev.reason || 'network error'
+                  }`
+                );
+                observer.complete();
+                return;
+              }
+
+              if (wssConnected) {
+                wssConnected = false;
+                if (this.inspect) {
+                  console.log(
+                    'on',
+                    event,
+                    this.collection,
+                    'disconnected',
+                    ev.reason,
+                    JSON.stringify(this, null, 2)
+                  );
+                }
+              }
+
+              setTimeout(() => {
+                if (this.inspect) {
+                  console.log(
+                    'on retry',
+                    this.collection,
+                    JSON.stringify(this, null, 2)
+                  );
+                }
+                webSocketServer({
+                  socketURL,
+                  token,
+                  serverKey: this.#serverKey,
+                  secret: this.unlocked ? this.#serverSecret : undefined,
+                })(webSocket);
+              }, 1 * 500);
+            },
+          };
+
+          /**
+           * connect to the server
+           */
+          webSocketServer({
+            socketURL,
+            token,
+            serverKey: this.#serverKey,
+            secret: this.unlocked ? this.#serverSecret : undefined,
+          })(webSocket);
+        }).pipe(
+          finalize(() => {
+            if (this.inspect) {
+              console.log('on unsubscribe', JSON.stringify(this, null, 2));
+            }
+            wssFinished = true;
+            BordaQueryMemo.delete(key);
+            wss && wss.close();
+          })
+        );
+
+        Reflect.defineMetadata('key', key, source);
+        return source;
+      },
+      once: () => new Observable<LiveQueryMessage<TSchema>>(),
+    };
   }
 }

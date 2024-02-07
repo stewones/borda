@@ -47,7 +47,7 @@ export interface DocQRL<T extends Document = Document>
 
 export type DocQRLFrom = DocumentQuery | DocumentLiveQuery | Document;
 
-export function parseDoc<T extends Document>({
+export function parseDoc<TSchema extends Document = Document>({
   obj,
   inspect,
   isUnlocked,
@@ -59,7 +59,7 @@ export function parseDoc<T extends Document>({
   isUnlocked: boolean;
   cache: Cache;
   query: (collection: string) => BordaServerQuery;
-}): (docQuery: DocumentQuery) => Promise<T> {
+}): (docQuery: Omit<DocumentQuery, 'method'>) => Promise<TSchema> {
   return async (docQuery) => {
     await parseInclude({
       obj,
@@ -96,7 +96,7 @@ export function parseDocs<T extends Document[]>({
   isUnlocked: boolean;
   cache: Cache;
   query: (collection: string) => BordaServerQuery;
-}): (docQuery: DocumentQuery) => Promise<T[]> {
+}): (docQuery: Omit<DocumentQuery, 'method'>) => Promise<T[]> {
   return async (docQuery) => {
     for (let item of arr) {
       item = await parseDoc({
@@ -155,13 +155,13 @@ export function parseDocForInsertion(obj: any): any {
   }
 }
 
-export function parseExclude<T extends Document>({
+export function parseExclude<T extends Document = Document>({
   obj,
   inspect,
 }: {
   obj: any;
   inspect: boolean;
-}): (docQuery: DocumentQuery) => Promise<T> {
+}): (docQuery: Omit<DocumentQuery<T>, 'method'>) => Promise<T> {
   return async (docQuery) => {
     const { exclude } = docQuery;
 
@@ -322,7 +322,7 @@ export function parseFilter(obj: any | any[]): any | any[] {
   return obj;
 }
 
-export function parseInclude<T extends Document>({
+export function parseInclude<TSchema extends Document = Document>({
   obj,
   inspect,
   cache,
@@ -332,7 +332,7 @@ export function parseInclude<T extends Document>({
   inspect: boolean;
   cache: Cache;
   query: (collection: string) => BordaServerQuery;
-}): (docQuery: DocumentQuery) => Promise<T> {
+}): (docQuery: Omit<DocumentQuery, 'method'>) => Promise<TSchema> {
   return async (docQuery) => {
     if (!obj) return {};
     const { include } = docQuery;
@@ -466,7 +466,7 @@ export async function parseJoinKeep({
   cache,
   query,
 }: {
-  docQuery: DocumentQuery;
+  docQuery: Omit<DocumentQuery, 'method'>;
   obj: any;
   tree: Record<string, string[]>;
   pointerField: string;

@@ -1282,20 +1282,23 @@ export async function restFunctionRun({
       ).toJSON()
     );
   }
-  const { name, fn } = cloudFn;
 
+  const { name, handler } = cloudFn;
   if (inspect) {
     console.time(`function duration: ${name}`);
   }
 
   try {
-    await fn({
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const result = await handler!({
       request,
     });
 
     if (inspect) {
       console.timeEnd(`function duration: ${name}`);
     }
+
+    return result;
   } catch (err: any) {
     if (inspect) {
       console.log(err);

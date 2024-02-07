@@ -1,7 +1,7 @@
 import { Document } from './types';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-export type FetchResponse<T> = T & {
+export type FetchResponse<T = Document> = T & {
   data: T;
   status: number;
   headers: Headers;

@@ -4,14 +4,6 @@ import { Document, InternalCollectionName } from '@borda/client';
 import { BordaRequest } from './Borda';
 import { DocQRL } from './parse';
 
-// type CloudFactory<T = any> = (
-//   factory: CloudTriggerParams<T>
-// ) =>
-//   | Promise<CloudTriggerCallback<T>>
-//   | CloudTriggerCallback<T>
-//   | boolean
-//   | void;
-
 type CloudTriggerProtocol = Map<string, CloudTriggerFactory>;
 
 type CloudTriggerEvent =
@@ -23,7 +15,7 @@ type CloudTriggerEvent =
   | 'afterDelete'
   | 'beforeSignUp';
 
-type CloudFunctionProtocol = Map<string, CloudFunctionOptions>;
+type CloudFunctionProtocol = Map<string, CloudFunctionParams>;
 
 export interface CloudTriggerParams<T = any> {
   doc?: T;
@@ -37,21 +29,23 @@ export interface CloudTriggerParams<T = any> {
 
 export type CloudTriggerCallback<T = any> = (options: CloudTriggerParams) => T;
 
-interface CloudTriggerFactory {
+export interface CloudTriggerFactory {
   collection?: string;
   event: CloudTriggerEvent;
   fn: CloudTriggerCallback;
 }
 
-interface CloudFunctionOptions {
-  name: string;
-  isPublic?: boolean;
-  fn: (
-    factory: CloudFunctionFactory
-  ) => Promise<boolean | Document | Document[] | void>;
+export type CloudFunctionHandler = (
+  factory: CloudFunctionFactory
+) => Promise<boolean | Document | Document[] | void>;
+
+export interface CloudFunctionParams {
+  name?: string;
+  public?: boolean;
+  handler?: CloudFunctionHandler;
 }
 
-interface CloudFunctionFactory {
+export interface CloudFunctionFactory {
   request: BordaRequest;
 }
 
@@ -127,33 +121,22 @@ export class Cloud {
    *
    * import { Cloud } from '@elegante/server';
    *
-   * Cloud.addFunction('somePublicTask', { isPublic: true }, async ({ req, res }) => {
+   * Cloud.addFunction('somePublicTask', { public: true }, async ({ req, res }) => {
    *     print('executing', `somePublicTask`, req.body);
    *     await delay(3000);
    *     print(`somePublicTask done`);
    *     res.status(200).send(`somePublicTask done`);
    *   }
    * );
-   *
-   * @static
-   * @param {string} name
-   * @param {Pick<CloudFunctionOptions, 'isPublic'>} options
-   * @param {((
-   *       factory: CloudFunctionFactory
-   *     ) => Promise<Document | Document[] | void>)} fn
-   * @memberof Cloud
    */
   addFunction(
-    name: string,
-    options: Pick<CloudFunctionOptions, 'isPublic'>,
-    fn: (factory: CloudFunctionFactory) => Promise<Document | Document[] | void>
+    handler: CloudFunctionHandler,
+    params: Omit<CloudFunctionParams, 'handler'>
   ) {
-    const cloudFn: CloudFunctionOptions = {
-      ...options,
-      name,
-      fn,
-    };
-    this.fn.set(name, cloudFn);
+    // extract the function name from the handler
+    // optionally, the name can be passed as a parameter
+    const name = params.name || handler.name;
+    this.fn.set(name, { ...params, name, handler });
   }
 
   getCloudTrigger(collection: string, event: CloudTriggerEvent) {

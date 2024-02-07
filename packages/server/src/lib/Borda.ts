@@ -24,8 +24,6 @@ export interface BordaParams {
   name?: string;
   inspect?: boolean;
 
-  mongoURI?: string;
-
   serverKey?: string;
   serverSecret?: string;
   serverURL?: string;
@@ -33,27 +31,38 @@ export interface BordaParams {
   serverPoweredBy?: string;
 
   /**
+   * Default to `mongodb://127.0.0.1:27017/borda-dev`
+   */
+  mongoURI?: string;
+
+  /**
    * Default to 1h for document time-to-live.
    * it means that some internal queries will hit memory and be invalidated on every hour.
    * _unless_ related docs are updated/deleted in the database, in this case cache is invalidated right away.
    */
   cacheTTL?: number;
+
   /**
    * when the `query.limit(...)` is not set, this setting will be applied.
    * to deactivate this setting, just set `query.unlock()` in your query
    * please note that unlocking queries is only available in the server-side.
    *
+   * if you're using the exported instance of Borda server, there's no hard limit applied as it's unlocked by default.
+   * in this case, always make sure to set a limit in your queries.
+   *
    * Default to 50 docs per query
    */
   queryLimit?: number;
 
-  // liveQueryServerURL?: string;
-
-  // custom Elysia config
-  config?: Partial<ElysiaConfig>;
-
-  // custom Borda plugins
+  /**
+   * Borda plugins
+   */
   plugins?: ServerPlugin[];
+
+  /**
+   * Elysia config
+   */
+  config?: Partial<ElysiaConfig>;
 }
 
 export class Borda {
@@ -82,6 +91,8 @@ export class Borda {
     db: Db;
     name: string;
     server: Elysia;
+    cloud: Cloud;
+    cache: Cache;
   }>();
 
   get db() {
@@ -235,11 +246,11 @@ export class Borda {
     // connect to mongodb and create indexes
     this.#db = await mongoConnect({ mongoURI: this.#mongoURI });
     await mongoCreateIndexes({ db: this.#db });
-
-    // instantiate the server
     const collections = await this.#db.listCollections().toArray();
 
+    // instantiate the server
     this.#server = createServer({
+      collections,
       config: this.#config,
       serverHeaderPrefix: this.#serverHeaderPrefix,
       serverKey: this.#serverKey,
@@ -252,15 +263,17 @@ export class Borda {
       plugin: this.plugin.bind(this),
       cache: this.#cache,
       db: this.#db,
-      collections,
       cloud: this.#cloud,
       inspect: this.#inspect,
     });
+
     // broadcast event
     this.onReady.next({
       db: this.#db,
       name: this.#name,
       server: this.#server,
+      cloud: this.#cloud,
+      cache: this.#cache,
     });
 
     // start cache invalidation
@@ -339,3 +352,5 @@ export class Borda {
     });
   }
 }
+
+export const BordaServer = Borda;

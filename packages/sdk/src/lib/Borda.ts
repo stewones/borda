@@ -153,7 +153,7 @@ export class Borda {
 
           if (memo.size) {
             for (const [key, value] of memo) {
-              if (key.startsWith('websocket:')) {
+              if (key.startsWith('livequery:')) {
                 value.close();
               }
             }
@@ -593,7 +593,7 @@ export class Borda {
           method: 'on',
         };
 
-        const key = `websocket:${cleanKey(body)}`;
+        const key = `livequery:${cleanKey(body)}`;
 
         const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
           if (!this.params.serverURL) {

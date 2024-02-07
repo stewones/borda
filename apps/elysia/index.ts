@@ -1,9 +1,25 @@
+/**
+ * This is a compreehensive example of how to use Borda on an Elysia server
+ * Checkout the `quick.ts` file for a minimal example
+ *
+ * It includes:
+ *
+ * - a borda server
+ * - some database hooks
+ * - some server functions
+ * - some custom routes (reset User's password)
+ * - some query tests for both client and server instances
+ * - a custom email provider plugin
+ * - a custom email password reset template plugin
+ */
+
 import { Elysia } from 'elysia';
 
-import { Borda as BordaClient, pointer } from '@borda/client';
-import { Borda as BordaServer, memoryUsage } from '@borda/server';
+import { BordaClient, pointer } from '@borda/client';
+import { BordaServer, memoryUsage } from '@borda/server';
 import { html } from '@elysiajs/html';
 
+import { getCounter } from './functions/getCounter';
 import { passwordResetGet, passwordResetPost } from './routes/password';
 import {
   afterDeletePublicUser,
@@ -12,19 +28,23 @@ import {
   beforeSignUp,
 } from './triggers';
 
-// instantiate a borda client on server
-// useful if you need to connect to another borda server remotely
+/**
+ * instantiate a borda client on server
+ * useful if you need to connect to another borda server remotely
+ */
 const client = new BordaClient({
-  name: 'borda-on-elysia',
   inspect: false,
-  // serverSecret: 'my-secret', // uncomment to throw error
+  serverURL: 'http://localhost:1337',
+  // serverSecret: 'a-wrong-secret', // uncomment to throw error on runQueryClientTest below
 });
 
-// export borda server to use as client
-// from within the same server
+/**
+ * instantiate and export the borda server
+ * its instance is the client you should use
+ */
 export const borda = new BordaServer({
   name: 'borda-on-elysia',
-  inspect: false,
+  inspect: true,
   cacheTTL: 1000 * 1 * 20,
   plugins: [
     {
@@ -72,7 +92,7 @@ export const borda = new BordaServer({
 });
 
 /**
- * attach database triggers
+ * attach some database hooks
  */
 borda.cloud.beforeSignUp(beforeSignUp);
 borda.cloud.beforeSave('User', beforeSaveUser);
@@ -80,12 +100,14 @@ borda.cloud.afterSave('User', afterSaveUser);
 borda.cloud.afterDelete('PublicUser', afterDeletePublicUser);
 
 /**
- * attach server functions
+ * attach some server functions
  */
-//
+borda.cloud.addFunction(getCounter, {
+  public: true,
+});
 
 /**
- * subscribe to the ready event
+ * subscribe to the borda's ready event and print some stats
  */
 borda.onReady.subscribe(async ({ db, name }) => {
   const stats = await db.stats();
@@ -106,17 +128,25 @@ borda.onReady.subscribe(async ({ db, name }) => {
     })
     .catch((err) => console.log(err));
 
-  await runQueryClientTests();
-  // await runQueryServerTests();
+  runLiveQueryTest();
+  // await runQueryClientTest();
+  // await runQueryServerTest();
 });
 
 /**
- * start the client server
- * with borda as a plugin
+ * create and start an elysia server using borda as plugin
+ * borda can also be started as standalone if you don't need an elysia server to extend from.
+ *
+ * @example
+ * const server = await borda.server()
+ * server.listen(port)
  */
 const app = new Elysia()
+  // add borda as a plugin
   .use(await borda.server())
+  // handle html response for custom routes
   .use(html())
+  // add custom routes
   .get('/', () => 'Hello Elysia')
   .get('/password/reset', ({ set, query, html }) =>
     html(
@@ -134,14 +164,49 @@ const app = new Elysia()
       })
     )
   )
+  // start the server
   .listen(1337);
 
 console.log(
-  `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
+  `🦊 Borda is running at ${app.server?.hostname}:${app.server?.port}`
 );
 
+/**
+ * run some tests
+ */
+function runLiveQueryTest() {
+  // using borda server instance to subscribe to live queries
+  borda
+    .query<{
+      name: string;
+      age: number;
+    }>('Person')
+    .filter({
+      age: {
+        $gte: 18,
+      },
+    })
+    .on('insert')
+    .subscribe(({ doc }) => {
+      console.log('⚡LiveQuery: new person', doc);
+    });
 
-async function runQueryClientTests() {
+  // using borda client instance to subscribe to live queries
+  client
+    .query('Person')
+    .unlock() // comment to throw error
+    .on('insert')
+    .subscribe({
+      next: ({ doc }) => {
+        console.log('⚡LiveQuery (client): new person', doc);
+      },
+      error: (err) => {
+        console.log('⚡LiveQuery (client):', err);
+      },
+    });
+}
+
+async function runQueryClientTest() {
   // insert using client + unlock
   await client
     .query('Person')
@@ -151,18 +216,28 @@ async function runQueryClientTests() {
       age: 30,
     })
     .then((person) => console.log('new person', person))
-    .catch((err) => console.log(err));
+    .catch((err) => {
+      console.log(err);
+      process.exit(1); // stops the server for the sake of the example. don't do this in production.
+    });
 
   // find using client + unlock
   await client
     .query('Person')
     .unlock()
+    .limit(2)
     .find()
     .then((people) => console.log('people', people))
     .catch((err) => console.log(err));
+
+  // execute a function
+  await client.cloud
+    .run('getCounter')
+    .then((counter) => console.log('counter', counter))
+    .catch((err) => console.log(err));
 }
 
-async function runQueryServerTests() {
+async function runQueryServerTest() {
   // findOne
   await borda
     .query('Person')
@@ -433,5 +508,3 @@ async function runQueryServerTests() {
     .then(() => console.log('updated person'))
     .catch((err) => console.log(err));
 }
-
-

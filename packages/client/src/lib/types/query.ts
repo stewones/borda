@@ -15,7 +15,7 @@ export declare interface Document {
   [key: string]: any;
 }
 
-export type DocumentResponse<T extends Document> = number | void | T | T[];
+export type DocumentResponse<T = Document> = number | void | T | T[];
 export interface DocumentExtraOptions {
   context?: Record<string, any>;
   inspect?: boolean;
@@ -31,6 +31,7 @@ export interface DocumentExtraOptions {
 }
 export type DocumentOptions =
   | DocumentExtraOptions
+  | (ChangeStreamOptions & DocumentExtraOptions)
   | (FindOptions & DocumentExtraOptions)
   | (AggregateOptions & DocumentExtraOptions)
   | (ManyInsertOptions & DocumentExtraOptions);
@@ -54,7 +55,7 @@ export type DocumentEvent =
   | 'rename'
   | 'shardCollection';
 
-export interface DocumentQuery<TSchema = Document> {
+export interface DocumentQuery<TSchema extends Document = Document> {
   filter?: DocumentFilter<TSchema>;
   limit?: number;
   skip?: number;

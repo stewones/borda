@@ -135,7 +135,7 @@ export abstract class Auth {
 
         if (memo.size) {
           for (const [key, value] of memo) {
-            if (key.startsWith('websocket:')) {
+            if (key.startsWith('livequery:')) {
               value.close();
             }
           }

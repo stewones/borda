@@ -4,7 +4,6 @@ export function passwordResetGet({ set, query }: { set: any; query: any }) {
   const { token } = query;
   if (!token) {
     set.status = 404;
-
     return `
       <html>
         <head>
@@ -57,7 +56,6 @@ export async function passwordResetPost({
 
   try {
     await borda.auth.resetPassword(token, password);
-
     set.status = 201;
     return `
         <html>

@@ -13,7 +13,7 @@ Cloud.addFunction(
      * default to false. a session token must be sent to all /functions/* endpoints
      * experiment commenting out the following line and see console output
      */
-    isPublic: true,
+    public: true,
   },
   async ({ req, res }) => {
     print('executing', `somePublicTask`, req.body);

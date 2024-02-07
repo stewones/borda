@@ -183,7 +183,7 @@ export abstract class Cloud {
    *
    * import { Cloud } from '@elegante/server';
    *
-   * Cloud.addFunction('somePublicTask', { isPublic: true }, async ({ req, res }) => {
+   * Cloud.addFunction('somePublicTask', { public: true }, async ({ req, res }) => {
    *     print('executing', `somePublicTask`, req.body);
    *     await delay(3000);
    *     print(`somePublicTask done`);

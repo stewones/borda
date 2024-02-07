@@ -15,7 +15,7 @@ import {
   objectFieldsCreated,
   objectFieldsUpdated,
   QueryMethod,
-} from '@borda/sdk';
+} from '@borda/client';
 
 import { newObjectId } from '../utils';
 import { Cache } from './Cache';

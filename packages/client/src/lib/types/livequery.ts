@@ -8,11 +8,19 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Document, DocumentEvent } from './query';
+import {
+  Document,
+  DocumentEvent,
+  DocumentFilter,
+  DocumentOptions,
+  DocumentPipeline,
+  Sort,
+} from './query';
 
 export type LiveQueryMethod = 'on' | 'once';
 
-export interface LiveQueryMessage<T = any> extends Document {
+export interface LiveQueryMessage<T extends Document = Document>
+  extends Document {
   doc: T;
   docs: T[];
   updatedFields?: Partial<T> | undefined;
@@ -27,8 +35,20 @@ export interface LiveQueryMessage<T = any> extends Document {
     | undefined;
 }
 
-export interface DocumentLiveQuery /*<TSchema extends Document = Document> extends DocumentQuery<TSchema>*/ {
-  collection: string;
+export interface DocumentLiveQuery<TSchema extends Document = Document> {
   event?: DocumentEvent | undefined;
-  method: LiveQueryMethod;
+  filter?: DocumentFilter<TSchema>;
+  limit?: number;
+  skip?: number;
+  sort?: Sort;
+  projection?: Partial<{
+    [key in keyof TSchema]: number;
+  }>;
+  options?: DocumentOptions;
+  pipeline?: DocumentPipeline<TSchema>[];
+  include?: string[];
+  exclude?: string[];
+  collection: string;
+  inspect?: boolean;
+  unlock?: boolean;
 }

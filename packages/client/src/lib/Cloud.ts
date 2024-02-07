@@ -77,7 +77,7 @@ export class Cloud {
       }
     }
 
-    const source = fetcher<T>(`${this.#serverURL}/functions/${name}`, {
+    const source = fetcher<T>(`${this.#serverURL}/run/${name}`, {
       method: 'POST',
       headers,
       body: doc,

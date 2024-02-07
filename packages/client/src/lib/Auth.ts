@@ -152,7 +152,7 @@ export class Auth {
         // @todo move to a better place
         if (memo.size) {
           for (const [key, value] of memo) {
-            if (key.startsWith('websocket:')) {
+            if (key.startsWith('livequery:')) {
               value.close();
             }
           }

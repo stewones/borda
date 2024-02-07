@@ -4,7 +4,7 @@ import { Cloud } from '@elegante/server';
 Cloud.addFunction(
   'getCounter',
   {
-    isPublic: true,
+    public: true,
   },
   async ({ res }) => {
     print('executing', `getCounter`);

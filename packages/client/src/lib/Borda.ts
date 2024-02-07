@@ -128,3 +128,5 @@ export class Borda {
     });
   }
 }
+
+export const BordaClient = Borda;

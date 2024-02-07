@@ -32,3 +32,4 @@ export * from './removeUndefinedProperties';
 export * from './stringify';
 export * from './unset';
 export * from './validateEmail';
+export * from './omit';

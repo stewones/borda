@@ -4,7 +4,7 @@ import { Cloud } from '@elegante/server';
 Cloud.addFunction(
   'increaseCounter',
   {
-    isPublic: true,
+    public: true,
   },
   async ({ req, res }) => {
     print('executing', `increaseCounter`, req.body);
