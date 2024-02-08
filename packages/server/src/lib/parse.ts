@@ -37,12 +37,10 @@ import {
 import { Cache } from './Cache';
 import { BordaServerQuery } from './query';
 
-export interface DocQRL<T extends Document = Document>
-  extends DocumentQuery<T> {
+export interface DocQRL<T extends Document = Document> extends DocumentQuery<T> {
   collection$: Collection<T>;
   doc: T;
   docs: T[];
-  res?: Response; // @deprecated
 }
 
 export type DocQRLFrom = DocumentQuery | DocumentLiveQuery | Document;
@@ -308,6 +306,13 @@ export function parseFilter(obj: any | any[]): any | any[] {
         if (Array.isArray(value) && !value.length) {
           delete obj[field];
         }
+      }
+
+      /**
+       *  deal with expiresAt.$exists: -1 (because for some reason serializing false values over the wire is turning into "expiresAt: {}")
+       */
+      if (field === '$exists' && value === -1) {
+        obj[field] = false;
       }
 
       /**
@@ -623,11 +628,10 @@ function isKeyInExclusionProjection<TSchema = Document>(
 export function parseQuery({
   from,
   db,
-  inspect,
 }: {
   db: Db;
   from: DocQRLFrom;
-  inspect: boolean;
+  inspect?: boolean;
 }): DocQRL {
   const collectionName = from.collection ?? '';
   const docQuery = {
@@ -671,20 +675,11 @@ export function parseQuery({
     docs: docQuery.docs,
     collection$,
   };
-  if (inspect) {
-    logQuery(docQRL);
-  }
+
   return docQRL;
 }
 
-export function logQuery(docQRL: DocQRL) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { collection$, ...rest } = docQRL;
-  console.log('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
-  console.log('~~~~~~~~ QUERY INSPECTION ~~~~~~~~~');
-  console.log('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~');
-  console.log(JSON.stringify(rest, null, 2));
-}
+
 
 export function parseResponse(
   obj: any,

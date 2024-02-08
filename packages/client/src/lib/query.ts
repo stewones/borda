@@ -46,7 +46,7 @@ export type RunResult<TSchema = Document> =
   | BulkWriteResult
   | void;
 
-export const BordaQueryMemo = new Map<string, WebSocket>();
+export const BordaLiveQueryMemo = new Map<string, WebSocket>();
 
 export class BordaQuery<TSchema = Document> {
   #inspect!: boolean;
@@ -705,7 +705,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
             onOpen: (ws) => {
               wss = ws;
               wssConnected = true;
-              BordaQueryMemo.set(key, wss);
+              BordaLiveQueryMemo.set(key, wss);
               if (this.inspect) {
                 console.log(
                   'on',
@@ -753,7 +753,9 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
             },
 
             onClose: (ws, ev) => {
-              console.log(ws, ev.code);
+              if (this.inspect) {
+                console.log('LiveQuery client closed', ws, ev.code);
+              }
               if (
                 wssFinished ||
                 ev?.code === 1000 ||
@@ -824,7 +826,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
               console.log('on unsubscribe', JSON.stringify(this, null, 2));
             }
             wssFinished = true;
-            BordaQueryMemo.delete(key);
+            BordaLiveQueryMemo.delete(key);
             wss && wss.close();
           })
         );

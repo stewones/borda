@@ -1,5 +1,6 @@
 import { fetcher } from './fetcher';
-import { InternalHeaders, memo } from './internal';
+import { InternalHeaders } from './internal';
+import { BordaLiveQueryMemo } from './query';
 import { Session } from './types';
 import { isBoolean, isServer, LocalStorage } from './utils';
 
@@ -146,18 +147,15 @@ export class Auth {
       method: 'DELETE',
       headers,
       direct: true,
-    }).then(() => {
+    }).finally(() => {
       if (!isServer()) {
         LocalStorage.unset(
           `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
         );
-
-        // @todo move to a better place
-        if (memo.size) {
-          for (const [key, value] of memo) {
-            if (key.startsWith('livequery:')) {
-              value.close();
-            }
+        if (BordaLiveQueryMemo.size) {
+          for (const [key, value] of BordaLiveQueryMemo) {
+            console.log('closing live query', key);
+            value.close();
           }
         }
       }

@@ -12,17 +12,21 @@ import { Subject } from 'rxjs';
 
 import {
   AggregateOptions,
-  DocumentFilter,
   DocumentLiveQuery,
   DocumentQuery,
   isDate,
-  isEmpty,
   LiveQueryMessage,
 } from '@borda/client';
 
 import { Cache } from './Cache';
 import { createPipeline } from './mongodb';
-import { parseDoc, parseDocs, parseProjection, parseQuery } from './parse';
+import {
+  parseDoc,
+  parseDocs,
+  parseFilter,
+  parseProjection,
+  parseQuery,
+} from './parse';
 import { BordaServerQuery } from './query';
 
 export type LiveQueryResponse<TSchema extends Document = Document> =
@@ -61,7 +65,7 @@ export function handleOn<TSchema = Document>({
   const onError = new Subject<Error>();
 
   const docQuery: Omit<DocumentQuery, 'method'> = {
-    filter: (filter ?? {}) as DocumentFilter,
+    filter: parseFilter(filter),
     limit,
     skip,
     sort,
@@ -74,6 +78,7 @@ export function handleOn<TSchema = Document>({
   };
 
   const task = db.collection(collection);
+
   const stream = task.watch(
     [
       {
@@ -84,7 +89,7 @@ export function handleOn<TSchema = Document>({
         },
       },
       ...addFullDocumentPrefix([
-        ...(!isEmpty(filter) ? [{ $match: filter }] : []),
+        ...[{ $match: docQuery.filter }],
         ...(pipeline ?? []),
       ]),
     ],

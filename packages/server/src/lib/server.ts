@@ -293,7 +293,7 @@ export function createServer({
   );
 
   // livequery
-  server.ws('/live/:collectionName', {
+  server.ws('/:collectionName', {
     beforeHandle({ set, headers, params }) {
       return bordaBeforeHandleLiveQuery({
         set,
@@ -431,9 +431,10 @@ function requestTargetsDatabase({
     InternalCollectionName[collectionRequested] || collectionRequested;
 
   const routesAvailable = [
-    // 'ping',
-    // 'run',
-    // live',
+    'ping',
+    'run',
+    'live',
+    'me',
     ...collections.map((c) => c.name),
   ];
 
@@ -476,12 +477,12 @@ export const ensureApiKey = ({
 
   if (!apiKey) {
     set.status = 400;
-    return 'API key required';
+    return Promise.reject('API key required');
   }
 
   if (apiKey !== serverKey) {
     set.status = 401;
-    return 'Unauthorized API key';
+    return Promise.reject('Unauthorized API key');
   }
 
   return true;
@@ -573,7 +574,9 @@ export async function ensureApiToken({
     !isPublicCloudFunction
   ) {
     set.status = 401;
-    return new BordaError(ErrorCode.UNAUTHORIZED, 'Unauthorized').toJSON();
+    return Promise.reject(
+      new BordaError(ErrorCode.UNAUTHORIZED, 'Unauthorized').toJSON()
+    );
   }
 
   return;
@@ -648,6 +651,11 @@ export async function bordaBeforeHandle({
       serverKey,
       serverHeaderPrefix,
     }) &&
+    routeUnlock({
+      request,
+      serverSecret,
+      serverHeaderPrefix,
+    }) &&
     (await ensureApiToken({
       set,
       path,
@@ -658,11 +666,6 @@ export async function bordaBeforeHandle({
       serverHeaderPrefix,
       cloud,
     })) &&
-    routeUnlock({
-      request,
-      serverSecret,
-      serverHeaderPrefix,
-    }) &&
     queryInspect({ request, serverHeaderPrefix })
   );
 }
@@ -716,7 +719,7 @@ function bordaBeforeHandleLiveQuery({
       console.log('⚡LiveQuery: Invalid API Key');
     }
     set.status = 1000;
-    return 'Invalid key';
+    return Promise.reject('Invalid key');
   }
 
   // check for secret
@@ -725,7 +728,7 @@ function bordaBeforeHandleLiveQuery({
     if (inspect) {
       console.log('⚡LiveQuery: Invalid Secret');
     }
-    return 'Invalid secret';
+    return Promise.reject('Invalid secret');
   }
 
   /**
@@ -736,7 +739,7 @@ function bordaBeforeHandleLiveQuery({
       console.log('Collection not allowed');
     }
     set.status = 1000;
-    return 'Collection not allowed';
+    return Promise.reject('Collection not allowed');
   }
 
   if (!apiSecret && reservedCollections.includes(collection)) {
@@ -745,7 +748,7 @@ function bordaBeforeHandleLiveQuery({
       console.log(message);
     }
     set.status = 1000;
-    return message;
+    return Promise.reject(message);
   }
 
   /**
@@ -771,7 +774,7 @@ function bordaBeforeHandleLiveQuery({
     if (inspect) {
       console.log('⚡LiveQuery: Invalid session');
     }
-    return 'Invalid session';
+    return Promise.reject('Invalid session');
   }
 
   return;
@@ -798,6 +801,13 @@ async function bordaAfterHandleLiveQuery({
   const protocolsArray = protocols ? protocols.split('#') : [];
   const token = protocolsArray[1] && protocolsArray[1].trim();
   const hasToken = token && token !== 'null' && token !== 'undefined';
+  let apiSecret: string | undefined =
+    protocolsArray[2] && protocolsArray[2].trim();
+
+  apiSecret =
+    apiSecret && apiSecret !== 'undefined' && apiSecret !== 'null'
+      ? apiSecret
+      : undefined;
 
   if (hasToken) {
     // validate session token (add back `:` to the second char because we needed to strip it in the client)
@@ -835,5 +845,9 @@ async function bordaAfterHandleLiveQuery({
     }
   }
 
-  return ws.close(1000, 'Invalid session');
+  if (!apiSecret) {
+    return ws.close(1000, 'Invalid session');
+  }
+
+  return;
 }

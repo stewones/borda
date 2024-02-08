@@ -405,7 +405,7 @@ export class AppComponent {
       .query<User & any>('PublicUser')
       .filter({
         expiresAt: {
-          $exists: 1,
+          $exists: -1,
         },
       })
       .sort({
@@ -458,6 +458,7 @@ export class AppComponent {
       dispatch(sessionSet(response));
 
       this.loadPublicUsers();
+      this.subscribe();
     } catch (err) {
       console.error(err);
       this.signUpError = err;
@@ -492,6 +493,7 @@ export class AppComponent {
        * by default all functions requires a valid user session token
        */
       this.loadPublicUsers();
+      this.subscribe();
     } catch (err) {
       console.error(err);
       this.signInError = err;
@@ -508,6 +510,7 @@ export class AppComponent {
 
     borda.auth.signOut().catch((err) => {});
     resetState();
+    this.loadPublicUsers();
   }
 
   async changeEmail() {

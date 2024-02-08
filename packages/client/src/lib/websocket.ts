@@ -55,8 +55,8 @@ export function webSocketServer({
 export function getWebsocketUrl({ serverURL }: { serverURL: string }) {
   // replace http or https with ws or wss depending on the protocol
   if (serverURL.startsWith('http://')) {
-    return serverURL.replace('http', 'ws') + '/live';
+    return serverURL.replace('http', 'ws'); 
   }
 
-  return serverURL.replace('https', 'wss') + '/live';
+  return serverURL.replace('https', 'wss');
 }

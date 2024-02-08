@@ -15,7 +15,7 @@
 
 import { Elysia } from 'elysia';
 
-import { BordaClient, pointer } from '@borda/client';
+import { BordaClient, delay, pointer } from '@borda/client';
 import { BordaServer, memoryUsage } from '@borda/server';
 import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
@@ -139,10 +139,10 @@ borda.onReady.subscribe(async ({ db, name }) => {
     })
     .catch((err) => console.log(err));
 
-  // runLiveQueryTest();
-  // await delay(500); // little delay to the stream catch up
-  // await runQueryClientTest();
-  // await runQueryServerTest();
+  runLiveQueryTest();
+  await delay(500); // little delay to the stream catch up
+  await runQueryClientTest();
+  await runQueryServerTest();
 });
 
 /**
@@ -157,7 +157,11 @@ const app = new Elysia()
   // add borda as a plugin
   .use(await borda.server())
   // configure cors
-  .use(cors())
+  .use(
+    cors({
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    })
+  )
   // handle html response for custom routes
   .use(html())
   // add custom routes
@@ -233,6 +237,7 @@ function runLiveQueryTest() {
         $gte: 18,
       },
     })
+    .limit(2)
     .once()
     .subscribe({
       next: ({ docs }) => {
@@ -250,6 +255,7 @@ function runLiveQueryTest() {
         $gte: 18,
       },
     })
+    .limit(2)
     .once()
     .subscribe({
       next: ({ docs }) => {

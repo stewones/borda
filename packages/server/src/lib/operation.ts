@@ -1175,11 +1175,8 @@ export async function del({
         _id: {
           $eq: objectId,
         },
-        _expires_at: {
-          $exists: false,
-        },
       },
-    };
+    }; 
 
     const cursor = await collection$!.findOneAndUpdate(
       { ...qrl.filter },
