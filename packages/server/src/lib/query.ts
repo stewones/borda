@@ -31,7 +31,7 @@ import {
 import { DocQRLFrom, parseQuery } from './parse';
 
 export class BordaServerQuery<
-  TSchema extends Document = Document
+  TSchema = Document
 > extends BordaQuery<TSchema> {
   #db!: Db;
   #cache!: Cache;

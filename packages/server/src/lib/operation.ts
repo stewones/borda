@@ -86,7 +86,7 @@ export async function count({ docQRL }: { docQRL: DocQRL; inspect?: boolean }) {
   return collection$.countDocuments(filter || ({} as any)) as unknown as number;
 }
 
-export async function find<TSchema extends Document = Document>({
+export async function find<TSchema = Document>({
   docQRL,
   method,
   inspect,

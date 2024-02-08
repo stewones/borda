@@ -124,14 +124,14 @@ export function handleOn(
     log('stream error', err); // @todo doc this
     // close websocket connection with stream error
     connections.delete(ws);
-    ws.close(1008, err.toString());
+    ws.close(1000, err.toString());
     stream.close();
   });
 
   stream.on('close', () => {
     log('stream closed');
     connections.delete(ws);
-    ws.close(1008, 'stream closed');
+    ws.close(1000, 'stream closed');
   });
 
   stream.on('init', () => {
@@ -362,7 +362,7 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
       print(
         new EleganteError(ErrorCode.AUTH_INVALID_API_KEY, 'Invalid API Key')
       );
-      return ws.close(1008, 'Invalid key');
+      return ws.close(1000, 'Invalid key');
     }
 
     // check for secret
@@ -373,7 +373,7 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
       print(
         new EleganteError(ErrorCode.LIVE_QUERY_INVALID_SECRET, 'Invalid secret')
       );
-      return ws.close(1008, 'Invalid secret');
+      return ws.close(1000, 'Invalid secret');
     }
 
     /**
@@ -401,7 +401,7 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
           'Invalid session'
         )
       );
-      return ws.close(1008, 'Invalid session');
+      return ws.close(1000, 'Invalid session');
     }
 
     if (hasToken) {
@@ -431,7 +431,7 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
             token: session.token,
           });
         } else {
-          return ws.close(1008, 'Invalid session');
+          return ws.close(1000, 'Invalid session');
         }
       }
     }
@@ -460,7 +460,7 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
         log(
           new EleganteError(ErrorCode.LIVE_QUERY_INVALID_COLLECTION, message)
         );
-        return ws.close(1008, message);
+        return ws.close(1000, message);
       }
 
       /**
@@ -475,7 +475,7 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
         );
         // close connection
         connections.delete(ws);
-        return ws.close(1008, 'Collection not allowed');
+        return ws.close(1000, 'Collection not allowed');
       }
 
       /**
@@ -497,7 +497,7 @@ export function createLiveQueryServer(options: LiveQueryServerParams) {
         if (debug) {
           print('LiveQuery connections', connections.values());
         }
-        return ws.close(1008, 'Invalid query method');
+        return ws.close(1000, 'Invalid query method');
       }
       if (debug) {
         print('LiveQuery connections', connections.values());

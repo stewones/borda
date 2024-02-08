@@ -19,8 +19,7 @@ import {
 
 export type LiveQueryMethod = 'on' | 'once';
 
-export interface LiveQueryMessage<T extends Document = Document>
-  extends Document {
+export interface LiveQueryMessage<T = Document> extends Document {
   doc: T;
   docs: T[];
   updatedFields?: Partial<T> | undefined;
@@ -35,7 +34,7 @@ export interface LiveQueryMessage<T extends Document = Document>
     | undefined;
 }
 
-export interface DocumentLiveQuery<TSchema extends Document = Document> {
+export interface DocumentLiveQuery<TSchema = Document> {
   event?: DocumentEvent | undefined;
   filter: DocumentFilter<TSchema>;
   limit?: number;

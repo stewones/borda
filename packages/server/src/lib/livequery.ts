@@ -29,7 +29,7 @@ export type LiveQueryResponse<TSchema extends Document = Document> =
   | LiveQueryMessage<TSchema>
   | ChangeStreamUpdateDocument<TSchema>;
 
-export function handleOn<TSchema extends Document = Document>({
+export function handleOn<TSchema = Document>({
   db,
   collection,
   event,
@@ -120,7 +120,7 @@ export function handleOn<TSchema extends Document = Document>({
     }
   });
 
-  stream.on('change', async (change: ChangeStreamUpdateDocument<TSchema>) => {
+  stream.on('change', async (change: ChangeStreamUpdateDocument) => {
     const { fullDocument, operationType, updateDescription } = change;
     const { updatedFields, removedFields, truncatedArrays } =
       updateDescription ?? {};
@@ -139,7 +139,7 @@ export function handleOn<TSchema extends Document = Document>({
     if (isDeleted) {
       message = {
         doc: parseProjection(
-          projection ?? {},
+          projection ?? ({} as any),
           await parseDoc<TSchema>({
             obj: fullDocument,
             inspect: inspect ?? false,
@@ -156,7 +156,7 @@ export function handleOn<TSchema extends Document = Document>({
     ) {
       message = {
         doc: parseProjection(
-          projection ?? {},
+          projection ?? ({} as any),
           await parseDoc<TSchema>({
             obj: fullDocument,
             inspect: inspect ?? false,
@@ -169,7 +169,7 @@ export function handleOn<TSchema extends Document = Document>({
         updatedFields: updatedFields ?? {},
         removedFields: removedFields ?? [],
         truncatedArrays,
-      } as LiveQueryMessage<TSchema>;
+      } as unknown as LiveQueryMessage<TSchema>;
     } else if (!['delete'].includes(operationType)) {
       if (operationType === event) {
         message = {
@@ -199,7 +199,7 @@ export function handleOn<TSchema extends Document = Document>({
  * @param {DocumentLiveQuery} rawQuery
  * @param {WebSocket} ws
  */
-export async function handleOnce<TSchema extends Document = Document>(
+export async function handleOnce<TSchema>(
   liveQuery: DocumentLiveQuery<TSchema> & {
     db: Db;
     unlocked: boolean;
@@ -226,7 +226,7 @@ export async function handleOnce<TSchema extends Document = Document>(
     collection$,
   } = docQuery;
 
-  const cursor = collection$.aggregate<TSchema>(
+  const cursor = collection$.aggregate(
     createPipeline<TSchema>({
       filter: filter ?? ({} as any),
       pipeline: pipeline ?? ([] as any),
@@ -238,7 +238,7 @@ export async function handleOnce<TSchema extends Document = Document>(
   );
 
   for await (const doc of cursor) {
-    docs.push(doc);
+    docs.push(doc as TSchema);
   }
 
   const message: LiveQueryMessage<TSchema> = {

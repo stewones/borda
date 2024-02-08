@@ -144,7 +144,6 @@ export class Borda {
           ] = this.params.sessionToken;
         }
 
-
         return fetch(`${this.params.serverURL}/me`, {
           method: 'DELETE',
           headers,
@@ -209,7 +208,7 @@ export class Borda {
     }
   }
 
-  query<TSchema extends Document = Document>(collection: string) {
+  query<TSchema = Document>(collection: string) {
     const bridge: Query<TSchema> = {
       params: {
         collection: '',
@@ -811,7 +810,7 @@ export class Borda {
     return Object.freeze(bridge);
   }
 
-  runFunction<T extends Document = Document>(
+  runFunction<T = Document>(
     name: string,
     doc?: Document,
     options?: {

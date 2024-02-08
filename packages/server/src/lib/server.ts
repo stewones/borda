@@ -71,27 +71,12 @@ export function createServer({
   const q = query;
 
   server.use(addPowered({ server, by: poweredBy, collections }));
-  server.use(
-    ensureApiKey({ server, serverKey, serverHeaderPrefix, collections })
-  );
-  server.use(
-    routeUnlock({ server, serverSecret, serverHeaderPrefix, collections })
-  );
-  server.use(queryInspect({ server, serverHeaderPrefix, collections }));
   server.use(pingRoute({ server }));
 
   // collection
   server.post(
     '/:collectionName',
-    async ({
-      params,
-      request,
-      body,
-    }: {
-      params: any;
-      request: BordaRequest & any;
-      body: any;
-    }) =>
+    ({ params, request, body }) =>
       restCollectionPost({
         params,
         request,
@@ -106,25 +91,17 @@ export function createServer({
         cloud,
       }),
     {
-      async beforeHandle({
-        set,
-        path,
-        request,
-        params,
-      }: {
-        set: any;
-        path: string;
-        request: BordaRequest & any;
-        params: any;
-      }) {
-        return ensureApiToken({
+      beforeHandle({ set, path, request, params }) {
+        return bordaBeforeHandle({
           set,
           path,
           request,
+          serverKey,
+          serverHeaderPrefix,
+          serverSecret,
           cache,
           query,
           params,
-          serverHeaderPrefix,
           cloud,
         });
       },
@@ -133,15 +110,7 @@ export function createServer({
 
   server.put(
     '/:collectionName/:objectId',
-    async ({
-      params,
-      request,
-      body,
-    }: {
-      params: any;
-      request: BordaRequest & any;
-      body: any;
-    }) =>
+    ({ params, request, body }) =>
       restCollectionPut({
         params,
         request,
@@ -151,25 +120,17 @@ export function createServer({
         cloud,
       }),
     {
-      async beforeHandle({
-        set,
-        path,
-        request,
-        params,
-      }: {
-        set: any;
-        path: string;
-        request: BordaRequest & any;
-        params: any;
-      }) {
-        return ensureApiToken({
+      beforeHandle({ set, path, request, params }) {
+        return bordaBeforeHandle({
           set,
           path,
           request,
+          serverKey,
+          serverHeaderPrefix,
+          serverSecret,
           cache,
           query,
           params,
-          serverHeaderPrefix,
           cloud,
         });
       },
@@ -178,15 +139,7 @@ export function createServer({
 
   server.get(
     '/:collectionName/:objectId',
-    async ({
-      params,
-      request,
-      query,
-    }: {
-      params: any;
-      request: BordaRequest & any;
-      query: any;
-    }) =>
+    async ({ params, request, query }) =>
       restCollectionGet({
         params,
         request,
@@ -205,25 +158,17 @@ export function createServer({
           query['exclude'] = query['exclude'].split(',');
         }
       },
-      async beforeHandle({
-        set,
-        path,
-        request,
-        params,
-      }: {
-        set: any;
-        path: string;
-        request: BordaRequest & any;
-        params: any;
-      }) {
-        return ensureApiToken({
+      beforeHandle({ set, path, request, params }) {
+        return bordaBeforeHandle({
           set,
           path,
-          params,
           request,
+          serverKey,
+          serverHeaderPrefix,
+          serverSecret,
           cache,
           query,
-          serverHeaderPrefix,
+          params,
           cloud,
         });
       },
@@ -232,15 +177,7 @@ export function createServer({
 
   server.delete(
     '/:collectionName/:objectId',
-    async ({
-      params,
-      request,
-      body,
-    }: {
-      params: any;
-      request: BordaRequest & any;
-      body: any;
-    }) =>
+    ({ params, request, body }) =>
       restCollectionDelete({
         params,
         request,
@@ -259,25 +196,17 @@ export function createServer({
           query['exclude'] = query['exclude'].split(',');
         }
       },
-      async beforeHandle({
-        set,
-        path,
-        request,
-        params,
-      }: {
-        set: any;
-        path: string;
-        request: BordaRequest & any;
-        params: any;
-      }) {
-        return ensureApiToken({
+      beforeHandle({ set, path, request, params }) {
+        return bordaBeforeHandle({
           set,
           path,
-          params,
           request,
+          serverKey,
+          serverHeaderPrefix,
+          serverSecret,
           cache,
           query,
-          serverHeaderPrefix,
+          params,
           cloud,
         });
       },
@@ -287,30 +216,22 @@ export function createServer({
   // me
   server.get(
     '/me',
-    async ({ request }: { request: BordaRequest }) =>
+    ({ request }: { request: BordaRequest }) =>
       restUserMe({
         request,
       }),
     {
-      async beforeHandle({
-        set,
-        path,
-        request,
-        params,
-      }: {
-        set: any;
-        path: string;
-        request: BordaRequest & any;
-        params: any;
-      }) {
-        return ensureApiToken({
+      beforeHandle({ set, path, request, params }) {
+        return bordaBeforeHandle({
           set,
           path,
-          params,
           request,
+          serverKey,
+          serverHeaderPrefix,
+          serverSecret,
           cache,
           query,
-          serverHeaderPrefix,
+          params,
           cloud,
         });
       },
@@ -319,31 +240,23 @@ export function createServer({
 
   server.delete(
     '/me',
-    async ({ request }: { request: BordaRequest }) =>
+    ({ request }: { request: BordaRequest }) =>
       restUserSignOut({
         request,
         query,
       }),
     {
-      async beforeHandle({
-        set,
-        path,
-        request,
-        params,
-      }: {
-        set: any;
-        path: string;
-        request: BordaRequest & any;
-        params: any;
-      }) {
-        return ensureApiToken({
+      beforeHandle({ set, path, request, params }) {
+        return bordaBeforeHandle({
           set,
           path,
-          params,
           request,
+          serverKey,
+          serverHeaderPrefix,
+          serverSecret,
           cache,
           query,
-          serverHeaderPrefix,
+          params,
           cloud,
         });
       },
@@ -353,33 +266,26 @@ export function createServer({
   // run
   server.post(
     '/run/:functionName',
-    async ({ params, request }: { params: any; request: BordaRequest & any }) =>
+    ({ params, request, body }) =>
       restFunctionRun({
         params,
+        body,
         request,
         inspect,
         cloud,
       }),
     {
-      async beforeHandle({
-        set,
-        path,
-        request,
-        params,
-      }: {
-        set: any;
-        path: string;
-        request: BordaRequest & any;
-        params: any;
-      }) {
-        return ensureApiToken({
+      beforeHandle({ set, path, request, params }) {
+        return bordaBeforeHandle({
           set,
           path,
           request,
+          serverKey,
+          serverHeaderPrefix,
+          serverSecret,
           cache,
           query,
           params,
-          serverHeaderPrefix,
           cloud,
         });
       },
@@ -388,128 +294,17 @@ export function createServer({
 
   // livequery
   server.ws('/live/:collectionName', {
-    async beforeHandle({ set, headers, params }) {
-      // extract websocket protocols from headers
-      const protocols = headers['sec-websocket-protocol'];
-      // 'apiKey#token#secret'
-
-      // extract session token from protocols
-      const protocolsArray = protocols ? protocols.split('#') : [];
-
-      const apiKey = protocolsArray[0] && protocolsArray[0].trim();
-      const token = protocolsArray[1] && protocolsArray[1].trim();
-      const apiSecret = protocolsArray[2] && protocolsArray[2].trim();
-      const hasToken = token && token !== 'null' && token !== 'undefined';
-      if (inspect) {
-        console.log('🔒LiveQuery', apiKey, token, apiSecret);
-      }
-
-      if (apiKey !== serverKey) {
-        if (inspect) {
-          console.log('⚡LiveQuery: Invalid API Key');
-        }
-        set.status = 1008;
-        return 'Invalid key';
-      }
-
-      // check for secret
-      if (apiSecret && apiSecret !== serverSecret) {
-        set.status = 1008;
-        if (inspect) {
-          console.log('⚡LiveQuery: Invalid Secret');
-        }
-        return 'Invalid secret';
-      }
-
-      /**
-       * validate session token (same as REST API)
-       * we need to make sure the default is session token required
-       *
-       * server can unlock by passing a third param which is the server secret
-       *
-       * @todo
-       * add the ability to bypass this option granually per request
-       * in case of some public query in realtime
-       *
-       * so the SDK client would add "unlock" to the protocol then we allow the connection
-       *
-       * for security purposes users may want to implement beforeFind and beforeAggregate hooks
-       * by themselves to make sure the query is safe
-       */
-      if (!apiSecret && !hasToken) {
-        /**
-         * throw an error log so we can know if someone is trying to connect to the live query server
-         */
-        set.status = 1008;
-        if (inspect) {
-          console.log('⚡LiveQuery: Invalid session');
-        }
-        return 'Invalid session';
-      }
-
-      if (hasToken) {
-        // validate session token (add back `:` to the second char because we needed to strip it in the client)
-        const tokenToValidate = `${token[0]}:${token.slice(1)}`;
-
-        const memo = cache.get('Session', token);
-        if (!memo) {
-          const session = (await query('Session')
-            .include(['user'])
-            .filter({
-              token: {
-                $eq: tokenToValidate,
-              },
-              expiresAt: {
-                $gt: new Date().toISOString(),
-              },
-            })
-            .findOne()) as Session;
-
-          if (!isEmpty(session)) {
-            // cache the session itself
-            cache.set('Session', session.token, session);
-            // cache a reference to the session token which belongs to the user
-            cache.set('Session$token', session.user.objectId, {
-              token: session.token,
-            });
-          } else {
-            set.status = 1008;
-            return 'Invalid session';
-          }
-        }
-      }
-
-      if (hasToken && apiSecret !== serverSecret) {
-        // check for collection
-        const collection =
-          InternalCollectionName[params.collectionName] ||
-          params.collectionName;
-
-        /**
-         * can't subscribe to any of the reserved collections
-         */
-        if (reservedCollections.includes(collection)) {
-          const message = `You can't subscribe to the collection ${collection} because it's reserved`;
-          if (inspect) {
-            console.log(message);
-          }
-          set.status = 1008;
-          return message;
-        }
-
-        /**
-         * throw exception if the requested collection is not allowed
-         */
-        if (!liveCollections.includes(collection)) {
-          if (inspect) {
-            console.log('Collection not allowed');
-          }
-          set.status = 1008;
-          return 'Collection not allowed';
-        }
-      }
-
-      return; // all good
+    beforeHandle({ set, headers, params }) {
+      return bordaBeforeHandleLiveQuery({
+        set,
+        headers,
+        params,
+        inspect,
+        serverKey,
+        serverSecret,
+        reservedCollections,
+        liveCollections,
+      });
     },
 
     open(ws) {
@@ -517,12 +312,28 @@ export function createServer({
         console.log('Open Connection:', ws.id);
       }
     },
+
     close(ws) {
       if (inspect) {
         console.log('Closed Connection:', ws.id);
       }
     },
+
+    error(error) {
+      if (inspect) {
+        console.log('Error:', error);
+      }
+    },
+
     async message(ws, message) {
+      await bordaAfterHandleLiveQuery({
+        ws,
+        headers: ws.data.headers,
+        cache,
+        query,
+        inspect,
+      });
+
       const liveQuery = message as DocumentLiveQuery;
       const { collection, event, method, ...rest } = liveQuery;
 
@@ -606,7 +417,7 @@ export async function createSession({
   return { ...session, user };
 }
 
-function requestTargetsBorda({
+function requestTargetsDatabase({
   request,
   collections,
 }: {
@@ -619,7 +430,12 @@ function requestTargetsBorda({
   const collectionTargeted =
     InternalCollectionName[collectionRequested] || collectionRequested;
 
-  const routesAvailable = ['ping', ...collections.map((c) => c.name)];
+  const routesAvailable = [
+    // 'ping',
+    // 'run',
+    // live',
+    ...collections.map((c) => c.name),
+  ];
 
   if (!routesAvailable.includes(collectionTargeted)) {
     return false;
@@ -638,43 +454,38 @@ export const addPowered = ({
   collections: CollectionInfo[];
 }) =>
   server.onAfterHandle(({ set, request }) => {
-    if (!requestTargetsBorda({ request, collections })) {
+    if (!requestTargetsDatabase({ request, collections })) {
       return;
     }
     set.headers['X-Powered-By'] = by;
   });
 
 export const ensureApiKey = ({
-  server,
+  request,
+  set,
   serverKey,
   serverHeaderPrefix,
-  collections,
 }: {
-  server: Elysia;
+  request: any;
+  set: any;
   serverKey: string;
   serverHeaderPrefix: string;
-  collections: CollectionInfo[];
-}) =>
-  server.onRequest(({ set, request }) => {
-    if (!requestTargetsBorda({ request, collections })) {
-      return;
-    }
+}) => {
+  const apiKeyHeaderKey = `${serverHeaderPrefix}-${InternalHeaders['apiKey']}`;
+  const apiKey = request.headers.get(apiKeyHeaderKey);
 
-    const apiKeyHeaderKey = `${serverHeaderPrefix}-${InternalHeaders['apiKey']}`;
-    const apiKey = request.headers.get(apiKeyHeaderKey?.toLowerCase());
+  if (!apiKey) {
+    set.status = 400;
+    return 'API key required';
+  }
 
-    if (!apiKey) {
-      set.status = 400;
-      return 'API key required';
-    }
+  if (apiKey !== serverKey) {
+    set.status = 401;
+    return 'Unauthorized API key';
+  }
 
-    if (apiKey !== serverKey) {
-      set.status = 401;
-      return 'Unauthorized API key';
-    }
-
-    return;
-  });
+  return true;
+};
 
 export async function ensureApiToken({
   set,
@@ -769,53 +580,260 @@ export async function ensureApiToken({
 }
 
 export const routeUnlock = ({
-  server,
+  request,
   serverSecret,
   serverHeaderPrefix,
-  collections,
 }: {
-  server: Elysia;
+  request: any;
   serverSecret: string;
   serverHeaderPrefix: string;
-  collections: CollectionInfo[];
-}) =>
-  server.onRequest(({ request }: { request: any }) => {
-    if (!requestTargetsBorda({ request, collections })) {
-      return;
-    }
-
-    const apiSecret = request.headers.get(
-      `${serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
-    );
-    if (apiSecret === serverSecret) {
-      request.unlocked = true;
-    }
-    return;
-  });
+}) => {
+  const apiSecret = request.headers.get(
+    `${serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
+  );
+  if (apiSecret === serverSecret) {
+    request.unlocked = true;
+  }
+  return true;
+};
 
 export const pingRoute = ({ server }: { server: Elysia }) =>
   server.get('/ping', () => '🏓');
 
 export const queryInspect = ({
-  server,
+  request,
   serverHeaderPrefix,
-  collections,
 }: {
-  server: Elysia;
+  request: any;
   serverHeaderPrefix: string;
-  collections: CollectionInfo[];
-}) =>
-  server.onRequest(({ request }: { request: any }) => {
-    if (!requestTargetsBorda({ request, collections })) {
-      return;
-    }
-    const apiInspect = request.headers.get(
-      `${serverHeaderPrefix}-${InternalHeaders['apiInspect']}`
-    );
-    // parse boolean
-    const inspect = apiInspect === 'true' || apiInspect === true;
+}) => {
+  const apiInspect = request.headers.get(
+    `${serverHeaderPrefix}-${InternalHeaders['apiInspect']}`
+  );
+  // parse boolean
+  const inspect = apiInspect === 'true' || apiInspect === true;
+  if (inspect) {
+    request.inspect = true;
+  }
+  return;
+};
+
+export async function bordaBeforeHandle({
+  set,
+  path,
+  request,
+  serverKey,
+  serverHeaderPrefix,
+  serverSecret,
+  cache,
+  query,
+  params,
+  cloud,
+}: {
+  set: any;
+  path: string;
+  request: any;
+  serverKey: string;
+  serverHeaderPrefix: string;
+  serverSecret: string;
+  cache: Cache;
+  query: (collection: string) => BordaServerQuery;
+  params: any;
+  cloud: Cloud;
+}) {
+  return (
+    ensureApiKey({
+      set,
+      request,
+      serverKey,
+      serverHeaderPrefix,
+    }) &&
+    (await ensureApiToken({
+      set,
+      path,
+      request,
+      cache,
+      query,
+      params,
+      serverHeaderPrefix,
+      cloud,
+    })) &&
+    routeUnlock({
+      request,
+      serverSecret,
+      serverHeaderPrefix,
+    }) &&
+    queryInspect({ request, serverHeaderPrefix })
+  );
+}
+
+function bordaBeforeHandleLiveQuery({
+  set,
+  headers,
+  params,
+  inspect,
+  serverKey,
+  serverSecret,
+  reservedCollections,
+  liveCollections,
+}: {
+  set: any;
+  headers: any;
+  params: any;
+  inspect?: boolean;
+  serverKey: string;
+  serverSecret: string;
+  reservedCollections: string[];
+  liveCollections: string[];
+}) {
+  // extract websocket protocols from headers
+  const protocols = headers['sec-websocket-protocol'];
+  // 'apiKey#token#secret'
+
+  // extract session token from protocols
+  const protocolsArray = protocols ? protocols.split('#') : [];
+  const apiKey = protocolsArray[0] && protocolsArray[0].trim();
+  const token = protocolsArray[1] && protocolsArray[1].trim();
+
+  const hasToken = token && token !== 'null' && token !== 'undefined';
+  let apiSecret: string | undefined =
+    protocolsArray[2] && protocolsArray[2].trim();
+
+  const collection =
+    InternalCollectionName[params.collectionName] || params.collectionName;
+
+  apiSecret =
+    apiSecret && apiSecret !== 'undefined' && apiSecret !== 'null'
+      ? apiSecret
+      : undefined;
+
+  if (inspect) {
+    console.log('🔒LiveQuery', apiKey, token, apiSecret);
+  }
+
+  if (apiKey !== serverKey) {
     if (inspect) {
-      request.inspect = true;
+      console.log('⚡LiveQuery: Invalid API Key');
     }
-    return;
-  });
+    set.status = 1000;
+    return 'Invalid key';
+  }
+
+  // check for secret
+  if (apiSecret && apiSecret !== serverSecret) {
+    set.status = 1000;
+    if (inspect) {
+      console.log('⚡LiveQuery: Invalid Secret');
+    }
+    return 'Invalid secret';
+  }
+
+  /**
+   * secret allowed throw exception if the requested collection is not defined
+   */
+  if (!apiSecret && !liveCollections.includes(collection)) {
+    if (inspect) {
+      console.log('Collection not allowed');
+    }
+    set.status = 1000;
+    return 'Collection not allowed';
+  }
+
+  if (!apiSecret && reservedCollections.includes(collection)) {
+    const message = `You can't subscribe to the collection ${collection} because it's reserved`;
+    if (inspect) {
+      console.log(message);
+    }
+    set.status = 1000;
+    return message;
+  }
+
+  /**
+   * validate session token (same as REST API)
+   * we need to make sure the default is session token required
+   *
+   * server can unlock by passing a third param which is the server secret
+   *
+   * @todo
+   * add the ability to bypass this option granually per request
+   * in case of some public query in realtime
+   *
+   * so the SDK client would add "unlock" to the protocol then we allow the connection
+   *
+   * for security purposes users may want to implement beforeFind and beforeAggregate hooks
+   * by themselves to make sure the query is safe
+   */
+  if (!apiSecret && !hasToken) {
+    /**
+     * throw an error log so we can know if someone is trying to connect to the live query server
+     */
+    set.status = 1000;
+    if (inspect) {
+      console.log('⚡LiveQuery: Invalid session');
+    }
+    return 'Invalid session';
+  }
+
+  return;
+}
+
+async function bordaAfterHandleLiveQuery({
+  ws,
+  headers,
+  cache,
+  query,
+  inspect,
+}: {
+  ws: any;
+  headers: any;
+  cache: Cache;
+  inspect?: boolean;
+  query: (collection: string) => BordaServerQuery;
+}) {
+  // extract websocket protocols from headers
+  const protocols = headers['sec-websocket-protocol'];
+  // 'apiKey#token#secret'
+
+  // extract session token from protocols
+  const protocolsArray = protocols ? protocols.split('#') : [];
+  const token = protocolsArray[1] && protocolsArray[1].trim();
+  const hasToken = token && token !== 'null' && token !== 'undefined';
+
+  if (hasToken) {
+    // validate session token (add back `:` to the second char because we needed to strip it in the client)
+    const tokenToValidate = `${token[0]}:${token.slice(1)}`;
+
+    const memo = cache.get('Session', token);
+
+    if (!memo) {
+      const session = (await query('Session')
+        .include(['user'])
+        .filter({
+          token: {
+            $eq: tokenToValidate,
+          },
+          expiresAt: {
+            $gt: new Date().toISOString(),
+          },
+        })
+        .findOne()) as Session;
+
+      if (!isEmpty(session)) {
+        // cache the session itself
+        cache.set('Session', session.token, session);
+        // cache a reference to the session token which belongs to the user
+        cache.set('Session$token', session.user.objectId, {
+          token: session.token,
+        });
+        return;
+      } else {
+        if (inspect) {
+          console.log('⚡LiveQuery: Invalid session');
+        }
+        return ws.close(1000, 'Invalid session');
+      }
+    }
+  }
+
+  return ws.close(1000, 'Invalid session');
+}

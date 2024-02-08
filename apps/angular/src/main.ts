@@ -7,20 +7,27 @@ import {
   dispatch,
   load,
 } from '@elegante/browser';
+
 import {
-  ActiveParams,
-  ActiveRecord,
-  cleanArray,
-  init,
+  Borda,
   isEqual,
   LocalStorage,
-  log,
   Record,
   Session,
   User,
-} from '@elegante/sdk';
+} from '@borda/client';
 
 import { AppComponent } from './app/app.component';
+import { environment } from './environment';
+
+/**
+ * export borda instance
+ */
+export const borda = new Borda({
+  serverURL: environment.serverURL,
+  serverKey: environment.serverKey,
+  // state: {} // @todo: configure state (optional)
+});
 
 /**
  * shared stuff
@@ -45,44 +52,8 @@ export interface UserExtended extends User {
   username?: string;
 }
 
-export class PublicUserModel extends ActiveRecord<UserExtended> {
-  constructor(
-    record?: Partial<UserExtended>,
-    options: ActiveParams<UserExtended> = {}
-  ) {
-    /**
-     * custom identifier query
-     */
-    if (!record?.objectId) {
-      options.filter = {
-        ...options.filter,
-        $or: cleanArray([
-          record?.email ? { email: record?.email } : {},
-          record?.username ? { username: record?.username } : {},
-        ]),
-      };
-    }
-
-    super('PublicUser', record, {
-      include: ['photo'],
-      ...options,
-    });
-  }
-}
-
 /**
- * init elegante
- */
-init({
-  apiKey: '**elegante**',
-  serverURL: 'http://localhost:1337/server',
-  liveQueryServerURL: 'ws://localhost:1337',
-  debug: true,
-  validateSession: false,
-});
-
-/**
- * load elegante browser
+ * load borda state
  * and then bootstrap angular
  */
 load({
@@ -137,7 +108,7 @@ load({
        * implement a custom differ function to compare state changes
        * this controls wheter the stream should emit a new value or not
        */
-      log('global `fast` differ', prev, next);
+      console.log('global `fast` differ', prev, next);
       return !isEqual(prev, next);
     },
   },

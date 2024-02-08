@@ -26,6 +26,8 @@ export async function fetcher<T = Document>(
 
   if (options?.body) {
     fetchOptions['body'] = JSON.stringify(options.body);
+  } else {
+    fetchOptions['body'] = JSON.stringify({});
   }
 
   return fetch(url, fetchOptions).then(async (response: Response) => {

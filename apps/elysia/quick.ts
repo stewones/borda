@@ -3,6 +3,7 @@
  */
 
 import { Borda } from '@borda/server';
+import { cors } from '@elysiajs/cors';
 
 import { getCounter } from './functions/getCounter';
 import {
@@ -23,6 +24,7 @@ borda.cloud.addFunction(getCounter, {
 });
 
 const app = await borda.server();
+app.server.use(cors());
 app.listen(1337);
 
 console.log(

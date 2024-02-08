@@ -22,7 +22,6 @@ import {
   ChangeStreamOptions,
   Document,
   DocumentQuery,
-  DocumentResponse,
   ManyInsertResponse,
   ManyUpdateResponse,
   ManyUpsertResponse,
@@ -31,7 +30,7 @@ import {
 import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
 import { getUrl, WebSocketFactory, webSocketServer } from './websocket';
 
-export function query<TSchema extends Document = Document>(collection: string) {
+export function query<TSchema = Document>(collection: string) {
   const bridge: Query<TSchema> = {
     params: {
       collection: '',
@@ -361,7 +360,7 @@ export function query<TSchema extends Document = Document>(collection: string) {
         docs,
       };
 
-      const source = fetch<DocumentResponse<TSchema>>(
+      const source = fetch(
         `${EleganteClient.params.serverURL}/${bridge.params['collection']}${
           ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
         }`,

@@ -6,7 +6,7 @@ import {
   removeUndefinedProperties,
 } from '@elegante/sdk';
 
-export function parseProjection<TSchema extends Document = Document>(
+export function parseProjection<TSchema = Document>(
   projection: Partial<Projection<TSchema>>,
   objOrArray: TSchema | TSchema[]
 ): TSchema | TSchema[] {
@@ -91,7 +91,7 @@ export function parseProjection<TSchema extends Document = Document>(
   }
 }
 
-function isExclusionProjection<TSchema extends Document = Document>(
+function isExclusionProjection<TSchema = Document>(
   projection: Partial<Projection<TSchema>>
 ): boolean {
   // verify if the projection has only 0 values
@@ -110,7 +110,7 @@ function isExclusionProjection<TSchema extends Document = Document>(
   return isExclusionOnly;
 }
 
-function isKeyInExclusionProjection<TSchema extends Document = Document>(
+function isKeyInExclusionProjection<TSchema = Document>(
   key: string,
   projection: Partial<Projection<TSchema>>
 ) {

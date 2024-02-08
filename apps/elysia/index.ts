@@ -15,11 +15,14 @@
 
 import { Elysia } from 'elysia';
 
-import { BordaClient, delay, pointer } from '@borda/client';
+import { BordaClient, pointer } from '@borda/client';
 import { BordaServer, memoryUsage } from '@borda/server';
+import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
 
 import { getCounter } from './functions/getCounter';
+import { getPublicUsers } from './functions/getPublicUsers';
+import { increaseCounter } from './functions/increaseCounter';
 import { passwordResetGet, passwordResetPost } from './routes/password';
 import {
   afterDeletePublicUser,
@@ -44,8 +47,10 @@ const client = new BordaClient({
  */
 export const borda = new BordaServer({
   name: 'borda-on-elysia',
-  inspect: false,
+  inspect: true,
   cacheTTL: 1000 * 1 * 20,
+  liveCollections: ['Counter', 'PublicUser'],
+  reservedCollections: ['_User', '_Password', '_Session'],
   plugins: [
     {
       name: 'MyCustomEmailProvider',
@@ -105,6 +110,12 @@ borda.cloud.afterDelete('PublicUser', afterDeletePublicUser);
 borda.cloud.addFunction(getCounter, {
   public: true,
 });
+borda.cloud.addFunction(getPublicUsers, {
+  public: true,
+});
+borda.cloud.addFunction(increaseCounter, {
+  public: true,
+});
 
 /**
  * subscribe to the borda's ready event and print some stats
@@ -128,10 +139,10 @@ borda.onReady.subscribe(async ({ db, name }) => {
     })
     .catch((err) => console.log(err));
 
-  runLiveQueryTest();
-  await delay(500); // little delay to the stream catch up
-  await runQueryClientTest();
-  await runQueryServerTest();
+  // runLiveQueryTest();
+  // await delay(500); // little delay to the stream catch up
+  // await runQueryClientTest();
+  // await runQueryServerTest();
 });
 
 /**
@@ -145,6 +156,8 @@ borda.onReady.subscribe(async ({ db, name }) => {
 const app = new Elysia()
   // add borda as a plugin
   .use(await borda.server())
+  // configure cors
+  .use(cors())
   // handle html response for custom routes
   .use(html())
   // add custom routes
@@ -169,7 +182,7 @@ const app = new Elysia()
   .listen(1337);
 
 console.log(
-  `🦊 Borda is running at ${app.server?.hostname}:${app.server?.port}`
+  `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
 );
 
 /**
@@ -260,7 +273,7 @@ async function runQueryClientTest() {
     .then((person) => console.log('new person inserted by rest', person))
     .catch((err) => {
       console.log(err);
-      process.exit(1); // stops the server for the sake of the example. don't do this in production.
+      // process.exit(1); // stops the server for the sake of the example. don't do this in production.
     });
 
   // find using client + unlock

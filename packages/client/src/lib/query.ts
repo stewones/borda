@@ -37,7 +37,7 @@ import {
 
 export type MaybeArray<T> = T | T[];
 
-export type RunResult<TSchema extends Document = Document> =
+export type RunResult<TSchema = Document> =
   | number
   | MaybeArray<TSchema>
   | ManyInsertResponse<TSchema>
@@ -48,7 +48,7 @@ export type RunResult<TSchema extends Document = Document> =
 
 export const BordaQueryMemo = new Map<string, WebSocket>();
 
-export class BordaQuery<TSchema extends Document = Document> {
+export class BordaQuery<TSchema = Document> {
   #inspect!: boolean;
   #collection: string;
   #filter: DocumentFilter<TSchema> = {};
@@ -499,9 +499,7 @@ export class BordaQuery<TSchema extends Document = Document> {
   }
 }
 
-export class BordaClientQuery<
-  TSchema extends Document = Document
-> extends BordaQuery<TSchema> {
+export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
   #serverURL!: string;
   #serverKey!: string;
   #serverSecret!: string;
@@ -755,9 +753,10 @@ export class BordaClientQuery<
             },
 
             onClose: (ws, ev) => {
+              console.log(ws, ev.code);
               if (
                 wssFinished ||
-                ev?.code === 1008 ||
+                ev?.code === 1000 ||
                 [
                   'Invalid secret',
                   'Invalid key',

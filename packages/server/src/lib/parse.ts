@@ -47,7 +47,7 @@ export interface DocQRL<T extends Document = Document>
 
 export type DocQRLFrom = DocumentQuery | DocumentLiveQuery | Document;
 
-export function parseDoc<TSchema extends Document = Document>({
+export function parseDoc<TSchema = Document>({
   obj,
   inspect,
   isUnlocked,
@@ -155,7 +155,7 @@ export function parseDocForInsertion(obj: any): any {
   }
 }
 
-export function parseExclude<T extends Document = Document>({
+export function parseExclude<T = Document>({
   obj,
   inspect,
 }: {
@@ -322,7 +322,7 @@ export function parseFilter(obj: any | any[]): any | any[] {
   return obj;
 }
 
-export function parseInclude<TSchema extends Document = Document>({
+export function parseInclude<TSchema = Document>({
   obj,
   inspect,
   cache,
@@ -507,7 +507,7 @@ export function createTree(arr: string[]) {
   );
 }
 
-export function parseProjection<TSchema extends Document = Document>(
+export function parseProjection<TSchema = Document>(
   projection: Partial<Projection<TSchema>>,
   objOrArray: TSchema | TSchema[]
 ): TSchema | TSchema[] {
@@ -550,7 +550,7 @@ export function parseProjection<TSchema extends Document = Document>(
           } else {
             const filteredItem = parseProjection(
               projection[key as keyof TSchema] as Projection<TSchema>,
-              objOrArray[key as keyof TSchema]
+              objOrArray[key as keyof TSchema] as unknown as any
             );
 
             filteredObj[key as keyof TSchema] =
@@ -571,7 +571,7 @@ export function parseProjection<TSchema extends Document = Document>(
                 projection[k] as {
                   [key in keyof TSchema]: number;
                 },
-                objOrArray[k]
+                objOrArray[k] as unknown as any
               )
             ) as TSchema[keyof TSchema];
 
@@ -592,7 +592,7 @@ export function parseProjection<TSchema extends Document = Document>(
   }
 }
 
-function isExclusionProjection<TSchema extends Document = Document>(
+function isExclusionProjection<TSchema = Document>(
   projection: Partial<Projection<TSchema>>
 ): boolean {
   // verify if the projection has only 0 values
@@ -611,7 +611,7 @@ function isExclusionProjection<TSchema extends Document = Document>(
   return isExclusionOnly;
 }
 
-function isKeyInExclusionProjection<TSchema extends Document = Document>(
+function isKeyInExclusionProjection<TSchema = Document>(
   key: string,
   projection: Partial<Projection<TSchema>>
 ) {

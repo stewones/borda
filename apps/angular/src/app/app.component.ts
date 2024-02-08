@@ -25,28 +25,30 @@ import {
   setDocState,
   unsetDocState,
 } from '@elegante/browser';
-import {
-  Auth,
-  LocalStorage,
-  ping,
-  query,
-  runFunction,
-  Session,
-  storageEstimate,
-  User,
-} from '@elegante/sdk';
 
+import { LocalStorage, Session, storageEstimate, User } from '@borda/client';
+
+import { environment } from '../environment';
 import {
+  borda,
   coolInitialState,
   coolReset,
   coolSet,
   Counter,
-  PublicUserModel,
   sessionSet,
   sessionUnset,
 } from '../main';
 
 console.time('startup');
+
+function ping() {
+  return fetch(`${environment.serverURL}/ping`, {
+    headers: {
+      'Content-Type': 'text/html',
+      'X-Borda-Api-Key': environment.serverKey,
+    },
+  });
+}
 
 function somePromise() {
   return new Promise<number>((resolve, reject) => {
@@ -59,10 +61,9 @@ function somePromise() {
 
 @Component({
   standalone: true,
-  selector: 'elegante-app',
+  selector: 'borda-app',
   imports: [CommonModule, FormsModule, ReactiveFormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
-
   styles: [
     `
       form {
@@ -89,11 +90,11 @@ function somePromise() {
       (click)="increase()"
       title="click to increase the counter. which should reflect here in realtime if subscribed. experiment open many tabs at same time and see the changes reflect."
     >
-      Increase count (realtime):
+      Increase count (realtime*):
       {{ counter.total }}
     </button>
     <button (click)="reload()" title="click to refresh the page">
-      Next Total (local): {{ counterTotalNext }}
+      Local Total (refresh): {{ counterTotalNext }}
     </button>
     <button
       (click)="unsubscribe()"
@@ -107,7 +108,9 @@ function somePromise() {
     >
       Re-subscribe Realtime
     </button>
-
+    <br />
+    <br />
+    *realtime requires a valid session
     <br />
 
     <h2>Sign Up</h2>
@@ -264,7 +267,7 @@ function somePromise() {
 export class AppComponent {
   counter: Counter = {
     total: 0,
-    name: 'elegante',
+    name: 'borda',
   } as Counter;
 
   counterTotalNext = 0;
@@ -311,7 +314,8 @@ export class AppComponent {
   @Fast('oldestUsers')
   oldestUsers$ = getState('session.token')
     ? from(
-        query<User>('PublicUser')
+        borda
+          .query<User>('PublicUser')
           .filter({
             expiresAt: {
               $exists: false,
@@ -344,7 +348,7 @@ export class AppComponent {
      * check if default record of counter exists
      * if not we create it, all in server side
      */
-    this.counter = await runFunction<Counter>('getCounter');
+    this.counter = await borda.cloud.run<Counter>('getCounter');
     this.counterTotalNext = this.counter.total;
 
     /**
@@ -367,10 +371,11 @@ export class AppComponent {
     /**
      * subscribe to realtime updates
      */
-    this.subscription$['counterUpdate'] = query<Counter>('Counter')
+    this.subscription$['counterUpdate'] = borda
+      .query<Counter>('Counter')
       .filter({
         name: {
-          $eq: 'elegante',
+          $eq: 'borda',
         },
       })
       .on('update')
@@ -383,7 +388,8 @@ export class AppComponent {
         error: (err) => console.error(err),
       });
 
-    this.subscription$['userDelete'] = query<User>('PublicUser')
+    this.subscription$['userDelete'] = borda
+      .query<User>('PublicUser')
       .on('delete')
       .subscribe(({ doc, ...rest }) => {
         console.log('user deleted', doc, rest);
@@ -395,7 +401,8 @@ export class AppComponent {
         );
       });
 
-    this.subscription$['userInsert'] = query<User & any>('PublicUser')
+    this.subscription$['userInsert'] = borda
+      .query<User & any>('PublicUser')
       .filter({
         expiresAt: {
           $exists: 1,
@@ -423,7 +430,7 @@ export class AppComponent {
   increase() {
     this.counterTotalNext = this.counterTotalNext + 1;
     this.cdr.markForCheck();
-    runFunction('increaseCounter', {
+    borda.cloud.run('increaseCounter', {
       objectId: this.counter.objectId,
       total: this.counterTotalNext,
     });
@@ -436,7 +443,7 @@ export class AppComponent {
   async signUp() {
     const { name, email, password } = this.signUpForm.getRawValue();
     try {
-      const response = await Auth.signUp({
+      const response = await borda.auth.signUp({
         name: name ?? '',
         email: email ?? '',
         password: password ?? '',
@@ -461,12 +468,16 @@ export class AppComponent {
   async signIn() {
     const { email, password } = this.signInForm.getRawValue();
     try {
-      const response = await Auth.signIn(email as string, password as string, {
-        projection: {
-          name: 1,
-          email: 1,
-        },
-      });
+      const response = await borda.auth.signIn(
+        email as string,
+        password as string,
+        {
+          projection: {
+            name: 1,
+            email: 1,
+          },
+        }
+      );
 
       const { user, token, ...rest } = response;
 
@@ -495,14 +506,14 @@ export class AppComponent {
       dispatch(coolReset());
     };
 
-    Auth.signOut().catch((err) => {});
+    borda.auth.signOut().catch((err) => {});
     resetState();
   }
 
   async changeEmail() {
     const { email, password } = this.changeEmailForm.getRawValue();
     try {
-      const response = await Auth.updateEmail(
+      const response = await borda.auth.updateEmail(
         email as string,
         password as string
       );
@@ -522,7 +533,7 @@ export class AppComponent {
     const { currentPassword, newPassword } =
       this.changePasswordForm.getRawValue();
     try {
-      const response = await Auth.updatePassword(
+      const response = await borda.auth.updatePassword(
         currentPassword as string,
         newPassword as string
       );
@@ -541,7 +552,7 @@ export class AppComponent {
   async forgotPassword() {
     const { email } = this.forgotPasswordForm.getRawValue();
     try {
-      await Auth.forgotPassword(email as string);
+      await borda.auth.forgotPassword(email as string);
 
       this.forgotPasswordError = undefined;
       this.cdr.markForCheck();
@@ -555,7 +566,8 @@ export class AppComponent {
   }
 
   deleteUser(objectId: string) {
-    query<User>('PublicUser')
+    borda
+      .query<User>('PublicUser')
       .filter({
         objectId: {
           $eq: objectId,
@@ -570,9 +582,9 @@ export class AppComponent {
   }
 
   loadPublicUsers() {
-    runFunction<User[]>('getPublicUsers').then((users) =>
-      setDocState('publicUsers', users)
-    );
+    borda.cloud
+      .run<User[]>('getPublicUsers')
+      .then((users) => setDocState('publicUsers', users));
 
     if (getState('session.token')) {
       dispatch(
@@ -595,9 +607,11 @@ export class AppComponent {
     // create a random email
     const email = `${Math.random().toString(36).substring(2, 15)}@random.email`;
     const name = `${Math.random().toString(36).substring(2, 15)}`;
-    const user = new PublicUserModel({ email, name });
-    await user.save();
-    console.log('createRandomUser()', user.getRawValue());
+    const user = await borda.query<User>('PublicUser').insert({
+      name,
+      email,
+    });
+    console.log('createRandomUser()', user);
   }
 
   async loadLotsOfDataIntoLocalStorage() {

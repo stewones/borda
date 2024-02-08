@@ -255,7 +255,7 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
   return cursor;
 }
 
-export function createPipeline<TSchema extends Document = Document>(bridge: {
+export function createPipeline<TSchema = Document>(bridge: {
   filter: Filter<TSchema>;
   pipeline?: DocumentPipeline<TSchema>;
   sort?: Sort;

@@ -47,6 +47,8 @@ export interface CloudFunctionParams {
 
 export interface CloudFunctionFactory {
   request: BordaRequest;
+  body: any;
+  params: Record<string, any>;
 }
 
 export class Cloud {

@@ -28,7 +28,7 @@ export async function getCounter() {
       total: 0,
       name: 'borda',
     });
-  }
+  } 
 
   return counter;
 }

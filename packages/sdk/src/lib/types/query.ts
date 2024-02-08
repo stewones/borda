@@ -190,7 +190,7 @@ export declare type QueryMethod =
   | 'passwordForgot'
   | 'passwordReset';
 
-export interface QRLParams<TSchema extends Document = Document> {
+export interface QRLParams<TSchema = Document> {
   collection: string;
   filter?: DocumentFilter<TSchema>;
   pipeline?: DocumentPipeline<TSchema>;
@@ -206,7 +206,7 @@ export interface QRLParams<TSchema extends Document = Document> {
 }
 
 // @todo remove when moving to borda
-export declare interface Query<TSchema extends Document = Document> {
+export declare interface Query<TSchema = Document> {
   params: QRLParams<TSchema>;
   options: FindOptions;
 
@@ -373,11 +373,11 @@ export declare interface Query<TSchema extends Document = Document> {
   once(): Observable<LiveQueryMessage<TSchema>>;
 }
 
-export type Projection<TSchema extends Document = Document> = {
+export type Projection<TSchema = Document> = {
   [key in keyof TSchema]:
     | number
     | Partial<{ [key in keyof TSchema]: number }>
-    | Projection<TSchema[key][key]>;
+    | Projection<TSchema[key]>;
 };
 
 export interface ManyInsertResponse<TSchema> {
@@ -423,12 +423,12 @@ export declare interface ManyUpsertResponse {
   };
 }
 
-export interface ManyInsertOptions<TSchema extends Document = Document> {
+export interface ManyInsertOptions<TSchema = Document> {
   writeConcern: TSchema;
   ordered: boolean;
 }
 
-export interface ManyDeleteOptions<TSchema extends Document = Document> {
+export interface ManyDeleteOptions<TSchema = Document> {
   writeConcern: TSchema;
   ordered: boolean;
 }
@@ -1399,9 +1399,7 @@ export declare class AggregationCursor<TSchema = any> {
    * }});
    * ```
    */
-  project<T extends Document = Document>(
-    $project: Document
-  ): AggregationCursor<T>;
+  project<T = Document>($project: Document): AggregationCursor<T>;
   /** Add a lookup stage to the aggregation pipeline */
   lookup($lookup: Document): this;
   /** Add a redact stage to the aggregation pipeline */

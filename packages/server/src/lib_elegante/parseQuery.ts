@@ -27,7 +27,7 @@ import {
   logInspection,
 } from './Server';
 
-export interface DocQRL<T extends Document = Document> extends DocumentQuery<T> {
+export interface DocQRL<T = Document> extends DocumentQuery<T> {
   collection$: Collection<T>;
   doc: T;
   docs: T[];

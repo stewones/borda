@@ -22,6 +22,12 @@
       },
       "configurations": {
         "production": {
+          "fileReplacements": [
+            {
+              "replace": "apps/angular/src/environment/index.ts",
+              "with": "projects/app/src/environment/production.ts"
+            }
+          ],
           "budgets": [
             {
               "type": "initial",

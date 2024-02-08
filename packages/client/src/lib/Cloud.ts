@@ -35,7 +35,7 @@ export class Cloud {
     this.#serverHeaderPrefix = serverHeaderPrefix;
   }
 
-  run<T extends Document = Document>(
+  run<T = Document>(
     name: string,
     doc?: Document,
     options?: {
@@ -91,7 +91,7 @@ export class Cloud {
 }
 
 // @todo: implement jobs
-// export function runJob<T extends Document = Document>(
+// export function runJob<T = Document>(
 //   name: string,
 //   doc?: Document
 // ): Promise<T> {

@@ -71,7 +71,8 @@ export class Auth {
           password,
         },
       },
-    }).then(({ data }) => {
+      direct: true,
+    }).then((data) => {
       this.#saveSessionToken(data.token, options ?? {});
       return data;
     });
@@ -108,12 +109,13 @@ export class Auth {
       }
     }
 
-    const { data } = await fetcher<Session>(`${this.#serverURL}/User`, {
+    const data = await fetcher<Session>(`${this.#serverURL}/User`, {
       method: 'POST',
       headers,
       body: {
         doc: from,
       },
+      direct: true,
     });
     this.#saveSessionToken(data.token, options ?? {});
     return data;
@@ -143,6 +145,7 @@ export class Auth {
     return fetcher(`${this.#serverURL}/me`, {
       method: 'DELETE',
       headers,
+      direct: true,
     }).then(() => {
       if (!isServer()) {
         LocalStorage.unset(
@@ -183,7 +186,8 @@ export class Auth {
       ? fetcher<Session>(`${this.#serverURL}/me`, {
           method: 'GET',
           headers,
-        }).then(({ data }) => {
+          direct: true,
+        }).then((data) => {
           this.#saveSessionToken(data.token, options ?? {});
           return data;
         })
@@ -228,7 +232,8 @@ export class Auth {
           password: password,
         },
       },
-    }).then(({ data }) => {
+      direct: true,
+    }).then((data) => {
       this.#saveSessionToken(data.token, options ?? {});
       return data;
     });
@@ -274,7 +279,8 @@ export class Auth {
           newPassword,
         },
       },
-    }).then(({ data }) => {
+      direct: true,
+    }).then((data) => {
       this.#saveSessionToken(data.token, options ?? {});
       return data;
     });
@@ -296,7 +302,8 @@ export class Auth {
           email,
         },
       },
-    }).then(({ data }) => data);
+      direct: true,
+    });
   }
 
   async resetPassword(token: string, password: string) {
@@ -316,6 +323,7 @@ export class Auth {
           password,
         },
       },
-    }).then(({ data }) => data);
+      direct: true,
+    });
   }
 }

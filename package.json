@@ -73,7 +73,7 @@
     "typescript": "5.3.3",
     "valibot": "^0.19.0",
     "zone.js": "0.14.3",
-    "elysia": "^0.8.15",
+    "elysia": "^0.8.16",
     "@nx/devkit": "17.3.0",
     "@nx/workspace": "17.3.0",
     "@nx/js": "17.3.0",
@@ -86,6 +86,7 @@
     "@nx/angular": "17.3.0"
   },
   "dependencies": {
+    "@elysiajs/cors": "^0.8.0",
     "@elysiajs/html": "^0.8.0"
   }
 }

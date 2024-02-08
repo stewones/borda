@@ -34,7 +34,6 @@ export function webSocketServer({
 }) {
   return (factory: WebSocketFactory) => {
     const { onConnect, onOpen, onError, onClose, onMessage } = factory;
-
     const ws = new WebSocket(socketURL, [
       `${serverKey}#${token?.replace(':', '')}#${secret}`,
     ]);

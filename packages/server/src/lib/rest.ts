@@ -573,7 +573,7 @@ export async function restUserSignUp({
       return Promise.reject(
         new BordaError(
           ErrorCode.AUTH_PASSWORD_REQUIRED,
-          'The password is incorrect'
+          'The password is invalid'
         ).toJSON()
       );
     }
@@ -694,7 +694,7 @@ export async function restUserSignIn({
     return Promise.reject(
       new BordaError(
         ErrorCode.AUTH_PASSWORD_INCORRECT,
-        'The password is incorrect'
+        'The password is invalid'
       ).toJSON()
     );
   }
@@ -796,7 +796,7 @@ export async function restUserUpdateEmail({
     return Promise.reject(
       new BordaError(
         ErrorCode.AUTH_PASSWORD_INCORRECT,
-        'The password is incorrect'
+        'The password is invalid'
       ).toJSON()
     );
   }
@@ -1261,11 +1261,13 @@ export async function restUserMe({
 
 export async function restFunctionRun({
   params,
+  body,
   request,
   inspect,
   cloud,
 }: {
   params: any;
+  body: any;
   request: Request & any;
   inspect: boolean;
   cloud: Cloud;
@@ -1292,6 +1294,8 @@ export async function restFunctionRun({
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const result = await handler!({
       request,
+      body,
+      params,
     });
 
     if (inspect) {
