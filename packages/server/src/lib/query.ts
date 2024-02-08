@@ -1,5 +1,5 @@
 import { Db } from 'mongodb';
-import { Observable } from 'rxjs';
+import { finalize, Observable } from 'rxjs';
 
 import {
   BordaQuery,
@@ -230,7 +230,7 @@ export class BordaServerQuery<
         return Promise.reject(`method ${method} not implemented`);
       },
       on: ({ collection, event, ...rest }: DocumentLiveQuery<TSchema>) => {
-        return handleOn<TSchema>({
+        const { disconnect, onChanges, onError } = handleOn<TSchema>({
           collection,
           event,
           ...rest,
@@ -239,7 +239,19 @@ export class BordaServerQuery<
           cache: this.#cache,
           query: (collectionName: string) => this.load(collectionName),
           inspect: this.inspect ?? false,
-        }) as Observable<LiveQueryMessage<TSchema>>;
+        });
+        const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
+          onChanges.subscribe((data) => observer.next(data));
+          onError.subscribe((error) => {
+            observer.error(error);
+            disconnect();
+          });
+        }).pipe(
+          finalize(() => {
+            disconnect();
+          })
+        );
+        return source;
       },
       once: () => new Observable<LiveQueryMessage<TSchema>>(),
     };

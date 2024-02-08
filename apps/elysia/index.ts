@@ -15,7 +15,7 @@
 
 import { Elysia } from 'elysia';
 
-import { BordaClient, pointer } from '@borda/client';
+import { BordaClient, delay, pointer } from '@borda/client';
 import { BordaServer, memoryUsage } from '@borda/server';
 import { html } from '@elysiajs/html';
 
@@ -44,7 +44,7 @@ const client = new BordaClient({
  */
 export const borda = new BordaServer({
   name: 'borda-on-elysia',
-  inspect: true,
+  inspect: false,
   cacheTTL: 1000 * 1 * 20,
   plugins: [
     {
@@ -129,8 +129,9 @@ borda.onReady.subscribe(async ({ db, name }) => {
     .catch((err) => console.log(err));
 
   runLiveQueryTest();
-  // await runQueryClientTest();
-  // await runQueryServerTest();
+  await delay(500); // little delay to the stream catch up
+  await runQueryClientTest();
+  await runQueryServerTest();
 });
 
 /**
@@ -188,13 +189,18 @@ function runLiveQueryTest() {
     })
     .on('insert')
     .subscribe(({ doc }) => {
-      console.log('⚡LiveQuery: new person', doc);
+      console.log('⚡LiveQuery (server): new person', doc);
     });
 
   // using borda client instance to subscribe to live queries
   client
     .query('Person')
     .unlock() // comment to throw error
+    .filter({
+      age: {
+        $gte: 18,
+      },
+    })
     .on('insert')
     .subscribe({
       next: ({ doc }) => {
@@ -212,10 +218,10 @@ async function runQueryClientTest() {
     .query('Person')
     .unlock()
     .insert({
-      name: 'John',
-      age: 30,
+      name: 'Jane',
+      age: 25,
     })
-    .then((person) => console.log('new person', person))
+    .then((person) => console.log('new person inserted by rest', person))
     .catch((err) => {
       console.log(err);
       process.exit(1); // stops the server for the sake of the example. don't do this in production.
@@ -227,7 +233,7 @@ async function runQueryClientTest() {
     .unlock()
     .limit(2)
     .find()
-    .then((people) => console.log('people', people))
+    .then((people) => console.log('people by rest', people))
     .catch((err) => console.log(err));
 
   // execute a function
@@ -470,18 +476,6 @@ async function runQueryServerTest() {
     .then((posts) => console.log('posts', posts))
     .catch((err) => console.log(err));
 
-  // clean up posts
-  // await borda
-  //   .query('Post')
-  //   .filter({
-  //     title: {
-  //       $exists: true,
-  //     },
-  //   })
-  //   .deleteMany()
-  //   .then((response) => console.log('posts deleted', response))
-  //   .catch((err) => console.log(err));
-
   // update by id (put)
   await borda
     .query('Person')
@@ -506,5 +500,17 @@ async function runQueryServerTest() {
       name: 'Elon Musk',
     })
     .then(() => console.log('updated person'))
+    .catch((err) => console.log(err));
+
+  // clean up posts
+  await borda
+    .query('Post')
+    .filter({
+      title: {
+        $exists: true,
+      },
+    })
+    .deleteMany()
+    .then((response) => console.log('posts deleted', response))
     .catch((err) => console.log(err));
 }

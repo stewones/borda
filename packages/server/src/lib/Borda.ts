@@ -3,7 +3,14 @@ import { Elysia, ElysiaConfig } from 'elysia';
 import { Db } from 'mongodb';
 import { Subject } from 'rxjs';
 
-import { Auth, Document, InternalHeaders, Session, User } from '@borda/client';
+import {
+  Auth,
+  Document,
+  InternalCollectionName,
+  InternalHeaders,
+  Session,
+  User,
+} from '@borda/client';
 
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
@@ -63,6 +70,12 @@ export interface BordaParams {
    * Elysia config
    */
   config?: Partial<ElysiaConfig>;
+
+  /**
+   * Collections allowances
+   */
+  reservedCollections?: string[];
+  liveCollections?: string[];
 }
 
 export class Borda {
@@ -86,6 +99,9 @@ export class Borda {
   #cache!: Cache;
   #plugins!: ServerPlugin[];
   #auth!: Auth;
+
+  #reservedCollections!: string[];
+  #liveCollections!: string[];
 
   public onReady = new Subject<{
     db: Db;
@@ -172,6 +188,8 @@ export class Borda {
       cacheTTL,
       queryLimit,
       plugins,
+      reservedCollections,
+      liveCollections,
     } = params || {};
     let { config } = params || {};
 
@@ -200,6 +218,9 @@ export class Borda {
       parseFloat(process.env['BORDA_CACHE_TTL'] ?? '0') ||
       1 * 1000 * 60 * 60;
     this.#queryLimit = queryLimit || 50;
+    this.#reservedCollections =
+      reservedCollections || Object.values(InternalCollectionName);
+    this.#liveCollections = liveCollections || [];
 
     if (!config) {
       config = {
@@ -251,6 +272,8 @@ export class Borda {
     // instantiate the server
     this.#server = createServer({
       collections,
+      liveCollections: this.#liveCollections,
+      reservedCollections: this.#reservedCollections,
       config: this.#config,
       serverHeaderPrefix: this.#serverHeaderPrefix,
       serverKey: this.#serverKey,

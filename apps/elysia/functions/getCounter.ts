@@ -3,7 +3,9 @@ import { isEmpty } from '@borda/client';
 import { borda } from '../';
 
 export async function getCounter() {
-  console.log('executing cloud function getCounter');
+  if (borda.inspect) {
+    console.log('executing cloud function getCounter');
+  }
 
   // note the the borda instance here is the one exported
   // after initialization in the index.ts file
@@ -16,7 +18,10 @@ export async function getCounter() {
         $eq: 'borda',
       },
     })
-    .findOne({ inspect: true });
+    .findOne({
+      // force inspection per query
+      inspect: true,
+    });
 
   if (isEmpty(counter)) {
     counter = await borda.query('Counter').insert({

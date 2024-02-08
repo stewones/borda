@@ -8,7 +8,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ChangeStreamUpdateDocument, Db, Document } from 'mongodb';
-import { finalize, Observable } from 'rxjs';
+import { Subject } from 'rxjs';
 
 import {
   DocumentFilter,
@@ -50,7 +50,14 @@ export function handleOn<TSchema extends Document = Document>({
   cache: Cache;
   query: (collection: string) => BordaServerQuery;
   inspect?: boolean;
-}) {
+}): {
+  disconnect: () => void;
+  onChanges: Subject<LiveQueryMessage<TSchema>>;
+  onError: Subject<Error>;
+} {
+  const onChanges = new Subject<LiveQueryMessage<TSchema>>();
+  const onError = new Subject<Error>();
+
   const docQuery: Omit<DocumentQuery, 'method'> = {
     filter: (filter ?? {}) as DocumentFilter,
     limit,
@@ -89,99 +96,97 @@ export function handleOn<TSchema extends Document = Document>({
     stream.removeAllListeners();
   };
 
-  const source = new Observable<LiveQueryResponse<TSchema>>((observer) => {
-    stream.on('error', (err) => {
-      if (inspect) {
-        console.log('LiveQueryMessage error', err);
-      }
-      observer.error(err);
-      disconnect();
-    });
+  stream.on('error', (err) => {
+    if (inspect) {
+      console.log('LiveQueryMessage error', err);
+    }
 
-    stream.on('close', () => {
-      if (inspect) {
-        console.log('LiveQueryMessage closed');
-      }
-      disconnect();
-    });
+    onError.next(err);
+    disconnect();
+  });
 
-    stream.on('init', () => {
-      if (inspect) {
-        console.log('LiveQueryMessage initialized');
-      }
-    });
+  stream.on('close', () => {
+    if (inspect) {
+      console.log('LiveQueryMessage closed');
+    }
+    disconnect();
+  });
 
-    stream.on('change', async (change: ChangeStreamUpdateDocument<TSchema>) => {
-      const { fullDocument, operationType, updateDescription } = change;
-      const { updatedFields, removedFields, truncatedArrays } =
-        updateDescription ?? {};
+  stream.on('init', () => {
+    if (inspect) {
+      console.log('LiveQueryMessage initialized');
+    }
+  });
 
-      let message: LiveQueryResponse<TSchema> =
-        {} as LiveQueryResponse<TSchema>;
+  stream.on('change', async (change: ChangeStreamUpdateDocument<TSchema>) => {
+    const { fullDocument, operationType, updateDescription } = change;
+    const { updatedFields, removedFields, truncatedArrays } =
+      updateDescription ?? {};
 
-      /**
-       * check if it's deleted
-       */
-      const isDeleted =
-        event === 'delete' &&
-        fullDocument &&
-        fullDocument['_expires_at'] &&
-        isDate(fullDocument['_expires_at']);
+    let message: LiveQueryMessage<TSchema> = {} as LiveQueryMessage<TSchema>;
 
-      if (isDeleted) {
+    /**
+     * check if it's deleted
+     */
+    const isDeleted =
+      event === 'delete' &&
+      fullDocument &&
+      fullDocument['_expires_at'] &&
+      isDate(fullDocument['_expires_at']);
+
+    if (isDeleted) {
+      message = {
+        doc: parseProjection(
+          projection ?? {},
+          await parseDoc<TSchema>({
+            obj: fullDocument,
+            inspect: inspect ?? false,
+            isUnlocked: unlocked,
+            cache,
+            query,
+          })(docQuery)
+        ),
+        docs: [],
+      } as LiveQueryMessage<TSchema>;
+    } else if (
+      operationType === event &&
+      ['insert', 'replace', 'update'].includes(operationType)
+    ) {
+      message = {
+        doc: parseProjection(
+          projection ?? {},
+          await parseDoc<TSchema>({
+            obj: fullDocument,
+            inspect: inspect ?? false,
+            isUnlocked: unlocked,
+            cache,
+            query,
+          })(docQuery)
+        ),
+        docs: [],
+        updatedFields: updatedFields ?? {},
+        removedFields: removedFields ?? [],
+        truncatedArrays,
+      } as LiveQueryMessage<TSchema>;
+    } else if (!['delete'].includes(operationType)) {
+      if (operationType === event) {
         message = {
-          doc: parseProjection(
-            projection ?? {},
-            await parseDoc<TSchema>({
-              obj: fullDocument,
-              inspect: inspect ?? false,
-              isUnlocked: unlocked,
-              cache,
-              query,
-            })(docQuery)
-          ),
-          docs: [],
-        } as LiveQueryResponse<TSchema>;
-      } else if (
-        operationType === event &&
-        ['insert', 'replace', 'update'].includes(operationType)
-      ) {
-        message = {
-          doc: parseProjection(
-            projection ?? {},
-            await parseDoc<TSchema>({
-              obj: fullDocument,
-              inspect: inspect ?? false,
-              isUnlocked: unlocked,
-              cache,
-              query,
-            })(docQuery)
-          ),
-          docs: [],
-          updatedFields: updatedFields ?? {},
-          removedFields: removedFields ?? [],
-          truncatedArrays,
-        } as LiveQueryResponse<TSchema>;
-      } else if (!['delete'].includes(operationType)) {
-        if (operationType === event) {
-          message = {
-            ...change,
-          };
-        }
+          ...change,
+        } as unknown as LiveQueryMessage<TSchema>;
       }
-      if (message) {
-        observer.next(message);
-      } else {
-        observer.next({} as LiveQueryResponse<TSchema>);
-      }
-    });
-  }).pipe(
-    finalize(() => {
-      disconnect();
-    })
-  );
+    }
+    if (message) {
+      onChanges.next(message);
+    } else {
+      onChanges.next({} as LiveQueryMessage<TSchema>);
+    }
+  });
 
-  return source;
+  return {
+    disconnect,
+    onChanges,
+    onError,
+  };
 }
 
 /**

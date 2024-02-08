@@ -386,13 +386,6 @@ export class BordaQuery<TSchema extends Document = Document> {
       doc = docOrDocs as Document;
     }
 
-    if (!this.#collection) {
-      throw new BordaError(
-        ErrorCode.QUERY_REQUIRED_COLLECTION_NAME,
-        'a collection name is required'
-      );
-    }
-
     if (['update', 'remove'].includes(method)) {
       if (isEmpty(this.#filter)) {
         throw new BordaError(

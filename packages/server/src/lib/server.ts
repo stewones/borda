@@ -4,6 +4,7 @@ import { CollectionInfo, Db } from 'mongodb';
 
 import {
   BordaError,
+  DocumentLiveQuery,
   ErrorCode,
   InternalCollectionName,
   InternalHeaders,
@@ -17,6 +18,7 @@ import { newToken } from '../utils';
 import { BordaRequest } from './Borda';
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
+import { handleOn } from './livequery';
 import { PluginHook } from './plugin';
 import { BordaServerQuery } from './query';
 import {
@@ -42,6 +44,8 @@ export function createServer({
   cache,
   db,
   collections,
+  reservedCollections,
+  liveCollections,
   cloud,
   inspect,
 }: {
@@ -58,6 +62,8 @@ export function createServer({
   cache: Cache;
   db: Db;
   collections: CollectionInfo[];
+  reservedCollections: string[];
+  liveCollections: string[];
   cloud: Cloud;
   inspect: boolean;
 }) {
@@ -382,7 +388,7 @@ export function createServer({
 
   // livequery
   server.ws('/live/:collectionName', {
-    async beforeHandle({ set, headers }: { set: any; headers: any }) {
+    async beforeHandle({ set, headers, params }) {
       // extract websocket protocols from headers
       const protocols = headers['sec-websocket-protocol'];
       // 'apiKey#token#secret'
@@ -473,6 +479,36 @@ export function createServer({
         }
       }
 
+      if (hasToken && apiSecret !== serverSecret) {
+        // check for collection
+        const collection =
+          InternalCollectionName[params.collectionName] ||
+          params.collectionName;
+
+        /**
+         * can't subscribe to any of the reserved collections
+         */
+        if (reservedCollections.includes(collection)) {
+          const message = `You can't subscribe to the collection ${collection} because it's reserved`;
+          if (inspect) {
+            console.log(message);
+          }
+          set.status = 1008;
+          return message;
+        }
+
+        /**
+         * throw exception if the requested collection is not allowed
+         */
+        if (!liveCollections.includes(collection)) {
+          if (inspect) {
+            console.log('Collection not allowed');
+          }
+          set.status = 1008;
+          return 'Collection not allowed';
+        }
+      }
+
       return; // all good
     },
 
@@ -487,11 +523,30 @@ export function createServer({
       }
     },
     message(ws, message) {
-      // @todo return handleOn({...})
-      ws.send({
-        doc: message,
-        time: Date.now(),
+      const liveQuery = message as DocumentLiveQuery;
+      const { collection, event, ...rest } = liveQuery;
+
+      const { disconnect, onChanges, onError } = handleOn<any>({
+        collection,
+        event,
+        ...rest,
+        db,
+        unlocked: true,
+        cache,
+        query,
+        inspect,
       });
+
+      onChanges.subscribe((data) => {
+        ws.send(data);
+      });
+      onError.subscribe((error) => {
+        if (inspect) {
+          console.log('LiveQueryMessage error', error);
+        }
+        disconnect();
+      });
+      return;
     },
   });
 
