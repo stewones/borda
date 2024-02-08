@@ -11,6 +11,7 @@ import { ChangeStreamUpdateDocument, Db, Document } from 'mongodb';
 import { Subject } from 'rxjs';
 
 import {
+  AggregateOptions,
   DocumentFilter,
   DocumentLiveQuery,
   DocumentQuery,
@@ -20,7 +21,8 @@ import {
 } from '@borda/client';
 
 import { Cache } from './Cache';
-import { parseDoc, parseProjection } from './parse';
+import { createPipeline } from './mongodb';
+import { parseDoc, parseDocs, parseProjection, parseQuery } from './parse';
 import { BordaServerQuery } from './query';
 
 export type LiveQueryResponse<TSchema extends Document = Document> =
@@ -175,6 +177,7 @@ export function handleOn<TSchema extends Document = Document>({
         } as unknown as LiveQueryMessage<TSchema>;
       }
     }
+
     if (message) {
       onChanges.next(message);
     } else {
@@ -196,9 +199,8 @@ export function handleOn<TSchema extends Document = Document>({
  * @param {DocumentLiveQuery} rawQuery
  * @param {WebSocket} ws
  */
-export async function handleOnce(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  liveQuery: DocumentLiveQuery & {
+export async function handleOnce<TSchema extends Document = Document>(
+  liveQuery: DocumentLiveQuery<TSchema> & {
     db: Db;
     unlocked: boolean;
     cache: Cache;
@@ -206,47 +208,53 @@ export async function handleOnce(
     inspect?: boolean;
   }
 ) {
-  //   const docs: Document[] = [];
-  //   const query = parseQuery(rawQuery);
-  //   const {
-  //     filter,
-  //     limit,
-  //     sort,
-  //     projection,
-  //     options,
-  //     skip,
-  //     pipeline,
-  //     collection$,
-  //   } = query;
-  //   const cursor = collection$.aggregate<Document>(
-  //     createPipeline<Document>({
-  //       filter: filter ?? {},
-  //       pipeline: pipeline ?? ([] as any),
-  //       limit: limit ?? 10000,
-  //       skip: skip ?? 0,
-  //       sort: sort ?? {},
-  //     }),
-  //     options as AggregateOptions
-  //   );
-  //   for await (const doc of cursor) {
-  //     docs.push(doc);
-  //   }
-  //   /**
-  //    * send the message over the wire to the client
-  //    */
-  //   const message: LiveQueryMessage = {
-  //     docs: parseProjection(
-  //       projection ?? ({} as any),
-  //       await parseDocs(docs)(query, EleganteServer.params, {})
-  //     ),
-  //     doc: null,
-  //   };
-  //   ws.send(JSON.stringify(message));
-  //   /**
-  //    * close connection
-  //    */
-  //   connections.delete(ws);
-  //   ws.close();
+  const docs: TSchema[] = [];
+  const docQuery = parseQuery({
+    from: liveQuery,
+    db: liveQuery.db,
+    inspect: liveQuery.inspect ?? false,
+  });
+
+  const {
+    filter,
+    limit,
+    sort,
+    projection,
+    options,
+    skip,
+    pipeline,
+    collection$,
+  } = docQuery;
+
+  const cursor = collection$.aggregate<TSchema>(
+    createPipeline<TSchema>({
+      filter: filter ?? ({} as any),
+      pipeline: pipeline ?? ([] as any),
+      limit: limit ?? 10000,
+      skip: skip ?? 0,
+      sort: sort ?? {},
+    }),
+    options as AggregateOptions
+  );
+
+  for await (const doc of cursor) {
+    docs.push(doc);
+  }
+
+  const message: LiveQueryMessage<TSchema> = {
+    docs: parseProjection(
+      projection ?? ({} as any),
+      await parseDocs({
+        arr: docs,
+        inspect: liveQuery.inspect ?? false,
+        isUnlocked: liveQuery.unlocked,
+        cache: liveQuery.cache,
+        query: liveQuery.query,
+      })(docQuery)
+    ),
+  } as LiveQueryMessage<TSchema>;
+
+  return message;
 }
 
 /**

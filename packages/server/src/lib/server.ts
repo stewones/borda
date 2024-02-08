@@ -18,7 +18,7 @@ import { newToken } from '../utils';
 import { BordaRequest } from './Borda';
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
-import { handleOn } from './livequery';
+import { handleOn, handleOnce } from './livequery';
 import { PluginHook } from './plugin';
 import { BordaServerQuery } from './query';
 import {
@@ -522,13 +522,40 @@ export function createServer({
         console.log('Closed Connection:', ws.id);
       }
     },
-    message(ws, message) {
+    async message(ws, message) {
       const liveQuery = message as DocumentLiveQuery;
-      const { collection, event, ...rest } = liveQuery;
+      const { collection, event, method, ...rest } = liveQuery;
 
-      const { disconnect, onChanges, onError } = handleOn<any>({
+      if (method === 'on') {
+        const { disconnect, onChanges, onError } = handleOn<any>({
+          collection,
+          event,
+          method,
+          ...rest,
+          db,
+          unlocked: true,
+          cache,
+          query,
+          inspect,
+        });
+
+        onChanges.subscribe((data) => {
+          ws.send(data);
+        });
+        onError.subscribe((error) => {
+          if (inspect) {
+            console.log('LiveQueryMessage error', error);
+          }
+          disconnect();
+        });
+
+        return;
+      }
+
+      const data = await handleOnce({
         collection,
         event,
+        method,
         ...rest,
         db,
         unlocked: true,
@@ -537,16 +564,7 @@ export function createServer({
         inspect,
       });
 
-      onChanges.subscribe((data) => {
-        ws.send(data);
-      });
-      onError.subscribe((error) => {
-        if (inspect) {
-          console.log('LiveQueryMessage error', error);
-        }
-        disconnect();
-      });
-      return;
+      ws.send(data);
     },
   });
 

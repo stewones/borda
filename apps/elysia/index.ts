@@ -210,6 +210,42 @@ function runLiveQueryTest() {
         console.log('⚡LiveQuery (client):', err);
       },
     });
+
+  // once
+  client
+    .query('Person')
+    .unlock() // comment to throw error
+    .filter({
+      age: {
+        $gte: 18,
+      },
+    })
+    .once()
+    .subscribe({
+      next: ({ docs }) => {
+        console.log('⚡LiveQuery (client) once: persons', docs);
+      },
+      error: (err) => {
+        console.log('⚡LiveQuery (client) once:', err);
+      },
+    });
+
+  borda
+    .query('Person')
+    .filter({
+      age: {
+        $gte: 18,
+      },
+    })
+    .once()
+    .subscribe({
+      next: ({ docs }) => {
+        console.log('⚡LiveQuery (server) once: persons', docs);
+      },
+      error: (err) => {
+        console.log('⚡LiveQuery (server) once:', err);
+      },
+    });
 }
 
 async function runQueryClientTest() {

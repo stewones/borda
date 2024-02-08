@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { finalize, Observable } from 'rxjs';
+import { finalize, first, Observable } from 'rxjs';
 
 import {
   BordaError,
@@ -462,12 +462,25 @@ export class BordaQuery<TSchema extends Document = Document> {
       pipeline: this.#pipeline,
       options,
       event,
+      method: 'on',
     };
     return this.bridge.on(query);
   }
 
   once(): Observable<LiveQueryMessage<TSchema>> {
-    return this.bridge.once();
+    const query: DocumentLiveQuery<TSchema> = {
+      collection: this.#collection,
+      filter: this.#filter,
+      projection: this.#projection,
+      sort: this.#sort,
+      limit: this.#limit,
+      skip: this.#skip,
+      include: this.#include,
+      exclude: this.#exclude,
+      pipeline: this.#pipeline,
+      method: 'once',
+    };
+    return this.bridge.once(query);
   }
 
   get bridge() {
@@ -479,7 +492,9 @@ export class BordaQuery<TSchema extends Document = Document> {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       on: (query: DocumentLiveQuery<TSchema>) =>
         new Observable<LiveQueryMessage<TSchema>>(),
-      once: () => new Observable<LiveQueryMessage<TSchema>>(),
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      once: (query: DocumentLiveQuery<TSchema>) =>
+        new Observable<LiveQueryMessage<TSchema>>(),
     };
   }
 }
@@ -654,9 +669,10 @@ export class BordaClientQuery<
           pipeline,
           collection,
           event,
+          method,
         } = liveQuery;
 
-        const body: DocumentLiveQuery = {
+        const body: DocumentLiveQuery<TSchema> = {
           options,
           projection,
           sort,
@@ -666,9 +682,10 @@ export class BordaClientQuery<
           exclude,
           collection,
           event,
-          filter: filter ?? ({} as any),
-          pipeline: pipeline ?? ([] as any),
+          filter,
+          pipeline,
           unlock: this.unlocked ?? false,
+          method,
         };
 
         const key = `livequery:${cleanKey(body)}`;
@@ -816,7 +833,9 @@ export class BordaClientQuery<
         Reflect.defineMetadata('key', key, source);
         return source;
       },
-      once: () => new Observable<LiveQueryMessage<TSchema>>(),
+      once: (liveQuery: DocumentLiveQuery<TSchema>) => {
+        return this.bridge.on(liveQuery).pipe(first());
+      },
     };
   }
 }

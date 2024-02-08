@@ -37,7 +37,7 @@ export interface LiveQueryMessage<T extends Document = Document>
 
 export interface DocumentLiveQuery<TSchema extends Document = Document> {
   event?: DocumentEvent | undefined;
-  filter?: DocumentFilter<TSchema>;
+  filter: DocumentFilter<TSchema>;
   limit?: number;
   skip?: number;
   sort?: Sort;
@@ -51,4 +51,5 @@ export interface DocumentLiveQuery<TSchema extends Document = Document> {
   collection: string;
   inspect?: boolean;
   unlock?: boolean;
+  method: LiveQueryMethod;
 }

@@ -83,14 +83,14 @@ export function createFindCursor<T extends Document>(docQRL: DocQRL) {
   return cursor;
 }
 
-export function createPipeline<TSchema extends Document = Document>(bridge: {
+export function createPipeline<TSchema extends Document = Document>(params: {
   filter: Filter<TSchema>;
   pipeline?: DocumentPipeline<TSchema>;
   sort?: Sort;
   limit?: number;
   skip?: number;
 }) {
-  const { filter, pipeline, sort, limit, skip } = bridge;
+  const { filter, pipeline, sort, limit, skip } = params;
   return [
     ...(!isEmpty(filter) ? [{ $match: filter }] : []),
     ...(pipeline ?? []),

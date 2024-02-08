@@ -1,5 +1,5 @@
 import { Db } from 'mongodb';
-import { finalize, Observable } from 'rxjs';
+import { finalize, first, Observable } from 'rxjs';
 
 import {
   BordaQuery,
@@ -11,7 +11,7 @@ import {
 
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
-import { handleOn } from './livequery';
+import { handleOn, handleOnce } from './livequery';
 import {
   aggregate,
   count,
@@ -253,7 +253,21 @@ export class BordaServerQuery<
         );
         return source;
       },
-      once: () => new Observable<LiveQueryMessage<TSchema>>(),
+      once: ({ collection, event, ...rest }: DocumentLiveQuery<TSchema>) =>
+        new Observable<LiveQueryMessage<TSchema>>((observer) => {
+          handleOnce<TSchema>({
+            collection,
+            event,
+            ...rest,
+            db: this.#db,
+            unlocked: true,
+            cache: this.#cache,
+            query: (collectionName: string) => this.load(collectionName),
+            inspect: this.inspect ?? false,
+          })
+            .then((data) => observer.next(data))
+            .catch((error) => observer.error(error));
+        }).pipe(first()),
     };
   }
 }
