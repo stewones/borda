@@ -13,6 +13,7 @@
         "tsConfig": "packages/server/tsconfig.lib.json",
         "packageJson": "packages/server/package.json",
         "external": "all",
+        "format": ["cjs", "esm"],
         "externalBuildTargets": ["@borda/client"],
         "assets": ["packages/server/README.md"]
       }

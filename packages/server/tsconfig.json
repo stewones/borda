@@ -12,6 +12,15 @@
   },
   "files": [],
   "include": [],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tmp",
+    "coverage",
+    "jest.config.ts",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ],
   "references": [
     {
       "path": "./tsconfig.lib.json"

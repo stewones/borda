@@ -4,18 +4,27 @@
   "sourceRoot": "packages/client/src",
   "projectType": "library",
   "targets": {
-    "build": {
-      "executor": "@nx/rollup:rollup",
-      "outputs": ["{options.outputPath}"],
-      "options": {
-        "outputPath": "dist/packages/client",
-        "main": "packages/client/src/index.ts",
-        "tsConfig": "packages/client/tsconfig.lib.json",
-        "project": "packages/client/src/package.json",
-        "compiler": "tsc",
-        "format": ["cjs", "esm"],
-        "updateBuildableProjectDepsInPackageJson": false,
-        "babelUpwardRootMode": true
+    "targets": {
+      "build": {
+        "executor": "@nx/rollup:rollup",
+        "outputs": ["{options.outputPath}"],
+        "options": {
+          "outputPath": "dist/packages/client",
+          "main": "packages/client/src/index.ts",
+          "tsConfig": "packages/client/tsconfig.lib.json",
+          "project": "packages/client/src/package.json",
+          "compiler": "tsc",
+          "format": ["cjs", "esm"],
+          "updateBuildableProjectDepsInPackageJson": false,
+          "babelUpwardRootMode": true,
+          "assets": [
+            {
+              "glob": "README.md",
+              "input": "packages/client",
+              "output": "/"
+            }
+          ]
+        }
       }
     },
     "publish": {
