@@ -120,7 +120,7 @@ load({
 
   if (session) {
     dispatch(sessionSet(session));
-    borda.auth.become(session.token);
+    borda.auth.become({ token: session.token });
   }
 
   /**

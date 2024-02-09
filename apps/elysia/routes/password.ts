@@ -55,7 +55,7 @@ export async function passwordResetPost({
   }
 
   try {
-    await borda.auth.resetPassword(token, password);
+    await borda.auth.resetPassword({ token, newPassword: password });
     set.status = 201;
     return `
         <html>
@@ -67,7 +67,7 @@ export async function passwordResetPost({
             </body>
         </html>  
         `;
-  } catch ({ data }: any) {
+  } catch (error: any) {
     set.status = 400;
     return `
         <html>
@@ -75,7 +75,7 @@ export async function passwordResetPost({
              <title>Error resetting password</title>
           </head>
            <body>
-               ${data.message}
+               ${error.message}
             </body>
         </html>  
         `;

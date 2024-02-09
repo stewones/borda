@@ -467,11 +467,13 @@ export class AppComponent {
   }
 
   async signIn() {
-    const { email, password } = this.signInForm.getRawValue();
+    const { email, password } = this.signInForm.getRawValue() as {
+      email: string;
+      password: string;
+    };
     try {
       const response = await borda.auth.signIn(
-        email as string,
-        password as string,
+        { email, password },
         {
           projection: {
             name: 1,
@@ -516,10 +518,10 @@ export class AppComponent {
   async changeEmail() {
     const { email, password } = this.changeEmailForm.getRawValue();
     try {
-      const response = await borda.auth.updateEmail(
-        email as string,
-        password as string
-      );
+      const response = await borda.auth.updateEmail({
+        newEmail: email as string,
+        currentPassword: password as string,
+      });
 
       this.changeEmailError = undefined;
       this.cdr.markForCheck();
@@ -536,10 +538,10 @@ export class AppComponent {
     const { currentPassword, newPassword } =
       this.changePasswordForm.getRawValue();
     try {
-      const response = await borda.auth.updatePassword(
-        currentPassword as string,
-        newPassword as string
-      );
+      const response = await borda.auth.updatePassword({
+        currentPassword: currentPassword as string,
+        newPassword: newPassword as string,
+      });
 
       this.changePasswordError = undefined;
       this.cdr.markForCheck();
@@ -555,7 +557,7 @@ export class AppComponent {
   async forgotPassword() {
     const { email } = this.forgotPasswordForm.getRawValue();
     try {
-      await borda.auth.forgotPassword(email as string);
+      await borda.auth.forgotPassword({ email: email as string });
 
       this.forgotPasswordError = undefined;
       this.cdr.markForCheck();

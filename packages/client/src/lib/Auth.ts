@@ -55,7 +55,10 @@ export class Auth {
     }
   }
 
-  signIn(email: string, password: string, options?: SignOptions) {
+  signIn(
+    { email, password }: { email: string; password: string },
+    options?: SignOptions
+  ) {
     const headers = {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.#serverKey,
@@ -122,7 +125,7 @@ export class Auth {
     return data;
   }
 
-  async signOut(token?: string) {
+  async signOut({ token }: { token?: string } = {}) {
     if (!isServer()) {
       token = LocalStorage.get(
         `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
@@ -163,7 +166,11 @@ export class Auth {
   }
 
   async become(
-    token: string,
+    {
+      token,
+    }: {
+      token: string;
+    },
     options?: Pick<SignOptions, 'saveToken' | 'validateSession'>
   ) {
     if (isServer()) {
@@ -194,7 +201,13 @@ export class Auth {
         });
   }
 
-  async updateEmail(password: string, newEmail: string, options?: SignOptions) {
+  async updateEmail(
+    {
+      currentPassword,
+      newEmail,
+    }: { currentPassword: string; newEmail: string },
+    options?: SignOptions
+  ) {
     if (isServer()) {
       throw new Error(
         'email update via Auth SDK is not supported on server. use the `query` api with `unlock` instead.'
@@ -227,7 +240,7 @@ export class Auth {
       body: {
         doc: {
           email: newEmail,
-          password: password,
+          password: currentPassword,
         },
       },
       direct: true,
@@ -238,8 +251,11 @@ export class Auth {
   }
 
   async updatePassword(
-    currentPassword: string,
-    newPassword: string,
+    {
+      currentPassword,
+      newPassword,
+    }: { currentPassword: string; newPassword: string },
+
     options?: SignOptions
   ) {
     if (isServer()) {
@@ -284,7 +300,7 @@ export class Auth {
     });
   }
 
-  async forgotPassword(email: string) {
+  async forgotPassword({ email }: { email: string }) {
     const headers = {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.#serverKey,
@@ -304,7 +320,13 @@ export class Auth {
     });
   }
 
-  async resetPassword(token: string, password: string) {
+  async resetPassword({
+    token,
+    newPassword,
+  }: {
+    token: string;
+    newPassword: string;
+  }) {
     const headers = {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.#serverKey,
@@ -318,7 +340,7 @@ export class Auth {
       body: {
         doc: {
           token,
-          password,
+          password: newPassword,
         },
       },
       direct: true,
