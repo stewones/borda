@@ -95,18 +95,18 @@ export class Cloud {
 //   name: string,
 //   doc?: Document
 // ): Promise<T> {
-//   if (!EleganteClient.params.apiKey) {
+//   if (!BordaClient.params.apiKey) {
 //     throw new BordaError(ErrorCode.AUTH_INVALID_API_KEY, 'API key required');
 //   }
 
-//   if (!EleganteClient.params.apiSecret) {
+//   if (!BordaClient.params.apiSecret) {
 //     throw new BordaError(
 //       ErrorCode.SERVER_SECRET_REQUIRED,
 //       'API secret is required to run a job'
 //     );
 //   }
 
-//   if (!EleganteClient.params.serverURL) {
+//   if (!BordaClient.params.serverURL) {
 //     throw new BordaError(
 //       ErrorCode.SERVER_URL_UNDEFINED,
 //       'serverURL is not defined on client'
@@ -114,13 +114,13 @@ export class Cloud {
 //   }
 
 //   const headers = {
-//     [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-//       EleganteClient.params.apiKey,
-//     [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`]:
-//       EleganteClient.params.apiSecret,
+//     [`${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
+//       BordaClient.params.apiKey,
+//     [`${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`]:
+//       BordaClient.params.apiSecret,
 //   };
 
-//   const source = fetch<T>(`${EleganteClient.params.serverURL}/jobs/${name}`, {
+//   const source = fetch<T>(`${BordaClient.params.serverURL}/jobs/${name}`, {
 //     method: 'POST',
 //     headers,
 //     body: doc,

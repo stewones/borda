@@ -1,14 +1,12 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 
-import { print } from '@elegante/sdk';
-
-import { EleganteBrowser } from './Browser';
+import { BordaBrowser } from './Browser';
 
 export const log = (...args: unknown[]) =>
-  EleganteBrowser.params.debug ? print(...args) : undefined;
+  BordaBrowser.params.debug ? console.log(...args) : undefined;

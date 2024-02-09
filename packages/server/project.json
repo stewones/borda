@@ -13,7 +13,8 @@
         "tsConfig": "packages/server/tsconfig.lib.json",
         "packageJson": "packages/server/package.json",
         "external": "all",
-        "externalBuildTargets": ["@elegante/sdk"]
+        "externalBuildTargets": ["@borda/client"],
+        "assets": ["packages/server/README.md"]
       }
     },
     "publish": {

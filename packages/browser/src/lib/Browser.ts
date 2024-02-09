@@ -1,11 +1,10 @@
-import { IndexedDB, LocalStorage } from '@elegante/sdk';
-
+import { IndexedDB, LocalStorage } from '@borda/client';
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { EnhancedStore } from '@reduxjs/toolkit';
@@ -24,7 +23,7 @@ export interface BrowserProtocol {
   storage: LocalStorage | IndexedDB | any;
 }
 
-export const EleganteBrowser: BrowserProtocol = {
+export const BordaBrowser: BrowserProtocol = {
   store: null as any,
   storage: null as any,
   params: {

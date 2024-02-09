@@ -1,9 +1,9 @@
 // /**
 //  * @license
-//  * Copyright Elegante All Rights Reserved.
+//  * Copyright Borda All Rights Reserved.
 //  *
 //  * Use of this source code is governed by an MIT-style license that can be
-//  * found in the LICENSE file at https://elegante.dev/license
+//  * found in the LICENSE file at https://borda.dev/license
 //  */
 
 // /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -20,8 +20,8 @@
 //   string,
 // } from 'valibot';
 
-// import { EleganteClient } from './Client';
-// import { EleganteError, ErrorCode } from './Error';
+// import { BordaClient } from './Client';
+// import { BordaError, ErrorCode } from './Error';
 // import { fetch, HttpMethod } from './fetch';
 // import { InternalFieldName, InternalHeaders } from './internal';
 // import { log } from './log';
@@ -93,7 +93,7 @@
 //   const collection = Schema['_collection'];
 
 //   if (!collection) {
-//     throw new EleganteError(
+//     throw new BordaError(
 //       ErrorCode.QUERY_REQUIRED_COLLECTION_NAME,
 //       'a collection name is required'
 //     );
@@ -120,7 +120,7 @@
 //        * with proper ApiKey+ApiSecret defined
 //        */
 //       if (!isServer() && isUnlocked) {
-//         throw new EleganteError(
+//         throw new BordaError(
 //           ErrorCode.SERVER_UNLOCK_ONLY,
 //           `unlock can only be used in server environment`
 //         );
@@ -329,15 +329,15 @@
 //         ...options,
 //       };
 
-//       if (!EleganteClient.params.serverURL) {
-//         throw new EleganteError(
+//       if (!BordaClient.params.serverURL) {
+//         throw new BordaError(
 //           ErrorCode.SERVER_URL_UNDEFINED,
 //           'serverURL is not defined on client'
 //         );
 //       }
 
 //       if (!bridge.params['collection']) {
-//         throw new EleganteError(
+//         throw new BordaError(
 //           ErrorCode.QUERY_REQUIRED_COLLECTION_NAME,
 //           'a collection name is required'
 //         );
@@ -345,7 +345,7 @@
 
 //       if (['update', 'remove'].includes(method)) {
 //         if (isEmpty(bridge.params['filter'])) {
-//           throw new EleganteError(
+//           throw new BordaError(
 //             ErrorCode.QUERY_FILTER_REQUIRED,
 //             'a filter is required for doc mutation. ie: update and delete'
 //           );
@@ -353,7 +353,7 @@
 //       }
 
 //       if (!isEmpty(bridge.params['pipeline']) && method !== 'aggregate') {
-//         throw new EleganteError(
+//         throw new BordaError(
 //           ErrorCode.QUERY_PIPELINE_AGGREGATE_ONLY,
 //           `pipeline can only be used for aggregate. you're trying to use "${method}()"`
 //         );
@@ -373,32 +373,32 @@
 
 //       const { inspect } = options;
 //       const headers = {
-//         [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-//           EleganteClient.params.apiKey,
-//         [`${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
+//         [`${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
+//           BordaClient.params.apiKey,
+//         [`${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
 //           method,
 //       };
 
 //       if (inspect) {
 //         headers[
-//           `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiInspect']}`
+//           `${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiInspect']}`
 //         ] = 'true';
 //       }
 
 //       if (unlock) {
 //         headers[
-//           `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
-//         ] = EleganteClient.params.apiSecret ?? '👀';
+//           `${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`
+//         ] = BordaClient.params.apiSecret ?? '👀';
 //       }
 
 //       if (!isServer()) {
 //         const token = LocalStorage.get(
-//           `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+//           `${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
 //         );
 
 //         if (token) {
 //           headers[
-//             `${EleganteClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+//             `${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiToken']}`
 //           ] = token;
 //         }
 //       }
@@ -429,7 +429,7 @@
 //       };
 
 //       const source = fetch<DocumentResponse<TSchema>>(
-//         `${EleganteClient.params.serverURL}/${bridge.params['collection']}${
+//         `${BordaClient.params.serverURL}/${bridge.params['collection']}${
 //           ['get', 'put', 'delete'].includes(method) ? '/' + objectId : ''
 //         }`,
 //         {
@@ -487,8 +487,8 @@
 //       };
 
 //       const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
-//         if (!EleganteClient.params.serverURL) {
-//           throw new EleganteError(
+//         if (!BordaClient.params.serverURL) {
+//           throw new BordaError(
 //             ErrorCode.SERVER_URL_UNDEFINED,
 //             'serverURL is not defined on client'
 //           );
@@ -527,7 +527,7 @@
 //             if (wssFinished || ev?.code === 1008) {
 //               wss.close();
 //               observer.error(
-//                 new EleganteError(
+//                 new BordaError(
 //                   ErrorCode.LIVE_QUERY_SOCKET_CLOSE,
 //                   ev.reason || ''
 //                 )
@@ -578,8 +578,8 @@
 //       let wss: WebSocket;
 
 //       return new Observable<LiveQueryMessage<TSchema>>((observer) => {
-//         if (!EleganteClient.params.serverURL) {
-//           throw new EleganteError(
+//         if (!BordaClient.params.serverURL) {
+//           throw new BordaError(
 //             ErrorCode.SERVER_URL_UNDEFINED,
 //             'serverURL is not defined on client'
 //           );
@@ -667,7 +667,7 @@
 //   // it's already means plural and for good db hygiene
 //   // we should keep it as singular
 //   if (collection.endsWith('s')) {
-//     throw new EleganteError(
+//     throw new BordaError(
 //       ErrorCode.QUERY_SINGULAR_COLLECTION_NAME,
 //       `collection name should be singular. ie: 'User' instead of 'Users'`
 //     );
@@ -675,7 +675,7 @@
 
 //   // ensure collection name is in TitleCase
 //   if (collection !== collection[0].toUpperCase() + collection.slice(1)) {
-//     throw new EleganteError(
+//     throw new BordaError(
 //       ErrorCode.QUERY_TITLE_CASE_COLLECTION_NAME,
 //       `collection name should be TitleCase. ie: 'User' instead of 'user'`
 //     );

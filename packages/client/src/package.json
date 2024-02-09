@@ -1,5 +1,5 @@
 {
-  "name": "@elegante/client",
+  "name": "@borda/client",
   "version": "0.0.70",
   "dependencies": {
     "cross-fetch": "^3.1.5",

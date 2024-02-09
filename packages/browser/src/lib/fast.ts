@@ -1,9 +1,9 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { defer as deferRXJS, Observable } from 'rxjs';
@@ -17,9 +17,9 @@ import {
   isEqual,
   isOnline,
   LocalStorage,
-} from '@elegante/sdk';
+} from '@borda/client';
 
-import { EleganteBrowser } from './Browser';
+import { BordaBrowser } from './Browser';
 import { log } from './log';
 import { getDocState, setDocState, StateDocument } from './state';
 
@@ -89,7 +89,7 @@ export function from<T = Document>(source: Promise<T>): Observable<T> {
  *
  * you can make it work faster by using the `fast` decorator and subscribing to changes
  *
- * import { fast, from } from '@elegante/browser';
+ * import { fast, from } from '@borda/browser';
  *
  * const q = query('PublicUser')
  *               .limit(10)
@@ -186,7 +186,7 @@ export function fast<T = Document>(
  *
  * ## Angular pipe async example with promise
  *```
- * import { Fast, from } from '@elegante/browser';
+ * import { Fast, from } from '@borda/browser';
  *
  * @Component(
  *  template: `{{ myUsersList$ | async | json }}`
@@ -197,7 +197,7 @@ export function fast<T = Document>(
  *```
  
  * Angular pipe async example.
- * Elegante queries have no need of a key.
+ * Borda queries have no need of a key.
  * Unless you want to customize it with your own.
  *
  * ```
@@ -268,16 +268,16 @@ function memorize<T = StateDocument>(
   source: Observable<T>,
   options: FastOptions
 ) {
-  if (!EleganteBrowser.store) {
+  if (!BordaBrowser.store) {
     throw new Error(
-      'unable to find any store. to use the fast decorator make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+      'unable to find any store. to use the fast decorator make sure to import { load } from @borda/browser and call `load()` in your app before anything starts.'
     );
   }
 
   const mutable = isBoolean(options.mutable)
     ? options.mutable
-    : isBoolean(EleganteBrowser.params.fast?.mutable)
-    ? EleganteBrowser.params.fast?.mutable
+    : isBoolean(BordaBrowser.params.fast?.mutable)
+    ? BordaBrowser.params.fast?.mutable
     : false;
 
   const key = options.key || Reflect.getMetadata('key', source);
@@ -309,7 +309,7 @@ function memorize<T = StateDocument>(
       );
     }
 
-    EleganteBrowser.storage?.get(key).then((cache: T) => {
+    BordaBrowser.storage?.get(key).then((cache: T) => {
       if (cache && !state) {
         prev = cache;
         log('cache.get', key, prev);
@@ -328,9 +328,7 @@ function memorize<T = StateDocument>(
       source.subscribe({
         next: (next) => {
           const differ =
-            options?.differ ??
-            EleganteBrowser.params?.fast?.differ ??
-            isDifferent;
+            options?.differ ?? BordaBrowser.params?.fast?.differ ?? isDifferent;
 
           let value: T | T[] | string | number = next;
 
@@ -356,7 +354,7 @@ function memorize<T = StateDocument>(
            * update cache state
            */
           if (differ(cache, value) && isOnline()) {
-            EleganteBrowser.storage.set(key, value);
+            BordaBrowser.storage.set(key, value);
             log('cache.set', key, value);
           }
 

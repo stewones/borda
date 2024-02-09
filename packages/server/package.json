@@ -1,19 +1,20 @@
 {
-  "name": "@elegante/server",
-  "version": "0.0.85",
+  "name": "@borda/server",
+  "version": "0.0.1",
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "files": [
     "src",
-    "sdk",
+    "client",
     "package.json",
     "README.md"
   ],
   "dependencies": {
     "rxjs": "^7.8.0",
     "express": "^4.18.2",
-    "mongodb": "^5.8.0",
+    "mongodb": "^6.3.0",
     "bcryptjs": "^2.4.3",
-    "password-validator": "^5.3.0"
+    "password-validator": "^5.3.0",
+    "tslib": "^2.6.2"
   }
 }

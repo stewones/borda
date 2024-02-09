@@ -1,9 +1,9 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 export interface Record {
   /**
@@ -15,7 +15,7 @@ export interface Record {
   /**
    * Date ISOString, optional.
    * when set it means session is deleted after this date.
-   * by default Elegante will set this to 1 year after createdAt.
+   * by default Borda will set this to 1 year after createdAt.
    */
   expiresAt?: string;
 }

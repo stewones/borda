@@ -4,7 +4,7 @@ export class IndexedDB {
   private static db: IDBDatabase;
   private static store: IDBObjectStore;
   private static dbVersion = 1;
-  private static dbName = 'elegante';
+  private static dbName = 'borda';
   private static dbStore = 'app';
 
   private static async open() {

@@ -1,5 +1,5 @@
 {
-  "name": "@elegante/browser",
+  "name": "@borda/browser",
   "version": "0.0.59",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",

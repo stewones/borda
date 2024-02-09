@@ -1,4 +1,4 @@
-import { parseProjection } from '../src/lib_elegante/parseProjection';
+import { parseProjection } from '../src/lib_borda/parseProjection';
 
 interface User {
   name: string;

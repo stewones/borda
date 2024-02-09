@@ -11,7 +11,7 @@ import {
   InternalCollectionName,
   isEmpty,
   isNumber,
-} from '@borda/sdk';
+} from '@borda/client';
 
 interface CacheMetadata {
   doc: Document;

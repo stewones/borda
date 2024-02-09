@@ -375,6 +375,7 @@ export async function remove({
     {
       returnDocument: 'after',
       readPreference: 'primary',
+      includeResultMetadata: true,
     }
   );
 
@@ -582,6 +583,7 @@ export async function update({
         {
           returnDocument: 'after',
           readPreference: 'primary',
+          includeResultMetadata: true,
         }
       );
 
@@ -1066,7 +1068,11 @@ export async function put({
       {
         $set: document,
       },
-      { returnDocument: 'after', readPreference: 'primary' }
+      {
+        returnDocument: 'after',
+        readPreference: 'primary',
+        includeResultMetadata: true,
+      }
     );
 
     if (cursor.ok) {
@@ -1176,7 +1182,7 @@ export async function del({
           $eq: objectId,
         },
       },
-    }; 
+    };
 
     const cursor = await collection$!.findOneAndUpdate(
       { ...qrl.filter },
@@ -1184,6 +1190,7 @@ export async function del({
       {
         returnDocument: 'after',
         readPreference: 'primary',
+        includeResultMetadata: true,
       }
     );
 

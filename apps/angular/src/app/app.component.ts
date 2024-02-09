@@ -24,7 +24,7 @@ import {
   resetDocState,
   setDocState,
   unsetDocState,
-} from '@elegante/browser';
+} from '@borda/browser';
 
 import { LocalStorage, Session, storageEstimate, User } from '@borda/client';
 

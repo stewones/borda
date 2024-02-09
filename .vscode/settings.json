@@ -13,7 +13,7 @@
     "^@angular/",
     "^vue$",
     "^react(-dom)?$",
-    "^@elegante",
+    "^@borda",
     "^@intenseloop",
     "^@inl",
     "^[@]",

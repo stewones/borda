@@ -6,7 +6,7 @@ import {
   createReducer,
   dispatch,
   load,
-} from '@elegante/browser';
+} from '@borda/browser';
 
 import {
   Borda,

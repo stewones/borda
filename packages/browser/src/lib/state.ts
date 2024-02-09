@@ -1,17 +1,17 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 
 import watch from 'redux-watch';
 import { Observable } from 'rxjs';
 
-import { cloneDeep, Document, get } from '@elegante/sdk';
+import { cloneDeep, Document, get } from '@borda/client';
 
-import { EleganteBrowser } from './Browser';
+import { BordaBrowser } from './Browser';
 import { log } from './log';
 import { $docReset, $docSet, $docUnset, dispatch } from './redux';
 
@@ -73,12 +73,12 @@ export function getState<T = StateDocument>(path?: string): T {
   if (typeof window === 'undefined') {
     return {} as T;
   }
-  if (!EleganteBrowser.store) {
+  if (!BordaBrowser.store) {
     throw new Error(
-      'unable to find any store. to use getState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+      'unable to find any store. to use getState make sure to import { load } from @borda/browser and call `load()` in your app before anything starts.'
     );
   }
-  const currentState = EleganteBrowser.store.getState();
+  const currentState = BordaBrowser.store.getState();
   if (path) {
     return get(currentState, path);
   }
@@ -95,13 +95,13 @@ export function getState<T = StateDocument>(path?: string): T {
  * @returns {*}  {T}
  */
 export function getDocState<T = StateDocument>(key?: string): T {
-  if (!EleganteBrowser.store) {
+  if (!BordaBrowser.store) {
     throw new Error(
-      'unable to find any store. to use getDocState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+      'unable to find any store. to use getDocState make sure to import { load } from @borda/browser and call `load()` in your app before anything starts.'
     );
   }
 
-  const currentState = EleganteBrowser.store.getState();
+  const currentState = BordaBrowser.store.getState();
 
   if (key) {
     return get(currentState, '$doc')[key];
@@ -114,9 +114,9 @@ export function setDocState<T = StateDocument>(
   value: T,
   options: SetStateOptions = { persist: true }
 ) {
-  if (!EleganteBrowser.store) {
+  if (!BordaBrowser.store) {
     throw new Error(
-      'unable to find any store. to use setDocState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+      'unable to find any store. to use setDocState make sure to import { load } from @borda/browser and call `load()` in your app before anything starts.'
     );
   }
 
@@ -129,7 +129,7 @@ export function setDocState<T = StateDocument>(
 
   if (options.persist) {
     log('setDocState.cache', key, value);
-    EleganteBrowser.storage.set(key, value);
+    BordaBrowser.storage.set(key, value);
   }
 }
 
@@ -137,9 +137,9 @@ export function unsetDocState(
   key: string,
   options: UnsetStateOptions = { persist: true }
 ) {
-  if (!EleganteBrowser.store) {
+  if (!BordaBrowser.store) {
     throw new Error(
-      'unable to find any store. to use unsetDocState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+      'unable to find any store. to use unsetDocState make sure to import { load } from @borda/browser and call `load()` in your app before anything starts.'
     );
   }
   dispatch(
@@ -148,7 +148,7 @@ export function unsetDocState(
     })
   );
   if (options.persist) {
-    EleganteBrowser.storage.unset(key);
+    BordaBrowser.storage.unset(key);
   }
 }
 
@@ -159,15 +159,15 @@ export function unsetDocState(
 export function resetDocState(
   options: ResetDocStateOptions = { persist: true }
 ) {
-  if (!EleganteBrowser.store) {
+  if (!BordaBrowser.store) {
     throw new Error(
-      'unable to find any store. to use resetDocState make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+      'unable to find any store. to use resetDocState make sure to import { load } from @borda/browser and call `load()` in your app before anything starts.'
     );
   }
 
   dispatch($docReset());
   if (options.persist) {
-    EleganteBrowser.storage.clear();
+    BordaBrowser.storage.clear();
   }
 }
 
@@ -205,9 +205,9 @@ export function connect<T = Document>(
     return new Observable<T>();
   }
 
-  if (!EleganteBrowser.store) {
+  if (!BordaBrowser.store) {
     throw new Error(
-      'unable to find any store. to use connect make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
+      'unable to find any store. to use connect make sure to import { load } from @borda/browser and call `load()` in your app before anything starts.'
     );
   }
 
@@ -218,7 +218,7 @@ export function connect<T = Document>(
   // eslint-disable-next-line @typescript-eslint/no-this-alias
   const that = this;
 
-  if (EleganteBrowser.params.debug && that && that.constructor) {
+  if (BordaBrowser.params.debug && that && that.constructor) {
     if (!that.cdr) {
       throw new Error(
         'Unable to find ChangeDetectorRef in your component. If you want to make sure that your component reflects state changes automatically, make sure to import { ChangeDetectorRef } from @angular/core and instantiate it in your constructor as `private cdr: ChangeDetectorRef`'
@@ -227,7 +227,7 @@ export function connect<T = Document>(
   }
 
   const o = new Observable<T>((observer) => {
-    const storeInstance = EleganteBrowser.store;
+    const storeInstance = BordaBrowser.store;
     const storeValue: T = options.copy
       ? cloneDeep(get(storeInstance.getState(), path))
       : get(storeInstance.getState(), path);

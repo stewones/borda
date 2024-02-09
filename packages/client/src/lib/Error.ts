@@ -1,9 +1,9 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -70,47 +70,6 @@ export enum ErrorCode {
   LIVE_QUERY_INVALID_SESSION = 804,
   LIVE_QUERY_INVALID_SECRET = 805,
 }
-
-export class EleganteError extends Error {
-  code: ErrorCode;
-  /**
-   * @param {ErrorCode} code An error code constant from <code>EleganteError</code>.
-   * @param {string|object|Error} message A detailed description of the error.
-   */
-  constructor(code: ErrorCode, message: string | object | Error) {
-    super(message as string);
-    this.code = code;
-
-    /**
-     * override the default error message treating also
-     * rest responses to make our Error handling Elegante 💪
-     */
-    Object.defineProperty(this, 'message', {
-      enumerable: true,
-      value:
-        typeof message === 'string'
-          ? message
-          : typeof message === 'object' &&
-            typeof message.toString === 'function' &&
-            !message.toString().includes('[object Object]')
-          ? message.toString()
-          : stringify(message),
-    });
-  }
-
-  override toString() {
-    return `EleganteError ${this.code}: ${this.message}`;
-  }
-
-  toJSON() {
-    return {
-      code: this.code,
-      message: this.message,
-    };
-  }
-}
-
-
 export class BordaError extends Error {
   code: ErrorCode;
   /**
@@ -123,7 +82,7 @@ export class BordaError extends Error {
 
     /**
      * override the default error message treating also
-     * rest responses to make our Error handling Elegante 💪
+     * rest responses to make our Error handling Borda 💪
      */
     Object.defineProperty(this, 'message', {
       enumerable: true,

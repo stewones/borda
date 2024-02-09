@@ -1,9 +1,9 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -20,7 +20,7 @@ import {
   StoreEnhancer,
 } from '@reduxjs/toolkit';
 
-import { EleganteBrowser } from './Browser';
+import { BordaBrowser } from './Browser';
 
 export interface Action<T = any> {
   type: string;
@@ -37,7 +37,7 @@ export interface Action<T = any> {
  * @returns {fn}
  * @example
  *
- * import { createReducer } from '@elegante/browser';
+ * import { createReducer } from '@borda/browser';
  *
  * const person = createReducer<{
  *   firstName: string;
@@ -87,7 +87,7 @@ export function createReducer<T = any>(init: T, tree: any) {
  *
  * @example
  *
- * import { createAction, dispatch } from '@elegante/browser';
+ * import { createAction, dispatch } from '@borda/browser';
  *
  * // create action
  * const increment = createAction<number>('increment');
@@ -117,12 +117,12 @@ export function createAction<T = any>(
 export function dispatch<T = any>(
   action: Action<T> | ((dispatch: any) => Promise<boolean | void> | void)
 ): Action<T> {
-  if (!EleganteBrowser.store) {
+  if (!BordaBrowser.store) {
     throw new Error(
-      'unable to find any store. to use dispatch make sure to import { load } from @elegante/browser and call `load()` in your app startup.'
+      'unable to find any store. to use dispatch make sure to import { load } from @borda/browser and call `load()` in your app startup.'
     );
   }
-  return EleganteBrowser.store.dispatch(action as Action<T>);
+  return BordaBrowser.store.dispatch(action as Action<T>);
 }
 
 /**
@@ -133,7 +133,7 @@ export function dispatch<T = any>(
  *   createReducer,
  *   applyDevTools,
  *   applyMiddleware
- * } from '@elegante/browser';
+ * } from '@borda/browser';
  *
  * export const counter = createReducer(0, {
  *   increment: (state, action) => state + action.payload,
@@ -171,7 +171,7 @@ export function createStore<S = any>(params: {
   enhancers?: StoreEnhancer[] | ConfigureEnhancersCallback;
 }): EnhancedStore {
   const { reducers, preloadedState, enhancers, debug } = params;
-  const d = debug ?? EleganteBrowser.params.debug;
+  const d = debug ?? BordaBrowser.params.debug;
 
   const store = configureStore({
     devTools: d

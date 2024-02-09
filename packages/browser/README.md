@@ -1,4 +1,4 @@
-# Elegante Browser
+# Borda Browser
 
 Frontend tools to develop top-quality javascript software.
 

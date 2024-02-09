@@ -13,13 +13,7 @@
         "tsConfig": "packages/browser/tsconfig.lib.json",
         "packageJson": "packages/browser/src/package.json",
         "external": "all",
-        "externalBuildTargets": [
-          "@elegante/sdk",
-          "@reduxjs/toolkit",
-          "rxjs",
-          "redux-watch",
-          "immer"
-        ]
+        "externalBuildTargets": ["@borda/client", "@reduxjs/toolkit", "rxjs", "redux-watch", "immer"]
       }
     },
     "publish": {

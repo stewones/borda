@@ -1,15 +1,12 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 
-import {
-  EleganteError,
-  ErrorCode,
-} from './Error';
+import { BordaError, ErrorCode } from './Error';
 import { ExternalCollectionName } from './external';
 import { InternalCollectionName } from './internal';
 import { Document } from './types/query';
@@ -44,13 +41,13 @@ export function pointer<T = Document>(
     `Invalid pointer (${JSON.stringify(object)}) for collection ${collection}`
   );
 
-  throw new EleganteError(ErrorCode.QUERY_INVALID_POINTER, 'Invalid pointer');
+  throw new BordaError(ErrorCode.QUERY_INVALID_POINTER, 'Invalid pointer');
 }
 
 export function pointerObjectFrom(value: string) {
   if (!isPointer(value)) {
     console.trace(`Invalid pointer (${value})`);
-    throw new EleganteError(
+    throw new BordaError(
       ErrorCode.QUERY_INVALID_POINTER,
       'Invalid string pointer'
     );

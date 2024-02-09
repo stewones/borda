@@ -1,4 +1,4 @@
-# Elegante Server
+# Borda Server
 
 BaaS to develop top-quality node + mongodb software.
 

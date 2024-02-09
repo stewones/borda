@@ -104,11 +104,11 @@ export class Cloud {
    * - Cloud Functions depends on your response to complete the http request call, so it's subject to timeouts
    * - Cloud Functions are suited for lighter tasks like registering emails, processing some little data, etc
    *
-   * functions are called via POST requests or via the Elegante SDK
+   * functions are called via POST requests or via the Borda SDK
    *
    * SDK
    *
-   * import { init, runFunction } from '@elegante/sdk';
+   * import { init, runFunction } from '@borda/client';
    *
    * init({ ... });
    *
@@ -117,11 +117,11 @@ export class Cloud {
    * POST
    *
    * curl --location --request POST 'http://localhost:1337/server/functions/somePublicTask' \
-   * --header 'X-Elegante-Api-Key: **elegante**'
+   * --header 'X-Borda-Api-Key: **borda**'
    *
    * To create a new function, use the following syntax:
    *
-   * import { Cloud } from '@elegante/server';
+   * import { Cloud } from '@borda/server';
    *
    * Cloud.addFunction('somePublicTask', { public: true }, async ({ req, res }) => {
    *     print('executing', `somePublicTask`, req.body);

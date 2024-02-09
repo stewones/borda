@@ -55,7 +55,7 @@ try {
   json.version = v;
 
   if (name === 'browser') {
-    json['name'] = `@elegante/${name}`;
+    json['name'] = `@borda/${name}`;
     json['type'] = 'module';
     json['dependencies'] = {
       'reflect-metadata': '0.1.13',
@@ -77,7 +77,7 @@ try {
   original.version = v;
   writeFileSync(originalPath, JSON.stringify(json, null, 2));
 
-  // update @elegante/server/sdk/src/package.json
+  // update @borda/server/sdk/src/package.json
   if (name === 'server') {
     const sdkPath = `../../../dist/packages/server/sdk/src/package.json`;
     const sdkJson = JSON.parse(readFileSync(sdkPath).toString());

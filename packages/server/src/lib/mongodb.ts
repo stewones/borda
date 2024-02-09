@@ -1,7 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Db, Document, Filter, FindOptions, MongoClient, Sort } from 'mongodb';
 
-import { BordaError, DocumentPipeline, ErrorCode, isEmpty } from '@borda/sdk';
+import {
+  BordaError,
+  DocumentPipeline,
+  ErrorCode,
+  isEmpty,
+} from '@borda/client';
 
 import { DocQRL } from './parse';
 
@@ -93,7 +98,7 @@ export function createPipeline<TSchema = Document>(params: {
   const { filter, pipeline, sort, limit, skip } = params;
   return [
     ...(!isEmpty(filter) ? [{ $match: filter }] : []),
-    ...(pipeline ?? []),
+    ...(Array.isArray(pipeline) ? pipeline : []),
     ...(!isEmpty(sort) ? [{ $sort: sort }] : []),
     ...(typeof limit === 'number' ? [{ $limit: limit }] : []),
     ...(typeof skip === 'number' ? [{ $skip: skip }] : []),

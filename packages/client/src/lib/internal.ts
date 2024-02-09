@@ -38,7 +38,7 @@ export const InternalFieldName: Record<string, string> = {
  */
 export const InternalSensitiveFields: string[] = [
   /**
-   * elegante fields
+   * borda fields
    */
   'password',
   '_expires_at',

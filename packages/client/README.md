@@ -1,4 +1,4 @@
-# Elegante SDK
+# Borda SDK
 
 Toolkit to develop top-quality node + mongodb software.
 
