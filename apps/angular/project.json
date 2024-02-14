@@ -6,19 +6,17 @@
   "prefix": "borda",
   "targets": {
     "build": {
-      "executor": "@angular-devkit/build-angular:browser",
+      "executor": "@angular-devkit/build-angular:browser-esbuild",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/apps/angular",
         "index": "apps/angular/src/index.html",
         "main": "apps/angular/src/main.ts",
-        "polyfills": ["zone.js"],
         "tsConfig": "apps/angular/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "assets": ["apps/angular/src/favicon.ico", "apps/angular/src/assets"],
         "styles": ["apps/angular/src/styles.scss"],
-        "scripts": [],
-        "allowedCommonJsDependencies": ["cross-fetch", "redux-watch"]
+        "scripts": []
       },
       "configurations": {
         "production": {

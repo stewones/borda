@@ -165,14 +165,11 @@ export class Auth {
     });
   }
 
-  async become(
-    {
-      token,
-    }: {
-      token: string;
-    },
-    options?: Pick<SignOptions, 'saveToken' | 'validateSession'>
-  ) {
+  async become({
+    token,
+    saveToken,
+    validateSession,
+  }: Pick<SignOptions, 'saveToken' | 'validateSession'> & { token: string }) {
     if (isServer()) {
       throw new Error('become is not supported on server.');
     }
@@ -183,9 +180,7 @@ export class Auth {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`]: token,
     };
 
-    const shouldValidate = isBoolean(options?.validateSession)
-      ? options?.validateSession
-      : true;
+    const shouldValidate = isBoolean(validateSession) ? validateSession : true;
 
     return shouldValidate
       ? fetcher<Session>(`${this.#serverURL}/me`, {
@@ -193,11 +188,17 @@ export class Auth {
           headers,
           direct: true,
         }).then((data) => {
-          this.#saveSessionToken(data.token, options ?? {});
+          this.#saveSessionToken(data.token, {
+            saveToken,
+            validateSession,
+          });
           return data;
         })
       : Promise.resolve().then(() => {
-          this.#saveSessionToken(token, options ?? {});
+          this.#saveSessionToken(token, {
+            saveToken,
+            validateSession,
+          });
         });
   }
 

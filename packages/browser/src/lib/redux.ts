@@ -8,24 +8,22 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import produce from 'immer';
-
 import {
-  AnyAction,
-  combineReducers,
-  ConfigureEnhancersCallback,
   configureStore,
-  DeepPartial,
+  createAction as createReduxAction,
+  createReducer as createReduxReducer,
+  Draft as ImmerDraft,
   EnhancedStore,
-  StoreEnhancer,
 } from '@reduxjs/toolkit';
 
-import { BordaBrowser } from './Browser';
+import type { StateDocument } from './Borda';
 
 export interface Action<T = any> {
   type: string;
   payload: T;
 }
+
+export type Draft<S> = ImmerDraft<S>;
 
 /**
  * Easily create redux reducers powered by immer.js
@@ -63,18 +61,12 @@ export interface Action<T = any> {
  *   }
  * );
  */
-export function createReducer<T = any>(init: T, tree: any) {
-  return function (state: T = init, action: AnyAction) {
-    if (tree[action.type]) {
-      return produce<T>(state, (draft) => {
-        if (typeof state === 'object') {
-          return void tree[action.type](draft, action);
-        }
-        return tree[action.type](draft, action);
-      });
+export function createReducer<T = any>(init: T, actions: any) {
+  return createReduxReducer<T>(init, (builder) => {
+    for (const action in actions) {
+      builder.addCase(action, actions[action]);
     }
-    return state;
-  };
+  });
 }
 
 /**
@@ -95,35 +87,7 @@ export function createReducer<T = any>(init: T, tree: any) {
  * // dispatch
  * dispatch(increment(54))
  */
-export function createAction<T = any>(
-  type: string
-): (payload?: T) => Action<T> {
-  return (payload?: T) => {
-    return {
-      type,
-      payload: payload as T,
-    };
-  };
-}
-
-/**
- * Action dispatcher
- *
- * @export
- * @template T
- * @param {(Action<T> | ((dispatch: any) => Promise<boolean | void> | void))} action
- * @returns {*}  {Action<T>}
- */
-export function dispatch<T = any>(
-  action: Action<T> | ((dispatch: any) => Promise<boolean | void> | void)
-): Action<T> {
-  if (!BordaBrowser.store) {
-    throw new Error(
-      'unable to find any store. to use dispatch make sure to import { load } from @borda/browser and call `load()` in your app startup.'
-    );
-  }
-  return BordaBrowser.store.dispatch(action as Action<T>);
-}
+export const createAction = createReduxAction; // just an alias for convenience, since redux toolkit already has this helper
 
 /**
  * Create custom redux store
@@ -164,24 +128,25 @@ export function dispatch<T = any>(
  * @param {*} preloadedState
  * @param {*} [enhancers]
  */
-export function createStore<S = any>(params: {
-  debug?: boolean;
+export function createStore({
+  reducers,
+  preloadedState,
+  inspect,
+  traceLimit = 100,
+}: {
   reducers: any;
-  preloadedState?: DeepPartial<S extends any ? S : S>;
-  enhancers?: StoreEnhancer[] | ConfigureEnhancersCallback;
+  preloadedState: any;
+  inspect?: boolean;
+  traceLimit?: number;
 }): EnhancedStore {
-  const { reducers, preloadedState, enhancers, debug } = params;
-  const d = debug ?? BordaBrowser.params.debug;
-
   const store = configureStore({
-    devTools: d
+    devTools: inspect
       ? {
           trace: true,
-          traceLimit: 100,
+          traceLimit,
         }
       : false,
-    reducer: combineReducers(reducers),
-    enhancers,
+    reducer: reducers,
     preloadedState,
   });
 
@@ -190,31 +155,30 @@ export function createStore<S = any>(params: {
 
 interface QueryPayload {
   key: string;
-  value?: any;
+  value?: StateDocument;
 }
 
+type DocState = Record<string, StateDocument>;
+
 /**
- * The $doc reducer + actions
- * also used internally to store queried results
+ * doc reducer + actions
  */
-export const $docSet = createAction<QueryPayload>('$docSet');
-export const $docUnset = createAction<QueryPayload>('$docUnset');
-export const $docReset = createAction('$docReset');
-export function $doc() {
-  return createReducer<{
-    [key: string]: any;
-  }>(
-    // initial state
+export const bordaSet = createAction<QueryPayload>('borda/set');
+export const bordaUnset =
+  createAction<Pick<QueryPayload, 'key'>>('borda/unset');
+export const bordaReset = createAction('borda/reset');
+
+export function borda() {
+  return createReducer<DocState>(
     {},
-    // actions
     {
-      $docSet: (state: any, action: Action<QueryPayload>) => {
+      [bordaSet.type]: (state: DocState, action: Action) => {
         state[action.payload.key] = action.payload.value;
       },
-      $docUnset: (state: any, action: Action<QueryPayload>) => {
+      [bordaUnset.type]: (state: DocState, action: Action) => {
         delete state[action.payload.key];
       },
-      $docReset: (state: any) => {
+      [bordaReset.type]: (state: DocState) => {
         for (const key in state) {
           delete state[key];
         }
@@ -222,3 +186,4 @@ export function $doc() {
     }
   );
 }
+

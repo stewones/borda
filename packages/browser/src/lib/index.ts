@@ -6,8 +6,6 @@
  * found in the LICENSE file at https://borda.dev/license
  */
 
+export * from './Borda';
 export * from './fast';
-export * from './log';
-export * from './public';
 export * from './redux';
-export * from './state';

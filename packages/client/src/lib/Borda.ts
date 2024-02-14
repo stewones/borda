@@ -78,15 +78,15 @@ export class Borda {
 
     // set default params
     this.#inspect = inspect || false;
-    this.#name = name || 'x-borda';
-    this.#serverKey =
-      serverKey || 'b-o-r-d-a';
+    this.#name = name || 'my-borda';
+    this.#serverKey = serverKey || 'b-o-r-d-a';
     this.#serverSecret = serverSecret || 's-e-c-r-e-t';
     this.#serverURL = serverURL || 'http://127.0.0.1:1337';
     this.#serverHeaderPrefix = serverHeaderPrefix || 'X-Borda';
 
     // instantiate cloud
     this.#cloud = new Cloud({
+      app: this.#name,
       serverKey: this.#serverKey,
       serverSecret: this.#serverSecret,
       serverURL: this.#serverURL,
@@ -115,6 +115,7 @@ export class Borda {
   query<TSchema = Document>(collection: string) {
     return new BordaClientQuery<TSchema>({
       collection,
+      app: this.#name,
       inspect: this.inspect,
       serverURL: this.serverURL,
       serverKey: this.serverKey,

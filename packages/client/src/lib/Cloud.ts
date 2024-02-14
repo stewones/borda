@@ -13,22 +13,26 @@ import { Document } from './types/query';
 import { cleanKey, isServer, LocalStorage } from './utils';
 
 export class Cloud {
+  #app!: string;
   #serverKey!: string;
   #serverSecret!: string;
   #serverURL!: string;
   #serverHeaderPrefix!: string;
 
   constructor({
+    app,
     serverKey,
     serverSecret,
     serverURL,
     serverHeaderPrefix,
   }: {
+    app: string;
     serverKey: string;
     serverSecret: string;
     serverURL: string;
     serverHeaderPrefix: string;
   }) {
+    this.#app = app;
     this.#serverKey = serverKey;
     this.#serverSecret = serverSecret;
     this.#serverURL = serverURL;
@@ -85,48 +89,8 @@ export class Cloud {
     });
 
     Reflect.defineMetadata('key', cleanKey({ function: name, ...doc }), source);
+    Reflect.defineMetadata('app', this.#app, source);
 
     return source;
   }
 }
-
-// @todo: implement jobs
-// export function runJob<T = Document>(
-//   name: string,
-//   doc?: Document
-// ): Promise<T> {
-//   if (!BordaClient.params.apiKey) {
-//     throw new BordaError(ErrorCode.AUTH_INVALID_API_KEY, 'API key required');
-//   }
-
-//   if (!BordaClient.params.apiSecret) {
-//     throw new BordaError(
-//       ErrorCode.SERVER_SECRET_REQUIRED,
-//       'API secret is required to run a job'
-//     );
-//   }
-
-//   if (!BordaClient.params.serverURL) {
-//     throw new BordaError(
-//       ErrorCode.SERVER_URL_UNDEFINED,
-//       'serverURL is not defined on client'
-//     );
-//   }
-
-//   const headers = {
-//     [`${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-//       BordaClient.params.apiKey,
-//     [`${BordaClient.params.serverHeaderPrefix}-${InternalHeaders['apiSecret']}`]:
-//       BordaClient.params.apiSecret,
-//   };
-
-//   const source = fetch<T>(`${BordaClient.params.serverURL}/jobs/${name}`, {
-//     method: 'POST',
-//     headers,
-//     body: doc,
-//   });
-
-//   Reflect.defineMetadata('key', cleanKey({ job: name, ...doc }), source);
-
-//   return source;
-// }

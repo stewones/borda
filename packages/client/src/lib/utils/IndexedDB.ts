@@ -1,52 +1,61 @@
 import { Document } from '../types';
+import { cloneDeep } from './cloneDeep';
 
 export class IndexedDB {
-  private static db: IDBDatabase;
-  private static store: IDBObjectStore;
-  private static dbVersion = 1;
-  private static dbName = 'borda';
-  private static dbStore = 'app';
+  #db!: IDBDatabase;
 
-  private static async open() {
-    const DBOpenRequest = indexedDB.open(this.dbName, this.dbVersion);
+  #dbVersion;
+  #dbName!: string;
+  #dbStore!: string;
+
+  #dbOpenError = new Error('Borda database not open');
+
+  constructor({
+    name,
+    store,
+    version,
+  }: {
+    name: string;
+    store: string;
+    version: number;
+  }) {
+    this.#dbName = name;
+    this.#dbVersion = version;
+    this.#dbStore = store;
+  }
+
+  /**
+   * mandatory to call before any other method
+   * and must be awaited
+   */
+  async load() {
+    await this.#open();
+    return this;
+  }
+
+  #open() {
+    const DBOpenRequest = indexedDB.open(this.#dbName, this.#dbVersion);
     return new Promise<IDBDatabase>((resolve, reject) => {
       DBOpenRequest.onsuccess = () => {
-        this.db = DBOpenRequest.result;
-        return resolve(this.db);
+        this.#db = DBOpenRequest.result;
+        return resolve(this.#db);
       };
       DBOpenRequest.onerror = () => {
         return reject(DBOpenRequest.error);
       };
       DBOpenRequest.onupgradeneeded = (event: any) => {
-        this.db = event.target.result;
-        this.db.createObjectStore(this.dbStore);
+        this.#db = event.target.result;
+        this.#db.createObjectStore(this.#dbStore);
       };
     });
   }
 
-  public static async load(params: {
-    name?: string;
-    store?: string;
-    version?: number;
-  }) {
-    const { name, version, store } = params;
-    this.dbName = name ?? this.dbName;
-    this.dbVersion = version ?? this.dbVersion;
-    this.dbStore = store ?? this.dbStore;
-    await this.open();
-    return this;
-  }
-
-  public static async get<T = Document>(key: string): Promise<T> {
-    if (!this.db) {
-      throw new Error(
-        'Database not initialized. Please call `IndexedDB.load()` on the app startup.'
-      );
-    }
-
+  get<T = Document>(key: string): Promise<T> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.dbStore], 'readonly');
-      const store = transaction.objectStore(this.dbStore);
+      if (!this.#db) return reject(this.#dbOpenError);
+
+      const transaction = this.#db.transaction([this.#dbStore], 'readonly');
+      const store = transaction.objectStore(this.#dbStore);
 
       const request = store.get(key);
 
@@ -60,17 +69,14 @@ export class IndexedDB {
     });
   }
 
-  public static async set<T = Document>(key: string, value: T): Promise<void> {
-    if (!this.db) {
-      throw new Error(
-        'Database not initialized. Please call `IndexedDB.load()` on the app startup.'
-      );
-    }
-
+  set<T = Document>(key: string, value: T): Promise<void> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.dbStore], 'readwrite');
-      const store = transaction.objectStore(this.dbStore);
-      const request = store.put(value, key);
+      if (!this.#db) return reject(this.#dbOpenError);
+
+      const transaction = this.#db.transaction([this.#dbStore], 'readwrite');
+      const store = transaction.objectStore(this.#dbStore);
+
+      const request = store.put(cloneDeep(value), key);
 
       request.onsuccess = () => {
         resolve();
@@ -82,16 +88,12 @@ export class IndexedDB {
     });
   }
 
-  public static async unset(key: string): Promise<void> {
-    if (!this.db) {
-      throw new Error(
-        'Database not initialized. Please call `IndexedDB.load()` on the app startup.'
-      );
-    }
-
+  unset(key: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.dbStore], 'readwrite');
-      const store = transaction.objectStore(this.dbStore);
+      if (!this.#db) return reject(this.#dbOpenError);
+
+      const transaction = this.#db.transaction([this.#dbStore], 'readwrite');
+      const store = transaction.objectStore(this.#dbStore);
       const request = store.delete(key);
 
       request.onsuccess = () => {
@@ -104,16 +106,12 @@ export class IndexedDB {
     });
   }
 
-  public static async clear(): Promise<void> {
-    if (!this.db) {
-      throw new Error(
-        'Database not initialized. Please call `IndexedDB.load()` on the app startup.'
-      );
-    }
-
+  clear(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.dbStore], 'readwrite');
-      const store = transaction.objectStore(this.dbStore);
+      if (!this.#db) return reject(this.#dbOpenError);
+
+      const transaction = this.#db.transaction([this.#dbStore], 'readwrite');
+      const store = transaction.objectStore(this.#dbStore);
       const request = store.clear();
 
       request.onsuccess = () => {

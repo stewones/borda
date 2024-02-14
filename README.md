@@ -23,7 +23,6 @@ Borda is a cross-platform application stack that leverages the power of bun and 
 - Database Triggers
 - Cloud Functions
 
-
 ## FAQ
 
 - Q: Can I run Borda on Node.js?

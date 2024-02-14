@@ -196,7 +196,7 @@ export class Borda {
     // set default params
 
     this.#inspect = inspect || false;
-    this.#name = name || 'x-borda';
+    this.#name = name || 'my-borda';
     this.#mongoURI =
       mongoURI ||
       process.env['BORDA_MONGO_URI'] ||

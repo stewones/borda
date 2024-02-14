@@ -49,6 +49,7 @@ export type RunResult<TSchema = Document> =
 export const BordaLiveQueryMemo = new Map<string, WebSocket>();
 
 export class BordaQuery<TSchema = Document> {
+  #app!: string;
   #inspect!: boolean;
   #collection: string;
   #filter: DocumentFilter<TSchema> = {};
@@ -63,6 +64,10 @@ export class BordaQuery<TSchema = Document> {
   #exclude: string[] = [];
   #unlock = false;
 
+  get app() {
+    return this.#app;
+  }
+
   get collection() {
     return this.#collection;
   }
@@ -74,9 +79,11 @@ export class BordaQuery<TSchema = Document> {
   }
 
   constructor({
+    app,
     inspect,
     collection,
   }: {
+    app: string;
     collection: string;
     inspect?: boolean;
   }) {
@@ -100,6 +107,7 @@ export class BordaQuery<TSchema = Document> {
 
     this.#collection = collection;
     this.#inspect = inspect ?? false;
+    this.#app = app;
   }
 
   /**
@@ -506,6 +514,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
   #serverHeaderPrefix!: string;
 
   constructor({
+    app,
     inspect,
     collection,
     serverURL,
@@ -513,6 +522,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
     serverSecret,
     serverHeaderPrefix,
   }: {
+    app: string;
     collection: string;
     inspect?: boolean;
     serverURL: string;
@@ -523,6 +533,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
     super({
       inspect,
       collection,
+      app,
     });
     this.#serverURL = serverURL;
     this.#serverKey = serverKey;
@@ -634,6 +645,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
           }),
           source
         );
+        Reflect.defineMetadata('app', this.app, source);
 
         // for some reason TS is hatin' on the RunResult type (precisely the T from the union in MaybeArray<T>)
         // so we're casting for now
@@ -832,6 +844,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
         );
 
         Reflect.defineMetadata('key', key, source);
+        Reflect.defineMetadata('app', this.app, source);
         return source;
       },
       once: (liveQuery: DocumentLiveQuery<TSchema>) => {

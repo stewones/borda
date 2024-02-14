@@ -17,6 +17,7 @@ import { Elysia } from 'elysia';
 
 import { BordaClient, delay, pointer } from '@borda/client';
 import { BordaServer, memoryUsage } from '@borda/server';
+
 import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
 
@@ -47,7 +48,7 @@ const client = new BordaClient({
  */
 export const borda = new BordaServer({
   name: 'borda-on-elysia',
-  inspect: true,
+  inspect: false,
   cacheTTL: 1000 * 1 * 20,
   liveCollections: ['Counter', 'PublicUser'],
   reservedCollections: ['_User', '_Password', '_Session'],
