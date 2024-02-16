@@ -14,7 +14,13 @@ export interface BordaParams {
   serverSecret?: string;
   serverURL?: string;
   serverHeaderPrefix?: string;
+  serverAdditionalHeaders?: BordaServerAdditionalHeaders;
 }
+
+export type BordaServerAdditionalHeaders =
+  | Record<string, any>
+  | (() => Record<string, any>);
+
 export class Borda {
   #name!: string;
   #inspect!: boolean;
@@ -26,6 +32,7 @@ export class Borda {
   #serverSecret!: string;
   #serverURL!: string;
   #serverHeaderPrefix!: string;
+  #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
 
   get cloud() {
     return this.#cloud;
@@ -67,6 +74,7 @@ export class Borda {
       serverSecret,
       serverURL,
       serverHeaderPrefix,
+      serverAdditionalHeaders,
     } = params || {};
 
     if (!isServer() && serverSecret) {
@@ -83,6 +91,7 @@ export class Borda {
     this.#serverSecret = serverSecret || 's-e-c-r-e-t';
     this.#serverURL = serverURL || 'http://127.0.0.1:1337';
     this.#serverHeaderPrefix = serverHeaderPrefix || 'X-Borda';
+    this.#serverAdditionalHeaders = serverAdditionalHeaders || {};
 
     // instantiate cloud
     this.#cloud = new Cloud({
@@ -91,6 +100,7 @@ export class Borda {
       serverSecret: this.#serverSecret,
       serverURL: this.#serverURL,
       serverHeaderPrefix: this.#serverHeaderPrefix,
+      serverAdditionalHeaders: this.#serverAdditionalHeaders,
     });
 
     // instantiate auth
@@ -99,6 +109,7 @@ export class Borda {
       serverSecret: this.#serverSecret,
       serverURL: this.#serverURL,
       serverHeaderPrefix: this.#serverHeaderPrefix,
+      serverAdditionalHeaders: this.#serverAdditionalHeaders,
     });
   }
 
@@ -121,6 +132,7 @@ export class Borda {
       serverKey: this.serverKey,
       serverSecret: this.serverSecret,
       serverHeaderPrefix: this.serverHeaderPrefix,
+      serverAdditionalHeaders: this.#serverAdditionalHeaders,
     });
   }
 }

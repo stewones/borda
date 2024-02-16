@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Elysia, ElysiaConfig } from 'elysia';
-import { CollectionInfo, Db } from 'mongodb';
+import {
+  Elysia,
+  ElysiaConfig,
+} from 'elysia';
+import { Db } from 'mongodb';
 
 import {
   BordaError,
@@ -18,7 +21,10 @@ import { newToken } from '../utils';
 import { BordaRequest } from './Borda';
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
-import { handleOn, handleOnce } from './livequery';
+import {
+  handleOn,
+  handleOnce,
+} from './livequery';
 import { PluginHook } from './plugin';
 import { BordaServerQuery } from './query';
 import {
@@ -43,7 +49,6 @@ export function createServer({
   plugin,
   cache,
   db,
-  collections,
   reservedCollections,
   liveCollections,
   cloud,
@@ -61,7 +66,6 @@ export function createServer({
   plugin: (name: PluginHook) => ((params?: any) => any) | undefined;
   cache: Cache;
   db: Db;
-  collections: CollectionInfo[];
   reservedCollections: string[];
   liveCollections: string[];
   cloud: Cloud;
@@ -70,7 +74,7 @@ export function createServer({
   const server = new Elysia(config);
   const q = query;
 
-  server.use(addPowered({ server, by: poweredBy, collections }));
+  server.use(addPowered({ server, by: poweredBy }));
   server.use(pingRoute({ server }));
 
   // collection
@@ -266,13 +270,14 @@ export function createServer({
   // run
   server.post(
     '/run/:functionName',
-    ({ params, request, body }) =>
+    ({ params, request, body, headers }) =>
       restFunctionRun({
         params,
         body,
         request,
         inspect,
         cloud,
+        headers,
       }),
     {
       beforeHandle({ set, path, request, params }) {
@@ -417,47 +422,36 @@ export async function createSession({
   return { ...session, user };
 }
 
-function requestTargetsDatabase({
-  request,
-  collections,
-}: {
-  request: BordaRequest & any;
-  collections: CollectionInfo[];
-}) {
-  // extract the path from request.url
-  const path = new URL(request.url).pathname;
-  const collectionRequested = path.split('/')[1];
-  const collectionTargeted =
-    InternalCollectionName[collectionRequested] || collectionRequested;
+// function requestTargetsDatabase({
+//   request,
+//   collections,
+// }: {
+//   request: BordaRequest & any;
+//   collections: CollectionInfo[];
+// }) {
+//   // extract the path from request.url
+//   const path = new URL(request.url).pathname;
+//   const collectionRequested = path.split('/')[1];
+//   const collectionTargeted =
+//     InternalCollectionName[collectionRequested] || collectionRequested;
 
-  const routesAvailable = [
-    'ping',
-    'run',
-    'live',
-    'me',
-    ...collections.map((c) => c.name),
-  ];
+//   const routesAvailable = [
+//     'ping',
+//     'run',
+//     'live',
+//     'me',
+//     ...collections.map((c) => c.name),
+//   ];
 
-  if (!routesAvailable.includes(collectionTargeted)) {
-    return false;
-  }
+//   if (!routesAvailable.includes(collectionTargeted)) {
+//     return false;
+//   }
 
-  return true;
-}
+//   return true;
+// }
 
-export const addPowered = ({
-  server,
-  by,
-  collections,
-}: {
-  server: Elysia;
-  by: string;
-  collections: CollectionInfo[];
-}) =>
-  server.onAfterHandle(({ set, request }) => {
-    if (!requestTargetsDatabase({ request, collections })) {
-      return;
-    }
+export const addPowered = ({ server, by }: { server: Elysia; by: string }) =>
+  server.onAfterHandle(({ set }) => {
     set.headers['X-Powered-By'] = by;
   });
 

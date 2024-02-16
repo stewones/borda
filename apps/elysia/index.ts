@@ -15,8 +15,15 @@
 
 import { Elysia } from 'elysia';
 
-import { BordaClient, delay, pointer } from '@borda/client';
-import { BordaServer, memoryUsage } from '@borda/server';
+import {
+  BordaClient,
+  delay,
+  pointer,
+} from '@borda/client';
+import {
+  BordaServer,
+  memoryUsage,
+} from '@borda/server';
 
 import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
@@ -24,7 +31,10 @@ import { html } from '@elysiajs/html';
 import { getCounter } from './functions/getCounter';
 import { getPublicUsers } from './functions/getPublicUsers';
 import { increaseCounter } from './functions/increaseCounter';
-import { passwordResetGet, passwordResetPost } from './routes/password';
+import {
+  passwordResetGet,
+  passwordResetPost,
+} from './routes/password';
 import {
   afterDeletePublicUser,
   afterSaveUser,
@@ -54,7 +64,7 @@ export const borda = new BordaServer({
   reservedCollections: ['_User', '_Password', '_Session'],
   plugins: [
     {
-      name: 'MyCustomEmailProvider',
+      name: 'my-email-provider',
       version: '0.0.0',
       EmailProvider() {
         return {
@@ -77,7 +87,7 @@ export const borda = new BordaServer({
       },
     },
     {
-      name: 'MyCustomEmailPasswordResetTemplate',
+      name: 'my-password-reset-template',
       version: '0.0.0',
       EmailPasswordResetTemplate({ token, user, baseUrl }) {
         return {
@@ -121,43 +131,42 @@ borda.cloud.addFunction(increaseCounter, {
 /**
  * subscribe to the borda's ready event and print some stats
  */
-borda.onReady.subscribe(async ({ db, name }) => {
+borda.onReady.subscribe(async ({ db, app }) => {
   const stats = await db.stats();
-  console.log(`Borda is connected to the database ${stats['db']} from ${name}`);
+  console.log(`💽 Connected to Database ${stats['db']} from ${app}`);
 
   delete stats['$clusterTime'];
   delete stats['operationTime'];
 
   console.table(stats);
   console.timeEnd('startup');
-  console.time('ping');
+  console.time('latency');
 
   await borda
     .ping()
     .then(() => {
-      console.timeEnd('ping');
+      console.timeEnd('latency');
       console.log('🧠 memory', memoryUsage());
     })
     .catch((err) => console.log(err));
 
-  runLiveQueryTest();
   await delay(500); // little delay to the stream catch up
+  runLiveQueryTest();
   await runQueryClientTest();
   await runQueryServerTest();
 });
 
 /**
- * create and start an elysia server using borda as plugin
- * borda can also be started as standalone if you don't need an elysia server to extend from.
- *
- * @example
- * const server = await borda.server()
- * server.listen(port)
+ * create the Elysia app
  */
-const app = new Elysia()
-  // add borda as a plugin
+const app = new Elysia();
+
+/**
+ * decorate the app with Borda
+ * configure and start the server
+ */
+app
   .use(await borda.server())
-  // configure cors
   .use(
     cors({
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -187,7 +196,7 @@ const app = new Elysia()
   .listen(1337);
 
 console.log(
-  `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
+  `🦊 Borda is running at http://${app.server?.hostname}:${app.server?.port}`
 );
 
 /**
@@ -206,9 +215,9 @@ function runLiveQueryTest() {
       },
     })
     .on('insert')
-    .subscribe(({ doc }) => {
-      console.log('⚡LiveQuery (server): new person', doc);
-    });
+    .subscribe(({ doc }) =>
+      console.log('⚡LiveQuery (server): new person', doc)
+    );
 
   // using borda client instance to subscribe to live queries
   client

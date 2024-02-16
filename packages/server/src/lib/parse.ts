@@ -264,7 +264,10 @@ export function parseFilter(obj: any | any[]): any | any[] {
        *   fieldName: 'Collection$objectId'
        * }
        */
+  
       if (
+        field &&
+        typeof field === 'string' &&
         !field.startsWith('$') &&
         !field.startsWith('_p_') &&
         !field.includes('.') &&
@@ -283,6 +286,8 @@ export function parseFilter(obj: any | any[]): any | any[] {
        * }
        */
       if (
+        field &&
+        typeof field === 'string' &&
         !field.startsWith('$') &&
         !field.startsWith('_p_') &&
         typeof value === 'object'

@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Document, InternalCollectionName } from '@borda/client';
+import {
+  Document,
+  InternalCollectionName,
+} from '@borda/client';
 
 import { BordaRequest } from './Borda';
 import { DocQRL } from './parse';
@@ -22,7 +25,7 @@ export interface CloudTriggerParams<T = any> {
   docs?: T[];
   before?: T;
   after?: T;
-  qrl: DocQRL;
+  qrl?: DocQRL;
   context?: Record<string, any>;
   request?: BordaRequest;
 }
@@ -37,7 +40,7 @@ export interface CloudTriggerFactory {
 
 export type CloudFunctionHandler = (
   factory: CloudFunctionFactory
-) => Promise<boolean | Document | Document[] | void>;
+) => Promise<string | boolean | Document | Document[] | void>;
 
 export interface CloudFunctionParams {
   name?: string;
@@ -49,6 +52,7 @@ export interface CloudFunctionFactory {
   request: BordaRequest;
   body: any;
   params: Record<string, any>;
+  headers: Record<string, string>;
 }
 
 export class Cloud {
@@ -133,11 +137,11 @@ export class Cloud {
    */
   addFunction(
     handler: CloudFunctionHandler,
-    params: Omit<CloudFunctionParams, 'handler'>
+    params?: Omit<CloudFunctionParams, 'handler'>
   ) {
     // extract the function name from the handler
     // optionally, the name can be passed as a parameter
-    const name = params.name || handler.name;
+    const name = params?.name || handler.name;
     this.fn.set(name, { ...params, name, handler });
   }
 

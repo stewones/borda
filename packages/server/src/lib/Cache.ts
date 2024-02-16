@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * @license
  * Copyright Borda All Rights Reserved.
@@ -6,12 +7,17 @@
  * found in the LICENSE file at https://borda.dev/license
  */
 
+import { Db } from 'mongodb';
+
 import {
   Document,
   InternalCollectionName,
   isEmpty,
   isNumber,
+  pointer,
 } from '@borda/client';
+
+import { BordaServerQuery } from './query';
 
 interface CacheMetadata {
   doc: Document;
@@ -230,3 +236,141 @@ export class Cache {
   }
 }
 
+export async function ensureCacheInvalidation({
+  db,
+  cache,
+  cacheTTL,
+}: {
+  db: Db;
+  cache: Cache;
+  cacheTTL: number;
+}) {
+  if (!cacheTTL) return;
+  const collections = db.listCollections();
+  const collectionsArray = await collections.toArray();
+  for (const collectionInfo of collectionsArray) {
+    if (
+      collectionInfo.type === 'collection' &&
+      !collectionInfo.name.startsWith('system.')
+    ) {
+      /**
+       * listen to collection changes so we can invalidate the memoized queries
+       */
+      const collection = db.collection(collectionInfo.name);
+      collection
+        .watch(
+          [
+            {
+              $match: {
+                operationType: {
+                  $in: ['update'],
+                },
+              },
+            },
+          ],
+          collectionInfo.name === '_Session'
+            ? {
+                fullDocument: 'updateLookup',
+              }
+            : {}
+        )
+        .on('change', (change) => {
+          const { documentKey, fullDocument }: any = change;
+          const { _id } = documentKey;
+          if (collectionInfo.name === '_Session') {
+            cache.invalidate({
+              collection: collectionInfo.name,
+              data: fullDocument,
+            });
+          } else {
+            cache.invalidate({
+              collection: collectionInfo.name,
+              objectId: _id,
+            });
+          }
+        });
+    }
+  }
+}
+
+export async function ensureSessionInvalidation({
+  db,
+  query,
+  cache,
+}: {
+  db: Db;
+  cache: Cache;
+  query: (collection: string) => BordaServerQuery;
+}) {
+  query('Session')
+    .include(['user'])
+    .on('update')
+    .subscribe(({ doc }) => {
+      // cache the session itself
+      cache.set('Session', doc['token'], doc);
+      if (doc['user']) {
+        // cache a reference to the session token which belongs to the user
+        cache.set('Session$token', doc['user'].objectId, {
+          token: doc['token'],
+        });
+      }
+    });
+
+  query('Session')
+    .include(['user'])
+    .on('delete')
+    .subscribe(({ doc }) => {
+      cache.invalidate({ collection: 'Session', objectId: doc['token'] });
+      if (doc['user']) {
+        cache.invalidate({
+          collection: 'Session$token',
+          objectId: doc['user'].objectId,
+        });
+      }
+    });
+
+  /**
+   * listen to user deletions
+   */
+  const collection = db.collection('_User');
+  collection
+    .watch(
+      [
+        {
+          $match: {
+            $or: [
+              {
+                operationType: {
+                  $in: ['delete'],
+                },
+              },
+              {
+                operationType: {
+                  $in: ['update'],
+                },
+                'fullDocument._expires_at': {
+                  $exists: true,
+                },
+              },
+            ],
+          },
+        },
+      ],
+      {
+        fullDocument: 'updateLookup',
+      }
+    )
+    .on('change', (change) => {
+      const { documentKey }: any = change;
+      const { _id } = documentKey;
+      query('Session')
+        .filter({
+          user: pointer('User', _id),
+        })
+        .delete()
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        .catch((_err) => {
+          // it's fine if the session is already deleted or doesn't exist
+        });
+    });
+}

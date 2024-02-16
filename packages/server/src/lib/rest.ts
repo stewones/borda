@@ -17,7 +17,11 @@ import {
 } from '@borda/client';
 
 import { newToken } from '../utils/crypto';
-import { compare, hash, validate } from '../utils/password';
+import {
+  compare,
+  hash,
+  validate,
+} from '../utils/password';
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
 import {
@@ -36,7 +40,12 @@ import {
   upsert,
   upsertMany,
 } from './operation';
-import { DocQRL, DocQRLFrom, parseQuery, parseResponse } from './parse';
+import {
+  DocQRL,
+  DocQRLFrom,
+  parseQuery,
+  parseResponse,
+} from './parse';
 import { PluginHook } from './plugin';
 import { BordaServerQuery } from './query';
 import { createSession } from './server';
@@ -881,7 +890,7 @@ export async function restUserUpdateEmail({
 
   // invalidate all cached users
   cache.invalidate({
-    collection: '_User',
+    collection: 'User',
     objectId: currentUser.objectId,
   });
 
@@ -1033,7 +1042,7 @@ export async function restUserUpdatePassword({
   }
 
   // invalidate all cached users
-  cache.invalidate({ collection: '_User', objectId: currentUser.objectId });
+  cache.invalidate({ collection: 'User', objectId: currentUser.objectId });
 
   const newSession = await createSession({
     user: currentUser,
@@ -1262,12 +1271,14 @@ export async function restUserMe({
 export async function restFunctionRun({
   params,
   body,
+  headers,
   request,
   inspect,
   cloud,
 }: {
   params: any;
   body: any;
+  headers: any;
   request: Request & any;
   inspect: boolean;
   cloud: Cloud;
@@ -1296,6 +1307,7 @@ export async function restFunctionRun({
       request,
       body,
       params,
+      headers,
     });
 
     if (inspect) {
@@ -1310,7 +1322,12 @@ export async function restFunctionRun({
     }
 
     return Promise.reject(
-      new BordaError(ErrorCode.SERVER_FUNCTION_ERROR, err as object).toJSON()
+      Object.prototype.hasOwnProperty.call(err, 'toJSON')
+        ? err.toJSON()
+        : new BordaError(
+            ErrorCode.SERVER_FUNCTION_ERROR,
+            err as object
+          ).toJSON()
     );
   }
 }

@@ -5,14 +5,20 @@ import { Subject } from 'rxjs';
 
 import {
   Auth,
+  BordaServerAdditionalHeaders,
   Document,
   InternalCollectionName,
   InternalHeaders,
+  isBoolean,
   Session,
   User,
 } from '@borda/client';
 
-import { Cache } from './Cache';
+import {
+  Cache,
+  ensureCacheInvalidation,
+  ensureSessionInvalidation,
+} from './Cache';
 import { Cloud } from './Cloud';
 import { mongoConnect, mongoCreateIndexes } from './mongodb';
 import {
@@ -36,6 +42,7 @@ export interface BordaParams {
   serverURL?: string;
   serverHeaderPrefix?: string;
   serverPoweredBy?: string;
+  serverAdditionalHeaders?: BordaServerAdditionalHeaders;
 
   /**
    * Default to `mongodb://127.0.0.1:27017/borda-dev`
@@ -92,6 +99,7 @@ export class Borda {
   #serverURL!: string;
   #serverHeaderPrefix!: string;
   #serverPoweredBy!: string;
+  #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
 
   #server!: Elysia;
   #db!: Db;
@@ -105,7 +113,7 @@ export class Borda {
 
   public onReady = new Subject<{
     db: Db;
-    name: string;
+    app: string;
     server: Elysia;
     cloud: Cloud;
     cache: Cache;
@@ -113,6 +121,10 @@ export class Borda {
 
   get db() {
     return this.#db;
+  }
+
+  get cache() {
+    return this.#cache;
   }
 
   get cloud() {
@@ -190,13 +202,16 @@ export class Borda {
       plugins,
       reservedCollections,
       liveCollections,
+      serverAdditionalHeaders,
     } = params || {};
     let { config } = params || {};
 
     // set default params
-
-    this.#inspect = inspect || false;
-    this.#name = name || 'my-borda';
+    this.#inspect =
+      inspect || isBoolean(process.env['BORDA_INSPECT'])
+        ? process.env['BORDA_INSPECT'] === 'true'
+        : false;
+    this.#name = name || process.env['BORDA_NAME'] || 'my-borda';
     this.#mongoURI =
       mongoURI ||
       process.env['BORDA_MONGO_URI'] ||
@@ -221,6 +236,7 @@ export class Borda {
     this.#reservedCollections =
       reservedCollections || Object.values(InternalCollectionName);
     this.#liveCollections = liveCollections || [];
+    this.#serverAdditionalHeaders = serverAdditionalHeaders || {};
 
     if (!config) {
       config = {
@@ -239,14 +255,19 @@ export class Borda {
     this.#cloud = new Cloud();
   }
 
-  ping() {
-    return fetch(`${this.#serverURL}/ping`, {
+  async ping() {
+    const res = await fetch(`${this.#serverURL}/ping`, {
       headers: {
         'Content-Type': 'text/html',
         [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
           this.#serverKey,
       },
-    }).then((res) => res.text());
+    });
+    return await res.text();
+  }
+
+  get instance() {
+    return this.#server;
   }
 
   async server() {
@@ -256,6 +277,7 @@ export class Borda {
       serverSecret: this.#serverSecret,
       serverURL: this.#serverURL,
       serverHeaderPrefix: this.#serverHeaderPrefix,
+      serverAdditionalHeaders: this.#serverAdditionalHeaders,
     });
 
     // instantiate the cache
@@ -267,11 +289,10 @@ export class Borda {
     // connect to mongodb and create indexes
     this.#db = await mongoConnect({ mongoURI: this.#mongoURI });
     await mongoCreateIndexes({ db: this.#db });
-    const collections = await this.#db.listCollections().toArray();
+    // const collections = await this.#db.listCollections().toArray();
 
     // instantiate the server
     this.#server = createServer({
-      collections,
       liveCollections: this.#liveCollections,
       reservedCollections: this.#reservedCollections,
       config: this.#config,
@@ -293,16 +314,28 @@ export class Borda {
     // broadcast event
     this.onReady.next({
       db: this.#db,
-      name: this.#name,
+      app: this.#name,
       server: this.#server,
       cloud: this.#cloud,
       cache: this.#cache,
     });
 
-    // start cache invalidation
+    // timer invalidation
     this.#cache.clock();
-    console.log(`📡 Borda Server v${Version}`);
 
+    // realtime invalidation
+    ensureCacheInvalidation({
+      db: this.#db,
+      cache: this.#cache,
+      cacheTTL: this.#cacheTTL,
+    });
+    ensureSessionInvalidation({
+      db: this.#db,
+      cache: this.#cache,
+      query: this.query.bind(this),
+    });
+
+    console.log(`📡 Borda Server v${Version}`);
     return this.#server;
   }
 
@@ -366,12 +399,14 @@ export class Borda {
 
   query<TSchema extends Document = Document>(collection: string) {
     return new BordaServerQuery<TSchema>({
+      app: this.#name,
       collection,
       inspect: this.#inspect,
       db: this.#db,
       cache: this.#cache,
       cloud: this.#cloud,
       queryLimit: this.#queryLimit,
+      serverAdditionalHeaders: this.#serverAdditionalHeaders,
     });
   }
 }

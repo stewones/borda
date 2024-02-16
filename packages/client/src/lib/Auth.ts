@@ -1,8 +1,13 @@
+import { BordaServerAdditionalHeaders } from './Borda';
 import { fetcher } from './fetcher';
 import { InternalHeaders } from './internal';
 import { BordaLiveQueryMemo } from './query';
 import { Session } from './types';
-import { isBoolean, isServer, LocalStorage } from './utils';
+import {
+  isBoolean,
+  isServer,
+  LocalStorage,
+} from './utils';
 
 export interface SignOptions {
   /**
@@ -26,22 +31,26 @@ export class Auth {
   #serverSecret!: string;
   #serverURL!: string;
   #serverHeaderPrefix!: string;
+  #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
 
   constructor({
     serverKey,
     serverSecret,
     serverURL,
     serverHeaderPrefix,
+    serverAdditionalHeaders,
   }: {
     serverKey: string;
     serverSecret: string;
     serverURL: string;
     serverHeaderPrefix: string;
+    serverAdditionalHeaders?: BordaServerAdditionalHeaders;
   }) {
     this.#serverKey = serverKey;
     this.#serverSecret = serverSecret;
     this.#serverURL = serverURL;
     this.#serverHeaderPrefix = serverHeaderPrefix;
+    this.#serverAdditionalHeaders = serverAdditionalHeaders ?? {};
   }
 
   #saveSessionToken(token: string, options: SignOptions) {
@@ -63,6 +72,9 @@ export class Auth {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.#serverKey,
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]: 'signIn',
+      ...(typeof this.#serverAdditionalHeaders === 'function'
+        ? this.#serverAdditionalHeaders()
+        : this.#serverAdditionalHeaders),
     };
 
     return fetcher<Session>(`${this.#serverURL}/User`, {
@@ -96,6 +108,9 @@ export class Auth {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.#serverKey,
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]: 'signUp',
+      ...(typeof this.#serverAdditionalHeaders === 'function'
+        ? this.#serverAdditionalHeaders()
+        : this.#serverAdditionalHeaders),
     };
 
     if (!isServer()) {
@@ -139,6 +154,9 @@ export class Auth {
     const headers = {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.#serverKey,
+      ...(typeof this.#serverAdditionalHeaders === 'function'
+        ? this.#serverAdditionalHeaders()
+        : this.#serverAdditionalHeaders),
     };
 
     if (token) {
@@ -178,6 +196,9 @@ export class Auth {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.#serverKey,
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`]: token,
+      ...(typeof this.#serverAdditionalHeaders === 'function'
+        ? this.#serverAdditionalHeaders()
+        : this.#serverAdditionalHeaders),
     };
 
     const shouldValidate = isBoolean(validateSession) ? validateSession : true;
@@ -220,6 +241,9 @@ export class Auth {
         this.#serverKey,
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
         'updateEmail',
+      ...(typeof this.#serverAdditionalHeaders === 'function'
+        ? this.#serverAdditionalHeaders()
+        : this.#serverAdditionalHeaders),
     };
 
     const token = LocalStorage.get(
@@ -270,6 +294,9 @@ export class Auth {
         this.#serverKey,
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
         'updatePassword',
+      ...(typeof this.#serverAdditionalHeaders === 'function'
+        ? this.#serverAdditionalHeaders()
+        : this.#serverAdditionalHeaders),
     };
 
     const token = LocalStorage.get(
@@ -307,6 +334,9 @@ export class Auth {
         this.#serverKey,
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
         'passwordForgot',
+      ...(typeof this.#serverAdditionalHeaders === 'function'
+        ? this.#serverAdditionalHeaders()
+        : this.#serverAdditionalHeaders),
     };
 
     return fetcher(`${this.#serverURL}/User`, {
@@ -333,6 +363,9 @@ export class Auth {
         this.#serverKey,
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
         'passwordReset',
+      ...(typeof this.#serverAdditionalHeaders === 'function'
+        ? this.#serverAdditionalHeaders()
+        : this.#serverAdditionalHeaders),
     };
 
     return fetcher(`${this.#serverURL}/User`, {

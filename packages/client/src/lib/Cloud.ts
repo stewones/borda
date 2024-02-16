@@ -6,11 +6,19 @@
  * found in the LICENSE file at https://borda.dev/license
  */
 
-import { BordaError, ErrorCode } from './Error';
+import { BordaServerAdditionalHeaders } from './Borda';
+import {
+  BordaError,
+  ErrorCode,
+} from './Error';
 import { fetcher } from './fetcher';
 import { InternalHeaders } from './internal';
 import { Document } from './types/query';
-import { cleanKey, isServer, LocalStorage } from './utils';
+import {
+  cleanKey,
+  isServer,
+  LocalStorage,
+} from './utils';
 
 export class Cloud {
   #app!: string;
@@ -18,6 +26,7 @@ export class Cloud {
   #serverSecret!: string;
   #serverURL!: string;
   #serverHeaderPrefix!: string;
+  #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
 
   constructor({
     app,
@@ -25,18 +34,21 @@ export class Cloud {
     serverSecret,
     serverURL,
     serverHeaderPrefix,
+    serverAdditionalHeaders,
   }: {
     app: string;
     serverKey: string;
     serverSecret: string;
     serverURL: string;
     serverHeaderPrefix: string;
+    serverAdditionalHeaders?: BordaServerAdditionalHeaders;
   }) {
     this.#app = app;
     this.#serverKey = serverKey;
     this.#serverSecret = serverSecret;
     this.#serverURL = serverURL;
     this.#serverHeaderPrefix = serverHeaderPrefix;
+    this.#serverAdditionalHeaders = serverAdditionalHeaders ?? {};
   }
 
   run<T = Document>(
@@ -63,6 +75,9 @@ export class Cloud {
     const headers = {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.#serverKey,
+      ...(typeof this.#serverAdditionalHeaders === 'function'
+        ? this.#serverAdditionalHeaders()
+        : this.#serverAdditionalHeaders),
       ...options?.headers,
     };
 

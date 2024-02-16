@@ -129,11 +129,13 @@ export const createAction = createReduxAction; // just an alias for convenience,
  * @param {*} [enhancers]
  */
 export function createStore({
+  name,
   reducers,
   preloadedState,
   inspect,
   traceLimit = 100,
 }: {
+  name: string;
   reducers: any;
   preloadedState: any;
   inspect?: boolean;
@@ -144,6 +146,7 @@ export function createStore({
       ? {
           trace: true,
           traceLimit,
+          name,
         }
       : false,
     reducer: reducers,

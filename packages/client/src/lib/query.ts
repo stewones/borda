@@ -1,12 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { finalize, first, Observable } from 'rxjs';
+import {
+  finalize,
+  first,
+  Observable,
+} from 'rxjs';
 
+import { BordaServerAdditionalHeaders } from './Borda';
 import {
   BordaError,
   ErrorCode,
 } from './Error';
-import { fetcher, HttpMethod } from './fetcher';
-import { InternalFieldName, InternalHeaders } from './internal';
+import {
+  fetcher,
+  HttpMethod,
+} from './fetcher';
+import {
+  InternalFieldName,
+  InternalHeaders,
+} from './internal';
 import {
   AggregateOptions,
   BulkWriteResult,
@@ -24,11 +35,16 @@ import {
   ManyInsertResponse,
   ManyUpdateResponse,
   ManyUpsertResponse,
-  Projection,
   QueryMethod,
   Sort,
 } from './types';
-import { cleanKey, isBoolean, isEmpty, isServer, LocalStorage } from './utils';
+import {
+  cleanKey,
+  isBoolean,
+  isEmpty,
+  isServer,
+  LocalStorage,
+} from './utils';
 import {
   getWebsocketUrl,
   WebSocketFactory,
@@ -119,21 +135,17 @@ export class BordaQuery<TSchema = Document> {
       isUnlocked = true;
     }
 
-    if (!isServer() && isUnlocked) {
-      throw new BordaError(
-        ErrorCode.SERVER_UNLOCK_ONLY,
-        `unlock can only be used in server environment`
-      );
+    if (isServer()) {
+      this.#unlock = isUnlocked;
     }
 
-    this.#unlock = isUnlocked;
     return this;
   }
 
   /**
    * doc modifiers
    */
-  projection(project: Partial<Projection<TSchema>>) {
+  projection(project: any) {
     const newProject = {
       ...project,
     } as any;
@@ -512,6 +524,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
   #serverKey!: string;
   #serverSecret!: string;
   #serverHeaderPrefix!: string;
+  #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
 
   constructor({
     app,
@@ -521,6 +534,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
     serverKey,
     serverSecret,
     serverHeaderPrefix,
+    serverAdditionalHeaders,
   }: {
     app: string;
     collection: string;
@@ -529,6 +543,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
     serverKey: string;
     serverSecret: string;
     serverHeaderPrefix: string;
+    serverAdditionalHeaders?: BordaServerAdditionalHeaders;
   }) {
     super({
       inspect,
@@ -539,6 +554,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
     this.#serverKey = serverKey;
     this.#serverSecret = serverSecret;
     this.#serverHeaderPrefix = serverHeaderPrefix;
+    this.#serverAdditionalHeaders = serverAdditionalHeaders ?? {};
   }
 
   public override get bridge() {
@@ -583,6 +599,9 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
             this.#serverKey,
           [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
             method,
+          ...(typeof this.#serverAdditionalHeaders === 'function'
+            ? this.#serverAdditionalHeaders()
+            : this.#serverAdditionalHeaders),
         };
 
         if (inspect) {
@@ -765,9 +784,13 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
             },
 
             onClose: (ws, ev) => {
-              if (this.inspect) {
-                console.log('LiveQuery client closed', ws, ev.code);
-              }
+              // @todo check production code and reason coming from cloudflare when it disconnects
+              // and try to reproduce realtime features when it's disconnected
+              // if the feature works, then we all good and can uncomment the following line
+              // otherwise we need to handle the reconnection and resubscription
+              // if (this.inspect) {
+              console.log('LiveQuery client closed', ev.code, ev?.reason);
+              // }
               if (
                 wssFinished ||
                 ev?.code === 1000 ||

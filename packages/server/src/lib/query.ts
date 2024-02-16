@@ -1,8 +1,13 @@
 import { Db } from 'mongodb';
-import { finalize, first, Observable } from 'rxjs';
+import {
+  finalize,
+  first,
+  Observable,
+} from 'rxjs';
 
 import {
   BordaQuery,
+  BordaServerAdditionalHeaders,
   Document,
   DocumentLiveQuery,
   DocumentQuery,
@@ -11,7 +16,10 @@ import {
 
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
-import { handleOn, handleOnce } from './livequery';
+import {
+  handleOn,
+  handleOnce,
+} from './livequery';
 import {
   aggregate,
   count,
@@ -28,50 +36,60 @@ import {
   upsert,
   upsertMany,
 } from './operation';
-import { DocQRLFrom, parseQuery } from './parse';
+import {
+  DocQRLFrom,
+  parseQuery,
+} from './parse';
 
-export class BordaServerQuery<
-  TSchema = Document
-> extends BordaQuery<TSchema> {
+export class BordaServerQuery<TSchema = Document> extends BordaQuery<TSchema> {
   #db!: Db;
   #cache!: Cache;
   #cloud!: Cloud;
   #queryLimit!: number;
+  #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
 
   constructor({
+    app,
     inspect,
     collection,
     db,
     cache,
     cloud,
     queryLimit,
+    serverAdditionalHeaders,
   }: {
+    app: string;
     collection: string;
     inspect?: boolean;
     db: Db;
     cache: Cache;
     cloud: Cloud;
     queryLimit: number;
+    serverAdditionalHeaders?: BordaServerAdditionalHeaders;
   }) {
     super({
       inspect,
       collection,
+      app,
     });
 
     this.#db = db;
     this.#cache = cache;
     this.#cloud = cloud;
     this.#queryLimit = queryLimit;
+    this.#serverAdditionalHeaders = serverAdditionalHeaders ?? {};
   }
 
   load(collectionName: string) {
     return new BordaServerQuery({
+      app: this.app,
       collection: collectionName,
       inspect: this.inspect,
       db: this.#db,
       cache: this.#cache,
       cloud: this.#cloud,
       queryLimit: this.#queryLimit,
+      serverAdditionalHeaders: this.#serverAdditionalHeaders,
     });
   }
 
