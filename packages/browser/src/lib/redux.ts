@@ -9,12 +9,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
+  ActionCreatorWithPayload,
+  ActionReducerMapBuilder,
+  CaseReducer,
   configureStore,
   createAction as createReduxAction,
   createReducer as createReduxReducer,
   Draft as ImmerDraft,
   EnhancedStore,
+  PayloadActionCreator,
 } from '@reduxjs/toolkit';
+import { ReducerWithInitialState } from '@reduxjs/toolkit/dist/createReducer';
 
 import type { StateDocument } from './Borda';
 
@@ -24,6 +29,11 @@ export interface Action<T = any> {
 }
 
 export type Draft<S> = ImmerDraft<S>;
+
+export type ReducerActions<S> = Record<
+  string,
+  (state: S, action: Action) => void
+>;
 
 /**
  * Easily create redux reducers powered by immer.js
@@ -61,11 +71,20 @@ export type Draft<S> = ImmerDraft<S>;
  *   }
  * );
  */
-export function createReducer<T = any>(init: T, actions: any) {
-  return createReduxReducer<T>(init, (builder) => {
-    for (const action in actions) {
-      builder.addCase(action, actions[action]);
-    }
+
+export function createReducer<S>(init: S, actions: ReducerActions<S>) {
+  return createReduxReducer<S>(init, (builder: ActionReducerMapBuilder<S>) => {
+    Object.keys(actions).forEach((key) => {
+      const actionCreator = createAction(key);
+      builder.addCase(actionCreator, (state, action) => {
+        // Ensure the reducer function is compatible with CaseReducer type
+        const caseReducer = actions[key] as CaseReducer<
+          S,
+          ReturnType<typeof actionCreator>
+        >;
+        return caseReducer(state, action);
+      });
+    });
   });
 }
 
@@ -87,7 +106,11 @@ export function createReducer<T = any>(init: T, actions: any) {
  * // dispatch
  * dispatch(increment(54))
  */
-export const createAction = createReduxAction; // just an alias for convenience, since redux toolkit already has this helper
+export function createAction<P = void, T extends string = string>(
+  type: T
+): PayloadActionCreator<P, T> {
+  return createReduxAction<P, T>(type);
+}
 
 /**
  * Create custom redux store
@@ -190,3 +213,10 @@ export function borda() {
   );
 }
 
+export type {
+  ActionCreatorWithPayload,
+  ActionReducerMapBuilder,
+  CaseReducer,
+  PayloadActionCreator,
+  ReducerWithInitialState,
+};
