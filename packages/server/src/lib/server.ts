@@ -416,7 +416,7 @@ export async function createSession({
   const session = await query('Session').insert({
     user: pointer('User', user.objectId),
     token,
-    expiresAt: expiresAt.toISOString(),
+    expiresAt,
   });
 
   return { ...session, user };
@@ -544,7 +544,7 @@ export async function ensureApiToken({
             $eq: token,
           },
           expiresAt: {
-            $gt: new Date().toISOString(),
+            $gt: new Date(),
           },
         })
         .findOne()) as Session;
@@ -817,7 +817,7 @@ async function bordaAfterHandleLiveQuery({
             $eq: tokenToValidate,
           },
           expiresAt: {
-            $gt: new Date().toISOString(),
+            $gt: new Date(),
           },
         })
         .findOne()) as Session;

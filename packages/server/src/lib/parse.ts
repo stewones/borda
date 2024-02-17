@@ -727,6 +727,15 @@ export function parseResponse(
           delete obj[field];
         }
 
+        /**
+         * date fields should be converted to iso string
+         * as it's converted anyways in the wire
+         * so we need to make it consistent in the server
+         */
+        if (obj[field] instanceof Date) {
+          obj[field] = obj[field].toISOString();
+        }
+
         if (typeof obj[field] === 'object') {
           parseResponse(obj[field], options);
         }

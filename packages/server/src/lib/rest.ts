@@ -1025,9 +1025,7 @@ export async function restUserUpdatePassword({
     user: pointer('User', currentUser.objectId),
     password: newPasswordHashed,
     type: 'history',
-    expiresAt: new Date(
-      Date.now() + 1000 * 60 * 60 * 24 * 365 * 2
-    ).toISOString(), // expires in 2 years
+    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 2), // expires in 2 years
   })) as Password;
 
   // invalidate all sessions
@@ -1112,7 +1110,7 @@ export async function restUserForgotPassword({
   (await query('Password').insert({
     user: pointer('User', currentUser.objectId),
     type: 'forgot',
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // expires in 1h
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000), // expires in 1h
     token: t,
     email,
   })) as Password;
@@ -1236,9 +1234,7 @@ export async function restUserResetPassword({
     user: pointer('User', user.objectId),
     password: newPasswordHashed,
     type: 'history',
-    expiresAt: new Date(
-      Date.now() + 1000 * 60 * 60 * 24 * 365 * 2
-    ).toISOString(), // expires in 2 years
+    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 2), // expires in 2 years
   })) as Password;
 
   // invalidate all sessions
