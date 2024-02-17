@@ -376,10 +376,18 @@ export function parseInclude<TSchema = Document>({
     for (const pointerField in tree) {
       const pointerValue = obj[`_p_${pointerField}`] || obj[pointerField];
 
+      if (!pointerValue || !isPointer(pointerValue)) {
+        continue;
+      }
+
       if (inspect) {
-        console.log('pointerField', pointerField);
-        console.log('pointerValue', pointerValue);
         console.log('isPointer', isPointer(pointerValue));
+        console.log('pointerField', pointerField);
+        console.log(
+          'pointerValue',
+          isPointer(pointerValue) ? pointerValue : 'not a raw pointer'
+          // pointerValue
+        );
       }
 
       if (isArrayPointer(pointerValue)) {
@@ -394,10 +402,6 @@ export function parseInclude<TSchema = Document>({
           });
           pointerValue[index] = pointer;
         }
-        continue;
-      }
-
-      if (!isPointer(pointerValue)) {
         continue;
       }
 
@@ -428,7 +432,7 @@ export function parseInclude<TSchema = Document>({
         cache,
         query,
       });
-    }
+    } 
     return Promise.resolve(obj);
   };
 }

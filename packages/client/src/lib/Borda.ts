@@ -1,8 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { Subject } from 'rxjs';
+
 import { Auth } from './Auth';
 import { Cloud } from './Cloud';
-import { BordaError, ErrorCode } from './Error';
+import {
+  BordaError,
+  ErrorCode,
+} from './Error';
 import { InternalHeaders } from './internal';
 import { BordaClientQuery } from './query';
 import { isServer } from './utils';
@@ -33,6 +38,8 @@ export class Borda {
   #serverURL!: string;
   #serverHeaderPrefix!: string;
   #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
+
+  static pubsub: Record<string, Subject<any>> = {};
 
   get cloud() {
     return this.#cloud;

@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Elysia, ElysiaConfig } from 'elysia';
+import {
+  Elysia,
+  ElysiaConfig,
+} from 'elysia';
 import { Db } from 'mongodb';
 import { Subject } from 'rxjs';
 
@@ -20,7 +23,10 @@ import {
   ensureSessionInvalidation,
 } from './Cache';
 import { Cloud } from './Cloud';
-import { mongoConnect, mongoCreateIndexes } from './mongodb';
+import {
+  mongoConnect,
+  mongoCreateIndexes,
+} from './mongodb';
 import {
   BordaEmailPasswordResetTemplatePlugin,
   BordaEmailPlugin,
@@ -207,10 +213,11 @@ export class Borda {
     let { config } = params || {};
 
     // set default params
-    this.#inspect =
-      inspect || isBoolean(process.env['BORDA_INSPECT'])
-        ? process.env['BORDA_INSPECT'] === 'true'
-        : false;
+    this.#inspect = isBoolean(inspect)
+      ? inspect
+      : isBoolean(process.env['BORDA_INSPECT'])
+      ? process.env['BORDA_INSPECT'] === 'true'
+      : false;
     this.#name = name || process.env['BORDA_NAME'] || 'my-borda';
     this.#mongoURI =
       mongoURI ||
@@ -311,15 +318,6 @@ export class Borda {
       inspect: this.#inspect,
     });
 
-    // broadcast event
-    this.onReady.next({
-      db: this.#db,
-      app: this.#name,
-      server: this.#server,
-      cloud: this.#cloud,
-      cache: this.#cache,
-    });
-
     // timer invalidation
     this.#cache.clock();
 
@@ -333,6 +331,15 @@ export class Borda {
       db: this.#db,
       cache: this.#cache,
       query: this.query.bind(this),
+    });
+
+    // broadcast event
+    this.onReady.next({
+      db: this.#db,
+      app: this.#name,
+      server: this.#server,
+      cloud: this.#cloud,
+      cache: this.#cache,
     });
 
     console.log(`📡 Borda Server v${Version}`);
