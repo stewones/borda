@@ -7,7 +7,11 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ChangeStreamUpdateDocument, Db, Document } from 'mongodb';
+import {
+  ChangeStreamUpdateDocument,
+  Db,
+  Document,
+} from 'mongodb';
 import { Subject } from 'rxjs';
 
 import {
@@ -15,6 +19,7 @@ import {
   DocumentLiveQuery,
   DocumentQuery,
   isDate,
+  isEmpty,
   LiveQueryMessage,
 } from '@borda/client';
 
@@ -78,7 +83,6 @@ export function handleOn<TSchema = Document>({
   };
 
   const task = db.collection(collection);
-
   const stream = task.watch(
     [
       {
@@ -107,7 +111,6 @@ export function handleOn<TSchema = Document>({
     if (inspect) {
       console.log('LiveQueryMessage error', err);
     }
-
     onError.next(err);
     disconnect();
   });
@@ -183,10 +186,8 @@ export function handleOn<TSchema = Document>({
       }
     }
 
-    if (message) {
+    if (!isEmpty(message)) {
       onChanges.next(message);
-    } else {
-      onChanges.next({} as LiveQueryMessage<TSchema>);
     }
   });
 

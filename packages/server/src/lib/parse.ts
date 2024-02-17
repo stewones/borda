@@ -423,7 +423,7 @@ export function parseInclude<TSchema = Document>({
        * this means the object may be populated in the first level
        * but we still need to keep trying to populate the next level
        */
-      await parseJoinKeep({
+      await parseJoinWalk({
         docQuery,
         obj,
         tree,
@@ -432,7 +432,7 @@ export function parseInclude<TSchema = Document>({
         cache,
         query,
       });
-    } 
+    }
     return Promise.resolve(obj);
   };
 }
@@ -458,11 +458,8 @@ export async function parseJoin({
 
   if (!isEmpty(memo)) {
     doc = memo;
-  }
-
-  if (isEmpty(memo)) {
+  } else {
     doc = await query(collection).include(join).findOne(objectId);
-
     // memoize
     if (!isEmpty(doc)) {
       cache.set(collection, objectId, doc);
@@ -471,7 +468,7 @@ export async function parseJoin({
   return doc;
 }
 
-export async function parseJoinKeep({
+export async function parseJoinWalk({
   docQuery,
   obj,
   tree,
@@ -488,6 +485,12 @@ export async function parseJoinKeep({
   cache: Cache;
   query: (collection: string) => BordaServerQuery;
 }) {
+  if (inspect) {
+    console.log('tree', tree);
+    console.log('pointerField', pointerField);
+    // console.log('obj', obj);
+  }
+
   for (const pointerTreeField of tree[pointerField]) {
     const pointerTreeBase = pointerTreeField.split('.')[0];
 
@@ -497,11 +500,11 @@ export async function parseJoinKeep({
     }
 
     await parseInclude({
-      obj,
+      obj: obj[pointerField],
       inspect,
       cache,
       query,
-    })(docQuery);
+    })({ ...docQuery, include: [pointerTreeField] });
   }
 }
 
