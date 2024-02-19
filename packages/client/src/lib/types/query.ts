@@ -11,9 +11,7 @@ import { Observable } from 'rxjs';
 import { LiveQueryMessage } from './livequery';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export declare interface Document {
-  [key: string]: any;
-}
+export type Document = Record<string, any>;
 
 export type DocumentResponse<T = Document> = number | void | T | T[];
 export interface DocumentExtraOptions {
@@ -388,9 +386,7 @@ export interface ManyInsertResponse<TSchema> {
   /** The number of inserted documents for this operations */
   insertedCount: number;
   /** Map of the index of the inserted document to the id of the inserted document */
-  insertedIds: {
-    [key: number]: InferIdType<TSchema>;
-  };
+  insertedIds: Record<number, InferIdType<TSchema>>;
 }
 
 export declare interface ManyUpdateResponse {

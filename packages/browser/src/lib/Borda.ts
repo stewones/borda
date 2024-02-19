@@ -10,6 +10,7 @@ import {
   Document,
   get,
   IndexedDB,
+  isServer,
 } from '@borda/client';
 
 import {
@@ -156,14 +157,16 @@ export class Borda extends BordaClient {
       ...Borda.App,
       [this.name]: {
         inspect: this.#inspect,
-        store: createStore({
-          name: this.name,
-          reducers: { ...this.#reducers, borda: borda() },
-          preloadedState: this.#preloadedState,
-          inspect: this.#inspect,
-          traceLimit: this.#traceLimit,
-        }),
-        cache: await cache.load(),
+        store: !isServer()
+          ? createStore({
+              name: this.name,
+              reducers: { ...this.#reducers, borda: borda() },
+              preloadedState: this.#preloadedState,
+              inspect: this.#inspect,
+              traceLimit: this.#traceLimit,
+            })
+          : ({} as Store),
+        cache: !isServer() ? await cache.load() : ({} as IndexedDB),
         fast: this.#fast,
         auth: this.auth,
         getState: this.getState.bind(this),

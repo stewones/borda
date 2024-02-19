@@ -10,6 +10,7 @@ import {
 } from './Error';
 import { InternalHeaders } from './internal';
 import { BordaClientQuery } from './query';
+import { Document } from './types';
 import { isServer } from './utils';
 
 export interface BordaParams {

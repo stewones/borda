@@ -164,22 +164,22 @@ export class Auth {
         token;
     }
 
+    if (!isServer()) {
+      LocalStorage.unset(
+        `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
+      );
+      if (BordaLiveQueryMemo.size) {
+        for (const [key, value] of BordaLiveQueryMemo) {
+          console.debug('closing live query', key); // @todo inject inspect
+          value.close();
+        }
+      }
+    }
+
     return fetcher(`${this.#serverURL}/me`, {
       method: 'DELETE',
       headers,
       direct: true,
-    }).finally(() => {
-      if (!isServer()) {
-        LocalStorage.unset(
-          `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-        );
-        if (BordaLiveQueryMemo.size) {
-          for (const [key, value] of BordaLiveQueryMemo) {
-            console.log('closing live query', key);
-            value.close();
-          }
-        }
-      }
     });
   }
 
