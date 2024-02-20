@@ -29,7 +29,7 @@ export function webSocketServer({
 }: {
   socketURL: string;
   serverKey: string;
-  token: string;
+  token: string | null;
   secret?: string;
 }) {
   return (factory: WebSocketFactory) => {

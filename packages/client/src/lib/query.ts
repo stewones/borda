@@ -5,19 +5,10 @@ import {
   Observable,
 } from 'rxjs';
 
-import { BordaServerAdditionalHeaders } from './Borda';
-import {
-  BordaError,
-  ErrorCode,
-} from './Error';
-import {
-  fetcher,
-  HttpMethod,
-} from './fetcher';
-import {
-  InternalFieldName,
-  InternalHeaders,
-} from './internal';
+import { Auth } from './Auth';
+import { BordaError, ErrorCode } from './Error';
+import { fetcher, HttpMethod } from './fetcher';
+import { InternalFieldName, InternalHeaders } from './internal';
 import {
   AggregateOptions,
   BulkWriteResult,
@@ -38,13 +29,7 @@ import {
   QueryMethod,
   Sort,
 } from './types';
-import {
-  cleanKey,
-  isBoolean,
-  isEmpty,
-  isServer,
-  LocalStorage,
-} from './utils';
+import { cleanKey, isBoolean, isEmpty, isServer } from './utils';
 import {
   getWebsocketUrl,
   WebSocketFactory,
@@ -66,6 +51,7 @@ export const BordaLiveQueryMemo = new Map<string, WebSocket>();
 
 export class BordaQuery<TSchema = Document> {
   #app!: string;
+  #auth!: Auth;
   #inspect!: boolean;
   #collection: string;
   #filter: DocumentFilter<TSchema> = {};
@@ -83,7 +69,6 @@ export class BordaQuery<TSchema = Document> {
   get app() {
     return this.#app;
   }
-
   get collection() {
     return this.#collection;
   }
@@ -93,15 +78,20 @@ export class BordaQuery<TSchema = Document> {
   get unlocked() {
     return this.#unlock;
   }
+  get auth() {
+    return this.#auth;
+  }
 
   constructor({
     app,
     inspect,
     collection,
+    auth,
   }: {
     app: string;
     collection: string;
     inspect?: boolean;
+    auth?: Auth;
   }) {
     // ensure collection name doesn't end with "s" because
     // it's already means plural and for good db hygiene
@@ -124,6 +114,9 @@ export class BordaQuery<TSchema = Document> {
     this.#collection = collection;
     this.#inspect = inspect ?? false;
     this.#app = app;
+    if (auth) {
+        this.#auth = auth;
+    }
   }
 
   /**
@@ -524,37 +517,36 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
   #serverKey!: string;
   #serverSecret!: string;
   #serverHeaderPrefix!: string;
-  #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
 
   constructor({
     app,
+    auth,
     inspect,
     collection,
     serverURL,
     serverKey,
     serverSecret,
     serverHeaderPrefix,
-    serverAdditionalHeaders,
   }: {
     app: string;
+    auth: Auth;
     collection: string;
     inspect?: boolean;
     serverURL: string;
     serverKey: string;
     serverSecret: string;
     serverHeaderPrefix: string;
-    serverAdditionalHeaders?: BordaServerAdditionalHeaders;
   }) {
     super({
       inspect,
       collection,
       app,
+      auth,
     });
     this.#serverURL = serverURL;
     this.#serverKey = serverKey;
     this.#serverSecret = serverSecret;
     this.#serverHeaderPrefix = serverHeaderPrefix;
-    this.#serverAdditionalHeaders = serverAdditionalHeaders ?? {};
   }
 
   public override get bridge() {
@@ -594,15 +586,9 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
 
         const { inspect } = options ?? {};
 
-        const headers = {
-          [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-            this.#serverKey,
-          [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
-            method,
-          ...(typeof this.#serverAdditionalHeaders === 'function'
-            ? this.#serverAdditionalHeaders()
-            : this.#serverAdditionalHeaders),
-        };
+        const headers = this.auth.getHeaders({
+          method,
+        });
 
         if (inspect) {
           headers[
@@ -617,10 +603,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
         }
 
         if (!isServer()) {
-          const token = LocalStorage.get(
-            `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-          );
-
+          const token = this.auth.sessionToken;
           if (token) {
             headers[
               `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
@@ -719,11 +702,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
 
         const key = `livequery:${cleanKey(body)}`;
 
-        const token = !isServer()
-          ? LocalStorage.get(
-              `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-            )
-          : null;
+        const token = !isServer() ? this.auth.sessionToken : null;
 
         const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
           const socketURLPathname = `/${collection}`;
@@ -805,11 +784,6 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
                 !hasConnected
               ) {
                 ws.close();
-                observer.error(
-                  `${ErrorCode.LIVE_QUERY_SOCKET_CLOSE}: ${
-                    ev.reason || 'network error'
-                  }`
-                );
                 observer.complete();
                 return;
               }

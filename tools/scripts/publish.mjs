@@ -53,37 +53,15 @@ process.chdir(outputPath);
 try {
   const json = JSON.parse(readFileSync(`package.json`).toString());
   json.version = v;
-
-  // if (name === 'browser') {
-  //   json['name'] = `@borda/${name}`;
-  //   json['type'] = 'module';
-  //   json['dependencies'] = {
-  //     'reflect-metadata': '0.2.1',
-  //   };
-  // }
-
-  // if (name === 'client') {
-  //   delete json['type'];
-  // }
-
   // write to package.json
   writeFileSync(`package.json`, JSON.stringify(json, null, 2));
 
   // update original
-  const originalPath = ['sdk', 'browser'].includes(name)
-    ? `../../../packages/${name}/src/package.json`
-    : `../../../packages/${name}/package.json`;
+  const originalPath = `../../../packages/${name}/package.json`;
   const original = JSON.parse(readFileSync(originalPath).toString());
   original.version = v;
   writeFileSync(originalPath, JSON.stringify(json, null, 2));
 
-  // update @borda/server/sdk/src/package.json
-  // if (name === 'server') {
-  //   const sdkPath = `../../../dist/packages/server/sdk/src/package.json`;
-  //   const sdkJson = JSON.parse(readFileSync(sdkPath).toString());
-  //   sdkJson.main = `./index.js`; // not sure why but the build is writing this as index.cjs which doesn't exist inside the package
-  //   writeFileSync(sdkPath, JSON.stringify(sdkJson, null, 2));
-  // }
 } catch (e) {
   console.error(
     chalk.bold.red(`Error reading package.json file from library build output.`)

@@ -7,22 +7,32 @@
     "build": {
       "executor": "@nx/rollup:rollup",
       "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
       "options": {
-        "outputPath": "dist/packages/client",
         "main": "packages/client/src/index.ts",
+        "outputPath": "dist/packages/client",
         "tsConfig": "packages/client/tsconfig.lib.json",
-        "project": "packages/client/src/package.json",
-        "compiler": "tsc",
-        "format": ["cjs", "esm"],
+        "project": "packages/client/package.json",
+        "buildableProjectDepsInPackageJsonType": "dependencies",
         "updateBuildableProjectDepsInPackageJson": false,
-        "babelUpwardRootMode": true,
+        "format": ["esm"],
+        "rollupConfig": "packages/client/rollup.config.cjs",
         "assets": [
           {
-            "glob": "README.md",
-            "input": "packages/client",
-            "output": "/"
+            "glob": "packages/client/README.md",
+            "input": ".",
+            "output": "."
           }
         ]
+      },
+      "configurations": {
+        "production": {
+          "optimization": true,
+          "sourceMap": false,
+          "namedChunks": false,
+          "extractLicenses": true,
+          "vendorChunk": false
+        }
       }
     },
     "publish": {

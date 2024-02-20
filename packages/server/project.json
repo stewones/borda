@@ -5,17 +5,34 @@
   "projectType": "library",
   "targets": {
     "build": {
-      "executor": "@nx/js:tsc",
+      "executor": "@nx/rollup:rollup",
       "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
       "options": {
-        "outputPath": "dist/packages/server",
         "main": "packages/server/src/index.ts",
+        "outputPath": "dist/packages/server",
         "tsConfig": "packages/server/tsconfig.lib.json",
-        "packageJson": "packages/server/package.json",
-        "external": "all",
-        "format": ["cjs", "esm"],
-        "externalBuildTargets": ["@borda/client"],
-        "assets": ["packages/server/README.md"]
+        "project": "packages/server/package.json",
+        "buildableProjectDepsInPackageJsonType": "dependencies",
+        "updateBuildableProjectDepsInPackageJson": false,
+        "format": ["esm"],
+        "rollupConfig": "packages/server/rollup.config.cjs",
+        "assets": [
+          {
+            "glob": "packages/server/README.md",
+            "input": ".",
+            "output": "."
+          }
+        ]
+      },
+      "configurations": {
+        "production": {
+          "optimization": true,
+          "sourceMap": false,
+          "namedChunks": false,
+          "extractLicenses": true,
+          "vendorChunk": false
+        }
       }
     },
     "publish": {

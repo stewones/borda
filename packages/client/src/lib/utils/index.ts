@@ -33,3 +33,4 @@ export * from './stringify';
 export * from './unset';
 export * from './validateEmail';
 export * from './omit';
+export * from './slugfy';

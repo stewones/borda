@@ -48,7 +48,6 @@ import {
 } from './parse';
 import { PluginHook } from './plugin';
 import { BordaServerQuery } from './query';
-import { createSession } from './server';
 
 export function restCollectionGet({
   params,
@@ -1326,4 +1325,36 @@ export async function restFunctionRun({
           ).toJSON()
     );
   }
+}
+
+export async function createSession({
+  user,
+  query,
+}: {
+  user: User;
+  query: (collection: string) => BordaServerQuery;
+}) {
+  /**
+   * because we don't want to expose the user password
+   */
+  delete user.password;
+
+  /**
+   * expires in 1 year
+   * @todo make this an option ?
+   */
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+  /**
+   * generate a new session token
+   */
+  const token = `b:${newToken()}`;
+  const session = await query('Session').insert({
+    user: pointer('User', user.objectId),
+    token,
+    expiresAt,
+  });
+
+  return { ...session, user };
 }

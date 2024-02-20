@@ -12,12 +12,9 @@ import {
   InternalCollectionName,
   InternalHeaders,
   isEmpty,
-  pointer,
   Session,
-  User,
 } from '@borda/client';
 
-import { newToken } from '../utils';
 import { BordaRequest } from './Borda';
 import { Cache } from './Cache';
 import { Cloud } from './Cloud';
@@ -390,37 +387,6 @@ export function createServer({
   return server;
 }
 
-export async function createSession({
-  user,
-  query,
-}: {
-  user: User;
-  query: (collection: string) => BordaServerQuery;
-}) {
-  /**
-   * because we don't want to expose the user password
-   */
-  delete user.password;
-
-  /**
-   * expires in 1 year
-   * @todo make this an option ?
-   */
-  const expiresAt = new Date();
-  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
-
-  /**
-   * generate a new session token
-   */
-  const token = `b:${newToken()}`;
-  const session = await query('Session').insert({
-    user: pointer('User', user.objectId),
-    token,
-    expiresAt,
-  });
-
-  return { ...session, user };
-}
 
 // function requestTargetsDatabase({
 //   request,

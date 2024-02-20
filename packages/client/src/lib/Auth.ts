@@ -8,6 +8,7 @@ import {
   isServer,
   LocalStorage,
 } from './utils';
+import { slugfy } from './utils/slugfy';
 
 export interface SignOptions {
   /**
@@ -17,35 +18,40 @@ export interface SignOptions {
   exclude?: string[];
   projection?: Record<string, number>;
   /**
-   * whether to save the token to local storage
-   */
-  saveToken?: boolean;
-  /**
    * whether to validate the session with the server
    */
   validateSession?: boolean;
 }
 
 export class Auth {
+  #name!: string;
   #serverKey!: string;
   #serverSecret!: string;
   #serverURL!: string;
   #serverHeaderPrefix!: string;
   #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
+  #sessionToken: string | null = null;
+
+  get sessionToken() {
+    return this.#sessionToken;
+  }
 
   constructor({
+    name,
     serverKey,
     serverSecret,
     serverURL,
     serverHeaderPrefix,
     serverAdditionalHeaders,
   }: {
+    name: string;
     serverKey: string;
     serverSecret: string;
     serverURL: string;
     serverHeaderPrefix: string;
     serverAdditionalHeaders?: BordaServerAdditionalHeaders;
   }) {
+    this.#name = name;
     this.#serverKey = serverKey;
     this.#serverSecret = serverSecret;
     this.#serverURL = serverURL;
@@ -53,104 +59,11 @@ export class Auth {
     this.#serverAdditionalHeaders = serverAdditionalHeaders ?? {};
   }
 
-  #saveSessionToken(token: string, options: SignOptions) {
-    const persist = options?.saveToken ?? true;
-
-    if (persist && token && !isServer()) {
-      LocalStorage.set(
-        `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`,
-        token
-      );
-    }
+  #saveSessionToken(token: string) {
+    this.#sessionToken = token;
   }
 
-  signIn(
-    { email, password }: { email: string; password: string },
-    options?: SignOptions
-  ) {
-    const headers = {
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-        this.#serverKey,
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]: 'signIn',
-      ...(typeof this.#serverAdditionalHeaders === 'function'
-        ? this.#serverAdditionalHeaders()
-        : this.#serverAdditionalHeaders),
-    };
-
-    return fetcher<Session>(`${this.#serverURL}/User`, {
-      method: 'POST',
-      headers,
-      body: {
-        ...options,
-        doc: {
-          email,
-          password,
-        },
-      },
-      direct: true,
-    }).then((data) => {
-      this.#saveSessionToken(data.token, options ?? {});
-      return data;
-    });
-  }
-
-  async signUp(
-    from: {
-      name: string;
-      email: string;
-      password: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      [key: string]: any;
-    },
-    options?: SignOptions
-  ) {
-    const headers = {
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-        this.#serverKey,
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]: 'signUp',
-      ...(typeof this.#serverAdditionalHeaders === 'function'
-        ? this.#serverAdditionalHeaders()
-        : this.#serverAdditionalHeaders),
-    };
-
-    if (!isServer()) {
-      const token = LocalStorage.get(
-        `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-      );
-      if (token) {
-        headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`] =
-          token;
-      }
-    } else {
-      if (this.#serverSecret) {
-        headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiSecret']}`] =
-          this.#serverSecret;
-      }
-    }
-
-    const data = await fetcher<Session>(`${this.#serverURL}/User`, {
-      method: 'POST',
-      headers,
-      body: {
-        doc: from,
-      },
-      direct: true,
-    });
-    this.#saveSessionToken(data.token, options ?? {});
-    return data;
-  }
-
-  async signOut({ token }: { token?: string } = {}) {
-    if (!isServer()) {
-      token = LocalStorage.get(
-        `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-      );
-    }
-
-    if (isServer() && !token) {
-      throw new Error('token is required on server');
-    }
-
+  public getHeaders({ method, token }: { method?: string; token?: string | null }) {
     const headers = {
       [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
         this.#serverKey,
@@ -164,10 +77,102 @@ export class Auth {
         token;
     }
 
+    if (method) {
+      headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`] =
+        method;
+    }
+
+    return headers;
+  }
+
+ 
+  public removeToken() {
+    this.#sessionToken = null;
     if (!isServer()) {
-      LocalStorage.unset(
-        `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-      );
+      const bordaStorageName = slugfy(this.#name);
+      const bordaStorage = LocalStorage.get(bordaStorageName) || {};
+      delete bordaStorage.sessionToken;
+      LocalStorage.set(bordaStorageName, bordaStorage);
+    }
+  }
+
+  async signIn(
+    { email, password }: { email: string; password: string },
+    options?: Pick<SignOptions, 'include' | 'exclude' | 'projection'>
+  ) {
+    const headers = this.getHeaders({
+      method: 'signIn',
+    });
+
+    const data = await fetcher<Session>(`${this.#serverURL}/User`, {
+      method: 'POST',
+      headers,
+      body: {
+        ...options,
+        doc: {
+          email,
+          password,
+        },
+      },
+      direct: true,
+    });
+
+    this.#saveSessionToken(data.token);
+    return data;
+  }
+
+  async signUp(
+    from: {
+      name: string;
+      email: string;
+      password: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      [key: string]: any;
+    },
+    options?: Pick<SignOptions, 'include' | 'exclude' | 'projection'>
+  ) {
+    const headers = this.getHeaders({
+      method: 'signUp',
+    });
+
+    if (isServer()) {
+      if (this.#serverSecret) {
+        headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiSecret']}`] =
+          this.#serverSecret;
+      }
+    }
+
+    const data = await fetcher<Session>(`${this.#serverURL}/User`, {
+      method: 'POST',
+      headers,
+      body: {
+        doc: from,
+        options,
+      },
+      direct: true,
+    });
+
+    this.#saveSessionToken(data.token);
+
+    return data;
+  }
+
+  async signOut({ token }: { token?: string | null } = {}) {
+    if (!token) {
+      token = this.sessionToken;
+    }
+
+    if (isServer() && !token) {
+      throw new Error('token is required on server');
+    }
+
+    this.removeToken();
+
+    const headers = this.getHeaders({
+      token,
+    });
+
+    if (!isServer()) {
       if (BordaLiveQueryMemo.size) {
         for (const [key, value] of BordaLiveQueryMemo) {
           console.debug('closing live query', key); // @todo inject inspect
@@ -185,70 +190,47 @@ export class Auth {
 
   async become({
     token,
-    saveToken,
     validateSession,
-  }: Pick<SignOptions, 'saveToken' | 'validateSession'> & { token: string }) {
+  }: Pick<SignOptions, 'validateSession'> & { token: string }) {
     if (isServer()) {
       throw new Error('become is not supported on server.');
     }
 
-    const headers = {
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-        this.#serverKey,
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`]: token,
-      ...(typeof this.#serverAdditionalHeaders === 'function'
-        ? this.#serverAdditionalHeaders()
-        : this.#serverAdditionalHeaders),
-    };
+    const headers = this.getHeaders({
+      token,
+    });
 
     const shouldValidate = isBoolean(validateSession) ? validateSession : true;
 
-    return shouldValidate
-      ? fetcher<Session>(`${this.#serverURL}/me`, {
-          method: 'GET',
-          headers,
-          direct: true,
-        }).then((data) => {
-          this.#saveSessionToken(data.token, {
-            saveToken,
-            validateSession,
-          });
-          return data;
-        })
-      : Promise.resolve().then(() => {
-          this.#saveSessionToken(token, {
-            saveToken,
-            validateSession,
-          });
-        });
+    if (!shouldValidate) {
+      this.#saveSessionToken(token);
+      return;
+    }
+
+    const data = await fetcher<Session>(`${this.#serverURL}/me`, {
+      method: 'GET',
+      headers,
+      direct: true,
+    });
+
+    this.#saveSessionToken(token);
+    return data;
   }
 
-  async updateEmail(
-    {
-      currentPassword,
-      newEmail,
-    }: { currentPassword: string; newEmail: string },
-    options?: SignOptions
-  ) {
+  async updateEmail({
+    currentPassword,
+    newEmail,
+  }: {
+    currentPassword: string;
+    newEmail: string;
+  }) {
     if (isServer()) {
       throw new Error(
         'email update via Auth SDK is not supported on server. use the `query` api with `unlock` instead.'
       );
     }
 
-    const headers = {
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-        this.#serverKey,
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
-        'updateEmail',
-      ...(typeof this.#serverAdditionalHeaders === 'function'
-        ? this.#serverAdditionalHeaders()
-        : this.#serverAdditionalHeaders),
-    };
-
-    const token = LocalStorage.get(
-      `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-    );
+    const token = this.sessionToken;
 
     if (!token) {
       throw new Error(
@@ -256,10 +238,12 @@ export class Auth {
       );
     }
 
-    headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`] =
-      token;
+    const headers = this.getHeaders({
+      method: 'updateEmail',
+      token,
+    });
 
-    return fetcher<Session>(`${this.#serverURL}/User`, {
+    const data = await fetcher<Session>(`${this.#serverURL}/User`, {
       method: 'POST',
       headers,
       body: {
@@ -269,50 +253,39 @@ export class Auth {
         },
       },
       direct: true,
-    }).then((data) => {
-      this.#saveSessionToken(data.token, options ?? {});
-      return data;
     });
+
+    this.#saveSessionToken(data.token);
+    return data;
   }
 
-  async updatePassword(
-    {
-      currentPassword,
-      newPassword,
-    }: { currentPassword: string; newPassword: string },
-
-    options?: SignOptions
-  ) {
+  async updatePassword({
+    currentPassword,
+    newPassword,
+  }: {
+    currentPassword: string;
+    newPassword: string;
+  }) {
     if (isServer()) {
       throw new Error(
-        'password update via Auth SDK is not supported on server. use the `query` api with `unlock` instead.'
+        'password update via Auth SDK is not supported on server.'
       );
     }
 
-    const headers = {
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-        this.#serverKey,
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
-        'updatePassword',
-      ...(typeof this.#serverAdditionalHeaders === 'function'
-        ? this.#serverAdditionalHeaders()
-        : this.#serverAdditionalHeaders),
-    };
-
-    const token = LocalStorage.get(
-      `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-    );
+    const token = this.sessionToken;
 
     if (!token) {
       throw new Error(
-        `A token is required to update user's password. Did you sign in before?`
+        'A token is required to update user password. Did you `signIn` or `become` before?'
       );
     }
 
-    headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`] =
-      token;
+    const headers = this.getHeaders({
+      method: 'updatePassword',
+      token,
+    });
 
-    return fetcher<Session>(`${this.#serverURL}/User`, {
+    const data = await fetcher<Session>(`${this.#serverURL}/User`, {
       method: 'POST',
       headers,
       body: {
@@ -322,22 +295,16 @@ export class Auth {
         },
       },
       direct: true,
-    }).then((data) => {
-      this.#saveSessionToken(data.token, options ?? {});
-      return data;
     });
+
+    this.#saveSessionToken(data.token);
+    return data;
   }
 
   async forgotPassword({ email }: { email: string }) {
-    const headers = {
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-        this.#serverKey,
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
-        'passwordForgot',
-      ...(typeof this.#serverAdditionalHeaders === 'function'
-        ? this.#serverAdditionalHeaders()
-        : this.#serverAdditionalHeaders),
-    };
+    const headers = this.getHeaders({
+      method: 'passwordForgot',
+    });
 
     return fetcher(`${this.#serverURL}/User`, {
       method: 'POST',
@@ -358,15 +325,9 @@ export class Auth {
     token: string;
     newPassword: string;
   }) {
-    const headers = {
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-        this.#serverKey,
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiMethod']}`]:
-        'passwordReset',
-      ...(typeof this.#serverAdditionalHeaders === 'function'
-        ? this.#serverAdditionalHeaders()
-        : this.#serverAdditionalHeaders),
-    };
+    const headers = this.getHeaders({
+      method: 'passwordReset',
+    });
 
     return fetcher(`${this.#serverURL}/User`, {
       method: 'POST',

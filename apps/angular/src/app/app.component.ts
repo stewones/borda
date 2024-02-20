@@ -1,6 +1,14 @@
-import { of, Subscription } from 'rxjs';
+import {
+  of,
+  Subscription,
+} from 'rxjs';
 
-import { AsyncPipe, JsonPipe, NgForOf, NgIf } from '@angular/common';
+import {
+  AsyncPipe,
+  JsonPipe,
+  NgForOf,
+  NgIf,
+} from '@angular/common';
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
@@ -14,8 +22,15 @@ import {
   ReactiveFormsModule,
 } from '@angular/forms';
 
-import { fast, Fast, from } from '@borda/browser';
-import { Session, User } from '@borda/client';
+import {
+  fast,
+  Fast,
+  from,
+} from '@borda/browser';
+import {
+  Session,
+  User,
+} from '@borda/client';
 
 import { environment } from '../environment';
 import {

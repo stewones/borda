@@ -18,8 +18,8 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
-      "@borda/client": ["packages/client/src/index.ts"],
       "@borda/browser": ["packages/browser/src/index.ts"],
+      "@borda/client": ["packages/client/src/index.ts"],
       "@borda/server": ["packages/server/src/index.ts"]
     }
   },

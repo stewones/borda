@@ -1,0 +1,21 @@
+{
+  "name": "@borda/browser",
+  "version": "0.0.4",
+  "files": [
+    "packages",
+    "package.json",
+    "README.md",
+    "index.esm.js"
+  ],
+  "peerDependencies": {
+    "@borda/client": "^0.0.0",
+    "reflect-metadata": "0.2.1",
+    "@reduxjs/toolkit": "^2.1.0",
+    "redux-watch": "^1.2.0",
+    "rxjs": "^7.8.1"
+  },
+  "typings": "./packages/browser/src/index.d.ts",
+  "module": "./index.esm.js",
+  "type": "module",
+  "main": "./index.esm.js"
+}

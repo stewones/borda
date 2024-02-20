@@ -1,8 +1,20 @@
 import { ɵprovideZonelessChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 
-import { Action, Borda, createAction, createReducer } from '@borda/browser';
-import { isEqual, Record, Session, User } from '@borda/client';
+import {
+  Action,
+  Borda,
+  createAction,
+  createReducer,
+} from '@borda/browser';
+import {
+  BordaClient,
+  isEqual,
+  isServer,
+  Record,
+  Session,
+  User,
+} from '@borda/client';
 
 import { AppComponent } from './app/app.component';
 import { environment } from './environment';
@@ -49,7 +61,7 @@ export const sessionReset = createAction('session/reset');
 /**
  * export borda instance with browser capabilities
  */
-export const borda = new Borda({
+const borda = new Borda({
   inspect: !environment.production,
   serverURL: environment.serverURL,
   serverKey: environment.serverKey,
@@ -110,7 +122,10 @@ borda
 
     if (session) {
       borda.dispatch(sessionSet(session));
-      borda.auth.become({ token: session.token });
+      borda.auth.become({
+        token: session.token,
+        // validateSession: false,
+      });
     }
 
     /**
@@ -123,3 +138,14 @@ borda
   .catch((err) => {
     console.error(err);
   });
+
+export { borda };
+
+if (!isServer()) {
+  if (!environment.production) {
+    // @ts-ignore
+    borda['pubsub'] = BordaClient.pubsub;
+    // @ts-ignore
+    window['borda'] = borda;
+  }
+}

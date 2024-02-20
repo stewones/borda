@@ -280,6 +280,7 @@ export class Borda {
   async server() {
     // instantiate auth
     this.#auth = new Auth({
+      name: this.#name,
       serverKey: this.#serverKey,
       serverSecret: this.#serverSecret,
       serverURL: this.#serverURL,

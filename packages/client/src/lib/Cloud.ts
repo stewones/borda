@@ -6,37 +6,36 @@
  * found in the LICENSE file at https://borda.dev/license
  */
 
+import { Auth } from './Auth';
 import { BordaServerAdditionalHeaders } from './Borda';
-import {
-  BordaError,
-  ErrorCode,
-} from './Error';
+import { BordaError, ErrorCode } from './Error';
 import { fetcher } from './fetcher';
 import { InternalHeaders } from './internal';
 import { Document } from './types/query';
-import {
-  cleanKey,
-  isServer,
-  LocalStorage,
-} from './utils';
+import { cleanKey, isServer } from './utils';
 
 export class Cloud {
   #app!: string;
+  #auth!: Auth;
   #serverKey!: string;
   #serverSecret!: string;
   #serverURL!: string;
   #serverHeaderPrefix!: string;
-  #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
+
+  public get auth() {
+    return this.#auth;
+  }
 
   constructor({
     app,
+    auth,
     serverKey,
     serverSecret,
     serverURL,
     serverHeaderPrefix,
-    serverAdditionalHeaders,
   }: {
     app: string;
+    auth: Auth;
     serverKey: string;
     serverSecret: string;
     serverURL: string;
@@ -44,11 +43,11 @@ export class Cloud {
     serverAdditionalHeaders?: BordaServerAdditionalHeaders;
   }) {
     this.#app = app;
+    this.#auth = auth;
     this.#serverKey = serverKey;
     this.#serverSecret = serverSecret;
     this.#serverURL = serverURL;
     this.#serverHeaderPrefix = serverHeaderPrefix;
-    this.#serverAdditionalHeaders = serverAdditionalHeaders ?? {};
   }
 
   run<T = Document>(
@@ -72,24 +71,17 @@ export class Cloud {
       );
     }
 
-    const headers = {
-      [`${this.#serverHeaderPrefix}-${InternalHeaders['apiKey']}`]:
-        this.#serverKey,
-      ...(typeof this.#serverAdditionalHeaders === 'function'
-        ? this.#serverAdditionalHeaders()
-        : this.#serverAdditionalHeaders),
-      ...options?.headers,
-    };
+    const token = this.#auth.sessionToken;
 
-    if (!isServer()) {
-      const token = LocalStorage.get(
-        `${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`
-      );
-      if (token) {
-        headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiToken']}`] =
-          token;
-      }
-    } else {
+    const headers = this.#auth.getHeaders({
+      token,
+    });
+
+    if (options?.headers) {
+      Object.assign(headers, options.headers);
+    }
+
+    if (isServer()) {
       if (this.#serverSecret) {
         headers[`${this.#serverHeaderPrefix}-${InternalHeaders['apiSecret']}`] =
           this.#serverSecret;

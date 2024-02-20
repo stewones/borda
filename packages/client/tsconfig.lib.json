@@ -5,7 +5,7 @@
     "declaration": true,
     "types": ["node"]
   },
-  "files": ["./src/package.json"],
-  "include": ["**/*.ts", "**/*.d.ts", "./package.json"],
+  "files": [],
+  "include": ["**/*.ts", "**/*.d.ts"],
   "exclude": ["jest.config.ts", "**/*.spec.ts", "**/*.test.ts"]
 }

@@ -58,10 +58,6 @@ export class Borda {
     return this.#serverKey;
   }
 
-  get serverSecret() {
-    return this.#serverSecret;
-  }
-
   get serverURL() {
     return this.#serverURL;
   }
@@ -70,8 +66,20 @@ export class Borda {
     return this.#serverHeaderPrefix;
   }
 
+  get serverAdditionalHeaders() {
+    return this.#serverAdditionalHeaders;
+  }
+
   get auth() {
     return this.#auth;
+  }
+
+  get serverSecret() {
+    return this.#serverSecret;
+  }
+
+  set serverSecret(secret: string) {
+    this.#serverSecret = secret;
   }
 
   constructor(params?: Partial<BordaParams>) {
@@ -101,9 +109,9 @@ export class Borda {
     this.#serverHeaderPrefix = serverHeaderPrefix || 'X-Borda';
     this.#serverAdditionalHeaders = serverAdditionalHeaders || {};
 
-    // instantiate cloud
-    this.#cloud = new Cloud({
-      app: this.#name,
+    // instantiate auth
+    this.#auth = new Auth({
+      name: this.#name,
       serverKey: this.#serverKey,
       serverSecret: this.#serverSecret,
       serverURL: this.#serverURL,
@@ -111,13 +119,14 @@ export class Borda {
       serverAdditionalHeaders: this.#serverAdditionalHeaders,
     });
 
-    // instantiate auth
-    this.#auth = new Auth({
+    // instantiate cloud
+    this.#cloud = new Cloud({
+      app: this.#name,
+      auth: this.#auth,
       serverKey: this.#serverKey,
       serverSecret: this.#serverSecret,
       serverURL: this.#serverURL,
       serverHeaderPrefix: this.#serverHeaderPrefix,
-      serverAdditionalHeaders: this.#serverAdditionalHeaders,
     });
   }
 
@@ -135,12 +144,12 @@ export class Borda {
     return new BordaClientQuery<TSchema>({
       collection,
       app: this.#name,
+      auth: this.#auth,
       inspect: this.inspect,
       serverURL: this.serverURL,
       serverKey: this.serverKey,
       serverSecret: this.serverSecret,
       serverHeaderPrefix: this.serverHeaderPrefix,
-      serverAdditionalHeaders: this.#serverAdditionalHeaders,
     });
   }
 }

@@ -3,7 +3,6 @@ import watch from 'redux-watch';
 import { Observable } from 'rxjs';
 
 import {
-  Auth,
   BordaClient,
   BordaParams,
   cloneDeep,
@@ -13,19 +12,10 @@ import {
   isServer,
 } from '@borda/client';
 
-import {
-  Action,
-  Store,
-} from '@reduxjs/toolkit';
+import { Action, Store } from '@reduxjs/toolkit';
 
 import type { FastOptions } from './fast';
-import {
-  borda,
-  bordaReset,
-  bordaSet,
-  bordaUnset,
-  createStore,
-} from './redux';
+import { borda, bordaReset, bordaSet, bordaUnset, createStore } from './redux';
 
 export type BordaStateFastParams = Pick<
   FastOptions,
@@ -102,7 +92,6 @@ export class Borda extends BordaClient {
       store: Store;
       cache: IndexedDB;
       fast: BordaStateFastParams;
-      auth: Auth;
       getState: <T = Document>(
         path?: string,
         options?: { useCache: boolean }
@@ -139,6 +128,10 @@ export class Borda extends BordaClient {
     this.#fast = fast ?? { mode: 'straight' };
     this.#traceLimit = traceLimit ?? 100;
     this.#preloadedState = preloadedState ?? {};
+
+    if (!params?.serverSecret) {
+      super.serverSecret = '';
+    }
   }
 
   /**
@@ -168,7 +161,6 @@ export class Borda extends BordaClient {
           : ({} as Store),
         cache: !isServer() ? await cache.load() : ({} as IndexedDB),
         fast: this.#fast,
-        auth: this.auth,
         getState: this.getState.bind(this),
         setState: this.setState.bind(this),
       },

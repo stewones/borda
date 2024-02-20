@@ -4,23 +4,6 @@
   "sourceRoot": "packages/browser/src",
   "projectType": "library",
   "targets": {
-    "build": {
-      "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
-      "options": {
-        "outputPath": "dist/packages/browser",
-        "main": "packages/browser/src/index.ts",
-        "tsConfig": "packages/browser/tsconfig.lib.json",
-        "packageJson": "packages/browser/src/package.json",
-        "external": "all",
-        "externalBuildTargets": [
-          "@borda/client",
-          "@reduxjs/toolkit",
-          "rxjs",
-          "redux-watch"
-        ]
-      }
-    },
     "publish": {
       "executor": "nx:run-commands",
       "options": {
@@ -37,6 +20,37 @@
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
         "jestConfig": "packages/browser/jest.config.ts"
+      }
+    },
+    "build": {
+      "executor": "@nx/rollup:rollup",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "main": "packages/browser/src/index.ts",
+        "outputPath": "dist/packages/browser",
+        "tsConfig": "packages/browser/tsconfig.lib.json",
+        "project": "packages/browser/package.json",
+        "buildableProjectDepsInPackageJsonType": "dependencies",
+        "updateBuildableProjectDepsInPackageJson": false,
+        "format": ["esm"],
+        "rollupConfig": "packages/browser/rollup.config.cjs",
+        "assets": [
+          {
+            "glob": "packages/browser/README.md",
+            "input": ".",
+            "output": "."
+          }
+        ]
+      },
+      "configurations": {
+        "production": {
+          "optimization": true,
+          "sourceMap": false,
+          "namedChunks": false,
+          "extractLicenses": true,
+          "vendorChunk": false
+        }
       }
     }
   },
