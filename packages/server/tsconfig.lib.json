@@ -5,7 +5,12 @@
     "declaration": true,
     "types": ["node", "jest"]
   },
-  "files": ["./package.json"],
-  "include": ["**/*.ts", "./package.json"],
-  "exclude": ["jest.config.ts", "**/*.spec.ts", "**/*.test.ts"]
+  "include": ["**/*.ts", "**/*.d.ts"],
+  "exclude": [
+    "jest.config.ts",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "node_modules",
+    "test"
+  ]
 }

@@ -1,31 +1,39 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import produce from 'immer';
-
 import {
-  AnyAction,
-  combineReducers,
-  ConfigureEnhancersCallback,
+  ActionCreatorWithPayload,
+  ActionReducerMapBuilder,
+  CaseReducer,
   configureStore,
-  DeepPartial,
+  createAction as createReduxAction,
+  createReducer as createReduxReducer,
+  Draft as ImmerDraft,
   EnhancedStore,
-  StoreEnhancer,
+  PayloadActionCreator,
 } from '@reduxjs/toolkit';
+import { ReducerWithInitialState } from '@reduxjs/toolkit/dist/createReducer';
 
-import { EleganteBrowser } from './Browser';
+import type { StateDocument } from './Borda';
 
 export interface Action<T = any> {
   type: string;
   payload: T;
 }
+
+export type Draft<S> = ImmerDraft<S>;
+
+export type ReducerActions<S> = Record<
+  string,
+  (state: S, action: Action) => void
+>;
 
 /**
  * Easily create redux reducers powered by immer.js
@@ -37,7 +45,7 @@ export interface Action<T = any> {
  * @returns {fn}
  * @example
  *
- * import { createReducer } from '@elegante/browser';
+ * import { createReducer } from '@borda/browser';
  *
  * const person = createReducer<{
  *   firstName: string;
@@ -63,18 +71,21 @@ export interface Action<T = any> {
  *   }
  * );
  */
-export function createReducer<T = any>(init: T, tree: any) {
-  return function (state: T = init, action: AnyAction) {
-    if (tree[action.type]) {
-      return produce<T>(state, (draft) => {
-        if (typeof state === 'object') {
-          return void tree[action.type](draft, action);
-        }
-        return tree[action.type](draft, action);
+
+export function createReducer<S>(init: S, actions: ReducerActions<S>) {
+  return createReduxReducer<S>(init, (builder: ActionReducerMapBuilder<S>) => {
+    Object.keys(actions).forEach((key) => {
+      const actionCreator = createAction(key);
+      builder.addCase(actionCreator, (state, action) => {
+        // Ensure the reducer function is compatible with CaseReducer type
+        const caseReducer = actions[key] as CaseReducer<
+          S,
+          ReturnType<typeof actionCreator>
+        >;
+        return caseReducer(state, action);
       });
-    }
-    return state;
-  };
+    });
+  });
 }
 
 /**
@@ -87,7 +98,7 @@ export function createReducer<T = any>(init: T, tree: any) {
  *
  * @example
  *
- * import { createAction, dispatch } from '@elegante/browser';
+ * import { createAction, dispatch } from '@borda/browser';
  *
  * // create action
  * const increment = createAction<number>('increment');
@@ -95,34 +106,10 @@ export function createReducer<T = any>(init: T, tree: any) {
  * // dispatch
  * dispatch(increment(54))
  */
-export function createAction<T = any>(
-  type: string
-): (payload?: T) => Action<T> {
-  return (payload?: T) => {
-    return {
-      type,
-      payload: payload as T,
-    };
-  };
-}
-
-/**
- * Action dispatcher
- *
- * @export
- * @template T
- * @param {(Action<T> | ((dispatch: any) => Promise<boolean | void> | void))} action
- * @returns {*}  {Action<T>}
- */
-export function dispatch<T = any>(
-  action: Action<T> | ((dispatch: any) => Promise<boolean | void> | void)
-): Action<T> {
-  if (!EleganteBrowser.store) {
-    throw new Error(
-      'unable to find any store. to use dispatch make sure to import { load } from @elegante/browser and call `load()` in your app startup.'
-    );
-  }
-  return EleganteBrowser.store.dispatch(action as Action<T>);
+export function createAction<P = void, T extends string = string>(
+  type: T
+): PayloadActionCreator<P, T> {
+  return createReduxAction<P, T>(type);
 }
 
 /**
@@ -133,7 +120,7 @@ export function dispatch<T = any>(
  *   createReducer,
  *   applyDevTools,
  *   applyMiddleware
- * } from '@elegante/browser';
+ * } from '@borda/browser';
  *
  * export const counter = createReducer(0, {
  *   increment: (state, action) => state + action.payload,
@@ -164,24 +151,28 @@ export function dispatch<T = any>(
  * @param {*} preloadedState
  * @param {*} [enhancers]
  */
-export function createStore<S = any>(params: {
-  debug?: boolean;
+export function createStore({
+  name,
+  reducers,
+  preloadedState,
+  inspect,
+  traceLimit = 100,
+}: {
+  name: string;
   reducers: any;
-  preloadedState?: DeepPartial<S extends any ? S : S>;
-  enhancers?: StoreEnhancer[] | ConfigureEnhancersCallback;
+  preloadedState: any;
+  inspect?: boolean;
+  traceLimit?: number;
 }): EnhancedStore {
-  const { reducers, preloadedState, enhancers, debug } = params;
-  const d = debug ?? EleganteBrowser.params.debug;
-
   const store = configureStore({
-    devTools: d
+    devTools: inspect
       ? {
           trace: true,
-          traceLimit: 100,
+          traceLimit,
+          name,
         }
       : false,
-    reducer: combineReducers(reducers),
-    enhancers,
+    reducer: reducers,
     preloadedState,
   });
 
@@ -190,31 +181,30 @@ export function createStore<S = any>(params: {
 
 interface QueryPayload {
   key: string;
-  value?: any;
+  value?: StateDocument;
 }
 
+type DocState = Record<string, StateDocument>;
+
 /**
- * The $doc reducer + actions
- * also used internally to store queried results
+ * doc reducer + actions
  */
-export const $docSet = createAction<QueryPayload>('$docSet');
-export const $docUnset = createAction<QueryPayload>('$docUnset');
-export const $docReset = createAction('$docReset');
-export function $doc() {
-  return createReducer<{
-    [key: string]: any;
-  }>(
-    // initial state
+export const bordaSet = createAction<QueryPayload>('borda/set');
+export const bordaUnset =
+  createAction<Pick<QueryPayload, 'key'>>('borda/unset');
+export const bordaReset = createAction('borda/reset');
+
+export function borda() {
+  return createReducer<DocState>(
     {},
-    // actions
     {
-      $docSet: (state: any, action: Action<QueryPayload>) => {
+      [bordaSet.type]: (state: DocState, action: Action) => {
         state[action.payload.key] = action.payload.value;
       },
-      $docUnset: (state: any, action: Action<QueryPayload>) => {
+      [bordaUnset.type]: (state: DocState, action: Action) => {
         delete state[action.payload.key];
       },
-      $docReset: (state: any) => {
+      [bordaReset.type]: (state: DocState) => {
         for (const key in state) {
           delete state[key];
         }
@@ -222,3 +212,11 @@ export function $doc() {
     }
   );
 }
+
+export type {
+  ActionCreatorWithPayload,
+  ActionReducerMapBuilder,
+  CaseReducer,
+  PayloadActionCreator,
+  ReducerWithInitialState,
+};

@@ -1,10 +1,19 @@
-import { of, Subscription } from 'rxjs';
+import {
+  of,
+  Subscription,
+} from 'rxjs';
 
-import { CommonModule } from '@angular/common';
+import {
+  AsyncPipe,
+  JsonPipe,
+  NgForOf,
+  NgIf,
+} from '@angular/common';
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  signal,
 } from '@angular/core';
 import {
   FormControl,
@@ -14,39 +23,38 @@ import {
 } from '@angular/forms';
 
 import {
-  connect,
-  dispatch,
   fast,
   Fast,
   from,
-  getDocState,
-  getState,
-  resetDocState,
-  setDocState,
-  unsetDocState,
-} from '@elegante/browser';
+} from '@borda/browser';
 import {
-  Auth,
-  LocalStorage,
-  ping,
-  query,
-  runFunction,
   Session,
-  storageEstimate,
   User,
-} from '@elegante/sdk';
+} from '@borda/client';
 
+import { environment } from '../environment';
 import {
+  borda,
   coolInitialState,
   coolReset,
   coolSet,
+  CoolState,
   Counter,
-  PublicUserModel,
+  sessionInitialState,
+  sessionReset,
   sessionSet,
-  sessionUnset,
 } from '../main';
 
 console.time('startup');
+
+function ping() {
+  return fetch(`${environment.serverURL}/ping`, {
+    headers: {
+      'Content-Type': 'text/html',
+      'X-Borda-Api-Key': environment.serverKey,
+    },
+  });
+}
 
 function somePromise() {
   return new Promise<number>((resolve, reject) => {
@@ -59,10 +67,17 @@ function somePromise() {
 
 @Component({
   standalone: true,
-  selector: 'elegante-app',
-  imports: [CommonModule, FormsModule, ReactiveFormsModule],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'borda-app',
+  imports: [
+    NgIf,
+    NgForOf,
+    AsyncPipe,
+    FormsModule,
+    JsonPipe,
+    ReactiveFormsModule,
+  ],
 
+  changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [
     `
       form {
@@ -89,11 +104,11 @@ function somePromise() {
       (click)="increase()"
       title="click to increase the counter. which should reflect here in realtime if subscribed. experiment open many tabs at same time and see the changes reflect."
     >
-      Increase count (realtime):
-      {{ counter.total }}
+      Increase count (realtime*):
+      {{ counterRemote().total }}
     </button>
     <button (click)="reload()" title="click to refresh the page">
-      Next Total (local): {{ counterTotalNext }}
+      Local Total (refresh): {{ counterLocalTotal() }}
     </button>
     <button
       (click)="unsubscribe()"
@@ -107,7 +122,9 @@ function somePromise() {
     >
       Re-subscribe Realtime
     </button>
-
+    <br />
+    <br />
+    *realtime requires a valid session
     <br />
 
     <h2>Sign Up</h2>
@@ -128,30 +145,29 @@ function somePromise() {
     <hr />
     <br />
 
-    <ng-container *ngIf="session$ | async as session">
-      <ng-container *ngIf="!session?.token">
-        <h2>Sign In</h2>
-        <form [formGroup]="signInForm" (ngSubmit)="signIn()">
-          <label for="email">email </label>
-          <input id="email" type="text" formControlName="email" />
-          <label for="password">password: </label>
-          <input id="password" type="text" formControlName="password" />
-          <button type="submit" [disabled]="signInForm.invalid">
-            Login Account
-          </button>
-        </form>
-      </ng-container>
-
-      <button *ngIf="session?.token" (click)="signOut()">
-        Logout from {{ session.user.name }} ({{ session.user.email }})
-      </button>
+    <ng-container *ngIf="!session()?.token">
+      <h2>Sign In</h2>
+      <form [formGroup]="signInForm" (ngSubmit)="signIn()">
+        <label for="email">email </label>
+        <input id="email" type="text" formControlName="email" />
+        <label for="password">password: </label>
+        <input id="password" type="text" formControlName="password" />
+        <button type="submit" [disabled]="signInForm.invalid">
+          Login Account
+        </button>
+      </form>
     </ng-container>
+
+    <button *ngIf="session()?.token" (click)="signOut()">
+      Logout from {{ session().user.name }} ({{ session().user.email }})
+    </button>
 
     <hr />
     Error: {{ (signInError | json) ?? '' }}
 
     <hr />
-    <ng-container *ngIf="session$ | async as session">
+
+    <ng-container *ngIf="session()?.token">
       Session: {{ session | json }}
       <hr />
     </ng-container>
@@ -169,7 +185,7 @@ function somePromise() {
           <th align="left">name</th>
           <th align="left">email</th>
           <th>createdAt</th>
-          <th *ngIf="(session$ | async)?.token">actions</th>
+          <th *ngIf="session()?.token">actions</th>
         </tr>
         <tr
           *ngFor="let user of publicUsers$ | async; trackBy: trackByUserEmail"
@@ -177,18 +193,18 @@ function somePromise() {
           <td>{{ user.name }}</td>
           <td>{{ user.email }}</td>
           <td align="center">{{ user.createdAt }}</td>
-          <td align="center" *ngIf="(session$ | async)?.token">
+          <td align="center" *ngIf="session()?.token">
             <button (click)="deleteUser(user.objectId)">Delete</button>
           </td>
         </tr>
       </table>
 
-      <h4>@Fast Promise</h4>
+      <h4>&#64;Fast Promise</h4>
       <code>
         <pre>Random number: {{ fromPromise$ | async }}</pre>
       </code>
 
-      <h4>@Fast Query (needs login)</h4>
+      <h4>&#64;Fast Query (needs login)</h4>
       <code>
         <pre>Oldest users: {{ oldestUsers$ | async | json }}</pre>
       </code>
@@ -215,7 +231,7 @@ function somePromise() {
     <hr />
     Error: {{ (changeEmailError | json) ?? '' }}
     <hr />
-    Session: {{ session$ | async | json }}
+    Session: {{ session() | json }}
     <br />
     <br />
     <h2>Change Current User Password</h2>
@@ -238,7 +254,7 @@ function somePromise() {
     <hr />
     Error: {{ (changePasswordError | json) ?? '' }}
     <hr />
-    Session: {{ session$ | async | json }}
+    Session: {{ session() | json }}
     <br />
 
     <br />
@@ -255,19 +271,15 @@ function somePromise() {
     <hr />
     Error: {{ (forgotPasswordError | json) ?? '' }}
     <br />
-    <!-- 
-    <button (click)="loadLotsOfDataIntoLocalStorage()">
-      Load Lots of Data into Local Storage
-    </button> -->
   `,
 })
 export class AppComponent {
-  counter: Counter = {
+  counterRemote = signal<Partial<Counter>>({
     total: 0,
-    name: 'elegante',
-  } as Counter;
+    name: 'borda',
+  });
 
-  counterTotalNext = 0;
+  counterLocalTotal = signal(0);
   subscription$: { [key: string]: Subscription } = {};
 
   signUpForm = new FormGroup({
@@ -301,17 +313,19 @@ export class AppComponent {
   changePasswordError: any;
   forgotPasswordError: any;
 
-  session$ = connect.bind(this)<Session>('session');
-  cool$ = connect.bind(this)<any>('cool');
-  publicUsers$ = connect.bind(this)<User[]>('publicUsers', { $doc: true });
+  session = signal<Session>(sessionInitialState);
+
+  cool$ = borda.connect<CoolState>('cool'); // async pipe example
+  publicUsers$ = borda.connect<User[]>('publicUsers');
 
   @Fast('myOwnPromise')
   fromPromise$ = from(somePromise());
 
   @Fast('oldestUsers')
-  oldestUsers$ = getState('session.token')
+  oldestUsers$ = borda.getState<string>('session.token')
     ? from(
-        query<User>('PublicUser')
+        borda
+          .query<User>('PublicUser')
           .filter({
             expiresAt: {
               $exists: false,
@@ -329,6 +343,9 @@ export class AppComponent {
 
   constructor(private cdr: ChangeDetectorRef) {
     ping().then(() => console.timeEnd('startup'));
+    borda
+      .connect<Session>('session')
+      .subscribe((session) => this.session.set(session));
   }
 
   ngOnDestroy() {}
@@ -344,8 +361,8 @@ export class AppComponent {
      * check if default record of counter exists
      * if not we create it, all in server side
      */
-    this.counter = await runFunction<Counter>('getCounter');
-    this.counterTotalNext = this.counter.total;
+    this.counterRemote.set(await borda.cloud.run<Counter>('getCounter'));
+    this.counterLocalTotal.set(this.counterRemote().total ?? 0);
 
     /**
      * subscribe to realtime updates
@@ -367,38 +384,41 @@ export class AppComponent {
     /**
      * subscribe to realtime updates
      */
-    this.subscription$['counterUpdate'] = query<Counter>('Counter')
+    this.subscription$['counterUpdate'] = borda
+      .query<Counter>('Counter')
       .filter({
         name: {
-          $eq: 'elegante',
+          $eq: 'borda',
         },
       })
       .on('update')
       .subscribe({
         next: ({ doc }) => {
           console.log('counter update', doc);
-          this.counter = doc;
+          this.counterRemote.set(doc);
           this.cdr.markForCheck();
         },
         error: (err) => console.error(err),
       });
 
-    this.subscription$['userDelete'] = query<User>('PublicUser')
+    this.subscription$['userDelete'] = borda
+      .query<User>('PublicUser')
       .on('delete')
       .subscribe(({ doc, ...rest }) => {
         console.log('user deleted', doc, rest);
-        setDocState(
+        borda.setState(
           'publicUsers',
-          getDocState<User[]>('publicUsers').filter(
-            (user) => user.objectId !== doc.objectId
-          )
+          borda
+            .getState<User[]>('publicUsers')
+            .filter((user) => user.objectId !== doc.objectId)
         );
       });
 
-    this.subscription$['userInsert'] = query<User & any>('PublicUser')
+    this.subscription$['userInsert'] = borda
+      .query<User & any>('PublicUser')
       .filter({
         expiresAt: {
-          $exists: 1,
+          $exists: -1,
         },
       })
       .sort({
@@ -407,9 +427,9 @@ export class AppComponent {
       .on('insert')
       .subscribe(({ doc }) => {
         console.log('user inserted', doc);
-        setDocState('publicUsers', [
+        borda.setState('publicUsers', [
           doc,
-          ...(getDocState<User[]>('publicUsers') || []),
+          ...(borda.getState<User[]>('publicUsers') || []),
         ]);
       });
   }
@@ -421,11 +441,10 @@ export class AppComponent {
   }
 
   increase() {
-    this.counterTotalNext = this.counterTotalNext + 1;
-    this.cdr.markForCheck();
-    runFunction('increaseCounter', {
-      objectId: this.counter.objectId,
-      total: this.counterTotalNext,
+    this.counterLocalTotal.set(this.counterLocalTotal() + 1);
+    borda.cloud.run('increaseCounter', {
+      objectId: this.counterRemote().objectId,
+      total: this.counterLocalTotal(),
     });
   }
 
@@ -436,7 +455,7 @@ export class AppComponent {
   async signUp() {
     const { name, email, password } = this.signUpForm.getRawValue();
     try {
-      const response = await Auth.signUp({
+      const response = await borda.auth.signUp({
         name: name ?? '',
         email: email ?? '',
         password: password ?? '',
@@ -448,9 +467,10 @@ export class AppComponent {
       this.signUpError = undefined;
       this.cdr.markForCheck();
 
-      dispatch(sessionSet(response));
+      borda.dispatch(sessionSet(response));
 
       this.loadPublicUsers();
+      this.subscribe();
     } catch (err) {
       console.error(err);
       this.signUpError = err;
@@ -459,14 +479,20 @@ export class AppComponent {
   }
 
   async signIn() {
-    const { email, password } = this.signInForm.getRawValue();
+    const { email, password } = this.signInForm.getRawValue() as {
+      email: string;
+      password: string;
+    };
     try {
-      const response = await Auth.signIn(email as string, password as string, {
-        projection: {
-          name: 1,
-          email: 1,
-        },
-      });
+      const response = await borda.auth.signIn(
+        { email, password },
+        {
+          projection: {
+            name: 1,
+            email: 1,
+          },
+        }
+      );
 
       const { user, token, ...rest } = response;
 
@@ -474,13 +500,14 @@ export class AppComponent {
       this.signUpError = undefined;
       this.cdr.markForCheck();
 
-      dispatch(sessionSet(response));
+      borda.dispatch(sessionSet(response));
 
       /**
        * load a protected function
        * by default all functions requires a valid user session token
        */
       this.loadPublicUsers();
+      this.subscribe();
     } catch (err) {
       console.error(err);
       this.signInError = err;
@@ -489,28 +516,29 @@ export class AppComponent {
   }
 
   async signOut() {
-    const resetState = () => {
-      resetDocState(); // reset $doc state
-      dispatch(sessionUnset());
-      dispatch(coolReset());
+    const resetState = async () => {
+      borda.resetState();
+      borda.dispatch(sessionReset());
+      borda.dispatch(coolReset());
     };
 
-    Auth.signOut().catch((err) => {});
+    borda.auth.signOut().catch((err) => {});
     resetState();
+    this.loadPublicUsers();
   }
 
   async changeEmail() {
     const { email, password } = this.changeEmailForm.getRawValue();
     try {
-      const response = await Auth.updateEmail(
-        email as string,
-        password as string
-      );
+      const response = await borda.auth.updateEmail({
+        newEmail: email as string,
+        currentPassword: password as string,
+      });
 
       this.changeEmailError = undefined;
       this.cdr.markForCheck();
 
-      dispatch(sessionSet(response));
+      borda.dispatch(sessionSet(response));
     } catch (err: any) {
       console.error(err);
       this.changeEmailError = err.message ? err.message : err;
@@ -522,15 +550,15 @@ export class AppComponent {
     const { currentPassword, newPassword } =
       this.changePasswordForm.getRawValue();
     try {
-      const response = await Auth.updatePassword(
-        currentPassword as string,
-        newPassword as string
-      );
+      const response = await borda.auth.updatePassword({
+        currentPassword: currentPassword as string,
+        newPassword: newPassword as string,
+      });
 
       this.changePasswordError = undefined;
       this.cdr.markForCheck();
 
-      dispatch(sessionSet(response));
+      borda.dispatch(sessionSet(response));
     } catch (err: any) {
       console.error(err);
       this.changePasswordError = err.message ? err.message : err;
@@ -541,7 +569,7 @@ export class AppComponent {
   async forgotPassword() {
     const { email } = this.forgotPasswordForm.getRawValue();
     try {
-      await Auth.forgotPassword(email as string);
+      await borda.auth.forgotPassword({ email: email as string });
 
       this.forgotPasswordError = undefined;
       this.cdr.markForCheck();
@@ -555,7 +583,8 @@ export class AppComponent {
   }
 
   deleteUser(objectId: string) {
-    query<User>('PublicUser')
+    borda
+      .query<User>('PublicUser')
       .filter({
         objectId: {
           $eq: objectId,
@@ -565,17 +594,17 @@ export class AppComponent {
   }
 
   resetPublicUsers() {
-    unsetDocState('publicUsers');
+    borda.unsetState('publicUsers');
     this.loadPublicUsers();
   }
 
   loadPublicUsers() {
-    runFunction<User[]>('getPublicUsers').then((users) =>
-      setDocState('publicUsers', users)
-    );
+    borda.cloud
+      .run<User[]>('getPublicUsers')
+      .then((users) => borda.setState('publicUsers', users));
 
-    if (getState('session.token')) {
-      dispatch(
+    if (borda.getState('session.token')) {
+      borda.dispatch(
         coolSet({
           hey: 'dude',
           this: 'is',
@@ -583,7 +612,7 @@ export class AppComponent {
         })
       );
     } else {
-      dispatch(coolSet(coolInitialState));
+      borda.dispatch(coolSet(coolInitialState));
     }
   }
 
@@ -595,25 +624,10 @@ export class AppComponent {
     // create a random email
     const email = `${Math.random().toString(36).substring(2, 15)}@random.email`;
     const name = `${Math.random().toString(36).substring(2, 15)}`;
-    const user = new PublicUserModel({ email, name });
-    await user.save();
-    console.log('createRandomUser()', user.getRawValue());
-  }
-
-  async loadLotsOfDataIntoLocalStorage() {
-    const data = [];
-    for (let i = 0; i < 9999; i++) {
-      data.push({
-        id: i,
-        name: `name ${i}`,
-        email: `email ${i}`,
-      });
-    }
-    LocalStorage.set('lotsOfData', [
-      ...(LocalStorage.get('lotsOfData') || []),
-      ...data,
-    ]);
-    console.log(`loaded ${data.length} items into localStorage`);
-    console.log(await storageEstimate());
+    const user = await borda.query<User>('PublicUser').insert({
+      name,
+      email,
+    });
+    console.log('createRandomUser()', user);
   }
 }

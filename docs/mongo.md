@@ -1,6 +1,5 @@
 # new mongo deployments
-- see intense/chatness database docker compose
-- once running connect to the vm/container/mongosh
+
 - use admin
 - rs.initiate()
 - add user
@@ -16,7 +15,7 @@
 ```
 
 
-# start mac m1 process
+# start mongod process
 
 ```sh
 mongod --config /opt/homebrew/etc/mongod.conf --fork

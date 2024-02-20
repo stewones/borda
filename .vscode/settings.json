@@ -13,10 +13,11 @@
     "^@angular/",
     "^vue$",
     "^react(-dom)?$",
-    "^@elegante",
+    "^@borda",
     "^@intenseloop",
     "^@inl",
     "^[@]",
     "^[.]"
-  ]
+  ],
+  "typescript.tsdk": "node_modules/typescript/lib"
 }

@@ -1,40 +1,23 @@
+import { ɵprovideZonelessChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 
 import {
   Action,
+  Borda,
   createAction,
   createReducer,
-  dispatch,
-  load,
-} from '@elegante/browser';
+} from '@borda/browser';
 import {
-  ActiveParams,
-  ActiveRecord,
-  cleanArray,
-  init,
+  BordaClient,
   isEqual,
-  LocalStorage,
-  log,
+  isServer,
   Record,
   Session,
   User,
-} from '@elegante/sdk';
+} from '@borda/client';
 
 import { AppComponent } from './app/app.component';
-
-/**
- * shared stuff
- */
-export const coolInitialState: any = {
-  hey: 'dude',
-  this: 'is',
-  cool: '🤓',
-};
-
-export const coolSet = createAction<any>('coolSet');
-export const coolReset = createAction('coolReset');
-export const sessionSet = createAction<Session>('sessionSet');
-export const sessionUnset = createAction('sessionUnset');
+import { environment } from './environment';
 
 export interface Counter extends Record {
   total: number;
@@ -45,114 +28,124 @@ export interface UserExtended extends User {
   username?: string;
 }
 
-export class PublicUserModel extends ActiveRecord<UserExtended> {
-  constructor(
-    record?: Partial<UserExtended>,
-    options: ActiveParams<UserExtended> = {}
-  ) {
-    /**
-     * custom identifier query
-     */
-    if (!record?.objectId) {
-      options.filter = {
-        ...options.filter,
-        $or: cleanArray([
-          record?.email ? { email: record?.email } : {},
-          record?.username ? { username: record?.username } : {},
-        ]),
-      };
-    }
-
-    super('PublicUser', record, {
-      include: ['photo'],
-      ...options,
-    });
-  }
+export interface CoolState {
+  hey: string;
+  this: string;
+  cool: string;
+  logged?: string;
 }
 
 /**
- * init elegante
+ * define initial state
  */
-init({
-  apiKey: '**elegante**',
-  serverURL: 'http://localhost:1337/server',
-  liveQueryServerURL: 'ws://localhost:1337',
-  debug: true,
-  validateSession: false,
-});
+export const sessionInitialState = {
+  user: {} as User,
+  token: '',
+} as Session;
+
+export const coolInitialState = {
+  hey: 'dude',
+  this: 'is',
+  cool: '🤓',
+} as CoolState;
 
 /**
- * load elegante browser
- * and then bootstrap angular
+ * define actions
  */
-load({
-  debug: true,
+export const coolSet = createAction<any>('cool/action/set');
+export const coolReset = createAction('cool/action/reset');
+
+export const sessionSet = createAction<Session>('session/set');
+export const sessionReset = createAction('session/reset');
+
+/**
+ * export borda instance with browser capabilities
+ */
+const borda = new Borda({
+  inspect: !environment.production,
+  serverURL: environment.serverURL,
+  serverKey: environment.serverKey,
   reducers: {
-    session: createReducer<Partial<Session>>(
-      // initial state
+    session: createReducer<Session>(
+      // preload state
+      sessionInitialState,
+      // handle actions
       {
-        user: {} as User,
-        token: '',
-      },
-      // actions
-      {
-        sessionSet: (state: Session, action: Action<Session>) => {
+        ['session/set']: (state: Session, action: Action<Session>) => {
           state.user = action.payload.user;
           state.token = action.payload.token;
-          LocalStorage.set('session', state);
+          borda.cache.set('session', state); // optionally: because it's a custom reducer, we need to manually handle the cache
         },
-        sessionUnset: (state: any) => {
-          state.user = {} as User;
-          state.token = '';
-          LocalStorage.unset('session');
+        ['session/reset']: (state: any) => {
+          borda.cache.unset('session'); // optionally: because it's a custom reducer, we need to manually handle the cache
+          return sessionInitialState;
         },
       }
     ),
-    cool: createReducer<any>(
-      // initial state
-      {},
-      // actions
+    cool: createReducer<CoolState>(
+      // preload state
+      coolInitialState,
+      // handle actions
       {
-        coolSet: (state: any, action: Action<any>) => {
-          for (const key in action.payload) {
-            state[key] = action.payload[key];
-          }
-          LocalStorage.set('cool', state);
+        ['cool/action/set']: (state: CoolState, action: Action<CoolState>) => {
+          borda.cache.set('cool', action.payload); // optionally: because it's a custom reducer, we need to manually handle the cache
+          return action.payload;
         },
-        coolReset: (state: any) => {
-          for (const key in state) {
-            delete state[key];
-          }
-          for (const key in coolInitialState) {
-            state[key] = coolInitialState[key];
-          }
-          LocalStorage.set('cool', state);
+        ['cool/action/reset']: (state: any) => {
+          borda.cache.unset('cool'); // optionally: because it's a custom reducer, we need to manually handle the cache
+          return sessionInitialState;
         },
       }
     ),
   },
   fast: {
+    /**
+     * implement a custom differ function to compare state changes
+     * this controls wheter the stream should emit a new value or not for fast calls
+     */
     differ: (prev, next) => {
-      /**
-       * implement a custom differ function to compare state changes
-       * this controls wheter the stream should emit a new value or not
-       */
-      log('global `fast` differ', prev, next);
-      return !isEqual(prev, next);
+      if (borda.inspect) {
+        console.log('custom Fast differ', 'prev', prev, 'next', next);
+      }
+      return !isEqual(prev, next); // replace with your own diffing function
     },
   },
-}).then(() => {
-  /**
-   * dispatch session before bootstrap
-   */
-  const session = LocalStorage.get('session');
-
-  if (session) {
-    dispatch(sessionSet(session));
-  }
-
-  /**
-   * init angular app
-   */
-  bootstrapApplication(AppComponent).catch((err) => console.error(err));
 });
+
+borda
+  .browser()
+  .then(async () => {
+    /**
+     * dispatch session before initializing angular app
+     */
+    const session = await borda.cache.get<Session>('session');
+
+    if (session) {
+      borda.dispatch(sessionSet(session));
+      borda.auth.become({
+        token: session.token,
+        // validateSession: false,
+      });
+    }
+
+    /**
+     * bootstrap angular app
+     */
+    bootstrapApplication(AppComponent, {
+      providers: [ɵprovideZonelessChangeDetection()],
+    });
+  })
+  .catch((err) => {
+    console.error(err);
+  });
+
+export { borda };
+
+if (!isServer()) {
+  if (!environment.production) {
+    // @ts-ignore
+    borda['pubsub'] = BordaClient.pubsub;
+    // @ts-ignore
+    window['borda'] = borda;
+  }
+}

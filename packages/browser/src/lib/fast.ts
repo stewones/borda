@@ -1,9 +1,9 @@
 /**
  * @license
- * Copyright Elegante All Rights Reserved.
+ * Copyright Borda All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://elegante.dev/license
+ * found in the LICENSE file at https://borda.dev/license
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { defer as deferRXJS, Observable } from 'rxjs';
@@ -12,16 +12,12 @@ import {
   cloneDeep,
   Document,
   get,
-  IndexedDB,
   isBoolean,
   isEqual,
   isOnline,
-  LocalStorage,
-} from '@elegante/sdk';
+} from '@borda/client';
 
-import { EleganteBrowser } from './Browser';
-import { log } from './log';
-import { getDocState, setDocState, StateDocument } from './state';
+import { Borda, StateDocument } from './Borda';
 
 function isDifferent(prev: any, next: any) {
   return !isEqual(prev, next);
@@ -32,6 +28,7 @@ export interface FastOptions {
    * memoized data identifier
    */
   key?: string;
+  app?: string;
   /**
    * define a custom path used to extract data before memoization
    */
@@ -49,25 +46,20 @@ export interface FastOptions {
    * define if data can be mutated. default to false.
    */
   mutable?: boolean;
-  /**
-   * default storage adapter is IndexedDB but you can use LocalStorage or any other
-   * as long as they implement the same interface
-   */
-  storage?: {
-    name?: string; // used for IndexedDB
-    store?: string; // used for IndexedDB
-    version?: number; // used for IndexedDB
-    adapter?: LocalStorage | IndexedDB | any;
-  };
 }
 
 export function from<T = Document>(source: Promise<T>): Observable<T> {
   const key = Reflect.getMetadata('key', source);
+  const app = Reflect.getMetadata('app', source);
 
   const def = deferRXJS(() => source);
 
   if (key) {
     Reflect.defineMetadata('key', key, def);
+  }
+
+  if (app) {
+    Reflect.defineMetadata('app', app, def);
   }
 
   return def;
@@ -89,7 +81,7 @@ export function from<T = Document>(source: Promise<T>): Observable<T> {
  *
  * you can make it work faster by using the `fast` decorator and subscribing to changes
  *
- * import { fast, from } from '@elegante/browser';
+ * import { fast, from } from '@borda/browser';
  *
  * const q = query('PublicUser')
  *               .limit(10)
@@ -149,6 +141,7 @@ export function fast<T = Document>(
   source: any,
   options: any = {
     key: '',
+    app: '',
   }
 ): Observable<T> {
   let _source: Observable<T> | null = null;
@@ -186,7 +179,7 @@ export function fast<T = Document>(
  *
  * ## Angular pipe async example with promise
  *```
- * import { Fast, from } from '@elegante/browser';
+ * import { Fast, from } from '@borda/browser';
  *
  * @Component(
  *  template: `{{ myUsersList$ | async | json }}`
@@ -197,7 +190,7 @@ export function fast<T = Document>(
  *```
  
  * Angular pipe async example.
- * Elegante queries have no need of a key.
+ * Borda queries have no need of a key.
  * Unless you want to customize it with your own.
  *
  * ```
@@ -268,35 +261,47 @@ function memorize<T = StateDocument>(
   source: Observable<T>,
   options: FastOptions
 ) {
-  if (!EleganteBrowser.store) {
-    throw new Error(
-      'unable to find any store. to use the fast decorator make sure to import { load } from @elegante/browser and call `load()` in your app before anything starts.'
-    );
+  const key = options.key || Reflect.getMetadata('key', source);
+  const app = options.app || Reflect.getMetadata('app', source);
+
+  const { path } = options;
+
+  let borda = Borda.App[app];
+
+  if (!borda) {
+    /**
+     * in case there's no app defined (ie some custom promise)
+     * let's use the first one available
+     */
+    borda = Borda.App[Object.keys(Borda.App)[0]];
+    if (!borda) {
+      throw new Error(
+        'unable to find a borda app. make sure to initialize borda and await `borda.browser()`'
+      );
+    }
   }
 
   const mutable = isBoolean(options.mutable)
     ? options.mutable
-    : isBoolean(EleganteBrowser.params.fast?.mutable)
-    ? EleganteBrowser.params.fast?.mutable
+    : isBoolean(borda.fast?.mutable)
+    ? borda.fast.mutable
     : false;
 
-  const key = options.key || Reflect.getMetadata('key', source);
-  const { path } = options;
-
   if (!key) {
-    throw new Error(
-      'A key need to be provided in order to make your source Fast'
-    );
+    throw new Error('A key is needed in order to make your requests Fast');
   }
 
   return new Observable<T>((observer) => {
-    const state = getDocState<T>(key);
+    const state = borda.getState<T>(key);
 
     let prev: any = null;
 
     if (state) {
       prev = state;
-      log('state.get', key, prev);
+      if (borda.inspect) {
+        console.debug('borda state get', key, prev);
+      }
+
       const response = mutable ? cloneDeep(prev) : prev;
       observer.next(
         options?.mode === 'detailed'
@@ -309,10 +314,13 @@ function memorize<T = StateDocument>(
       );
     }
 
-    EleganteBrowser.storage?.get(key).then((cache: T) => {
+    borda.cache.get(key).then((cache) => {
       if (cache && !state) {
         prev = cache;
-        log('cache.get', key, prev);
+        if (borda.inspect) {
+          console.log('borda cache get', key, prev);
+        }
+
         const response = mutable ? cloneDeep(prev) : prev;
         observer.next(
           options?.mode === 'detailed'
@@ -327,10 +335,7 @@ function memorize<T = StateDocument>(
 
       source.subscribe({
         next: (next) => {
-          const differ =
-            options?.differ ??
-            EleganteBrowser.params?.fast?.differ ??
-            isDifferent;
+          const differ = options?.differ ?? borda.fast.differ ?? isDifferent;
 
           let value: T | T[] | string | number = next;
 
@@ -348,16 +353,20 @@ function memorize<T = StateDocument>(
            * update doc state
            */
           if (differ(state, value) && isOnline()) {
-            setDocState(key, value, { persist: false });
-            log('state.set', key, value);
+            borda.setState(key, value, { useCache: false });
+            if (borda.inspect) {
+              console.debug('borda set state', key, value);
+            }
           }
 
           /**
            * update cache state
            */
           if (differ(cache, value) && isOnline()) {
-            EleganteBrowser.storage.set(key, value);
-            log('cache.set', key, value);
+            borda.cache.set(key, value);
+            if (borda.inspect) {
+              console.debug('borda set cache', key, value);
+            }
           }
 
           /**

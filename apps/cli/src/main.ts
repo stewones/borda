@@ -14,15 +14,15 @@ async function main() {
 
   await setTimeout(1000);
 
-  p.intro(`${color.bgCyan(color.black('Create Elegante Server 🤵‍♂️'))}`);
+  p.intro(`${color.bgCyan(color.black('Create Borda Server 🤵‍♂️'))}`);
 
   const project = await p.group(
     {
       name: () =>
         p.text({
           message: 'Enter your project name',
-          placeholder: 'my-elegante-app',
-          defaultValue: 'my-elegante-app',
+          placeholder: 'my-borda-app',
+          defaultValue: 'my-borda-app',
         }),
       pathname: ({ results }) =>
         p.text({
@@ -101,7 +101,7 @@ async function main() {
 
   p.outro(
     `Problems? ${color.underline(
-      color.cyan('https://github.com/stewones/elegante/issues')
+      color.cyan('https://github.com/stewones/borda/issues')
     )}`
   );
 }
