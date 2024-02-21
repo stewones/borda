@@ -58,7 +58,7 @@ const client = new BordaClient({
 export const borda = new BordaServer({
   name: 'borda-on-elysia',
   inspect: false,
-  cacheTTL: 1000 * 1 * 20,
+  cacheTTL: 1000 * 1 * 60 * 60,
   liveCollections: ['Counter', 'PublicUser'],
   reservedCollections: ['_User', '_Password', '_Session'],
   plugins: [
@@ -148,7 +148,7 @@ borda.onReady.subscribe(async ({ db, app }) => {
       console.log('🧠 memory', memoryUsage());
     })
     .catch((err) => console.log(err));
-
+  return;
   await delay(500); // little delay to the stream catch up
   runLiveQueryTest();
   await runQueryClientTest();

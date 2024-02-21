@@ -102,11 +102,6 @@ export function handleOn<TSchema = Document>({
     }
   );
 
-  const disconnect = () => {
-    stream.close();
-    stream.removeAllListeners();
-  };
-
   stream.on('error', (err) => {
     if (inspect) {
       console.log('LiveQueryMessage error', err);
@@ -191,6 +186,14 @@ export function handleOn<TSchema = Document>({
     }
   });
 
+  const disconnect = async () => {
+    stream.removeAllListeners();
+    await stream.close();
+    if (inspect) {
+      console.log('LiveQueryMessage disconnected');
+    }
+  };
+
   return {
     disconnect,
     onChanges,
@@ -246,6 +249,9 @@ export async function handleOnce<TSchema>(
   for await (const doc of cursor) {
     docs.push(doc as TSchema);
   }
+
+  // free resources
+  await cursor.close();
 
   const message: LiveQueryMessage<TSchema> = {
     docs: parseProjection(

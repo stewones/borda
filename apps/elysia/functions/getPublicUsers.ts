@@ -3,7 +3,6 @@ import { borda } from '../';
 export async function getPublicUsers() {
   return await borda
     .query('PublicUser')
-    .unlock()
     .projection({
       name: 1,
       email: 1,

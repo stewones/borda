@@ -129,6 +129,7 @@ borda
       borda.dispatch(sessionSet(session));
       borda.auth.become({
         token: session.token,
+        validateSession: false,
       });
     }
 

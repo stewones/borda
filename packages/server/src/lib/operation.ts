@@ -72,6 +72,9 @@ export async function aggregate({
     docs.push(doc);
   }
 
+  // free resources
+  await cursor.close();
+
   return parseProjection(
     docQRL.projection ?? ({} as any),
     await parseDocs({ arr: docs, inspect, isUnlocked: unlocked, cache, query })(
@@ -119,6 +122,9 @@ export async function find<TSchema = Document>({
   await cursor.forEach((doc) => {
     docs.push(doc);
   });
+
+  // free resources
+  await cursor.close();
 
   return (method === 'findOne'
     ? parseProjection(

@@ -34,6 +34,8 @@ import {
   restUserSignOut,
 } from './rest';
 
+export const BordaLiveConnections = new Map<string, any>();
+
 export function createServer({
   config,
   serverHeaderPrefix,
@@ -315,7 +317,14 @@ export function createServer({
       }
     },
 
-    close(ws) {
+    async close(ws) {
+      const disconnect = BordaLiveConnections.get(ws.id);
+      if (disconnect) {
+        if (inspect) {
+          console.log('Disconnected Connection:', ws.id);
+        }
+        await disconnect();
+      }
       if (inspect) {
         console.log('Closed Connection:', ws.id);
       }
@@ -352,9 +361,12 @@ export function createServer({
           inspect,
         });
 
+        BordaLiveConnections.set(ws.id, disconnect);
+
         onChanges.subscribe((data) => {
           ws.send(data);
         });
+
         onError.subscribe((error) => {
           if (inspect) {
             console.log('LiveQueryMessage error', error);
@@ -378,6 +390,7 @@ export function createServer({
       });
 
       ws.send(data);
+      ws.close();
     },
   });
 
