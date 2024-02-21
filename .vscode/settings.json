@@ -1,11 +1,7 @@
 {
   "tsImportSorter.configuration.formatExports": true,
   "tsImportSorter.configuration.autoFormat": "onSave",
-  "tsImportSorter.configuration.exclude": [
-    "node_modules",
-    "apps/express/src/main.ts",
-    "apps/cli/src/starters/ts-server/src/main.ts"
-  ],
+  "tsImportSorter.configuration.exclude": ["node_modules"],
   "tsImportSorter.configuration.keepUnused": [],
   "tsImportSorter.configuration.groupRules": [
     {},
@@ -14,8 +10,6 @@
     "^vue$",
     "^react(-dom)?$",
     "^@borda",
-    "^@intenseloop",
-    "^@inl",
     "^[@]",
     "^[.]"
   ],
