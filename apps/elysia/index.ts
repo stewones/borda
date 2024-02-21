@@ -12,7 +12,6 @@
  * - a custom email provider plugin
  * - a custom email password reset template plugin
  */
-
 import { Elysia } from 'elysia';
 
 import {
@@ -159,7 +158,11 @@ borda.onReady.subscribe(async ({ db, app }) => {
 /**
  * create the Elysia app
  */
-const app = new Elysia();
+const app = new Elysia({
+  serve: {
+    reusePort: true,
+  },
+});
 
 /**
  * decorate the app with Borda

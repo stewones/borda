@@ -335,7 +335,11 @@ function memorize<T = StateDocument>(
 
       source.subscribe({
         next: (next) => {
-          const differ = options?.differ ?? borda.fast.differ ?? isDifferent;
+          const differ = options?.differ
+            ? options.differ
+            : borda.fast?.differ
+            ? borda.fast.differ
+            : isDifferent;
 
           let value: T | T[] | string | number = next;
 

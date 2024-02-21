@@ -38,6 +38,7 @@ import {
   coolInitialState,
   coolReset,
   coolSet,
+  coolSetHey,
   CoolState,
   Counter,
   sessionInitialState,
@@ -351,6 +352,15 @@ export class AppComponent {
   ngOnDestroy() {}
 
   async ngOnInit() {
+    /**
+     * connect + dispatch example
+     */
+    borda.connect('cool.hey').subscribe((value) => {
+      console.log('cool.hey', value);
+    });
+
+    borda.dispatch(coolSetHey('Joe'));
+
     /**
      * example of programmatic fast promise (rather than @decorator)
      */

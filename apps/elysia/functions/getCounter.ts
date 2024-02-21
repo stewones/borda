@@ -20,7 +20,7 @@ export async function getCounter() {
     })
     .findOne({
       // force inspection per query
-      inspect: true,
+      inspect: false,
     });
 
   if (isEmpty(counter)) {

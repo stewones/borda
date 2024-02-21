@@ -53,6 +53,7 @@ export const coolInitialState = {
  * define actions
  */
 export const coolSet = createAction<any>('cool/action/set');
+export const coolSetHey = createAction<string>('cool/action/set/hey');
 export const coolReset = createAction('cool/action/reset');
 
 export const sessionSet = createAction<Session>('session/set');
@@ -87,11 +88,15 @@ const borda = new Borda({
       coolInitialState,
       // handle actions
       {
-        ['cool/action/set']: (state: CoolState, action: Action<CoolState>) => {
+        [coolSet.type]: (state: CoolState, action: Action<CoolState>) => {
           borda.cache.set('cool', action.payload); // optionally: because it's a custom reducer, we need to manually handle the cache
           return action.payload;
         },
-        ['cool/action/reset']: (state: any) => {
+        [coolSetHey.type]: (state: CoolState, action: Action<string>) => {
+          state.hey = action.payload;
+          return state;
+        },
+        [coolReset.type]: (state: any) => {
           borda.cache.unset('cool'); // optionally: because it's a custom reducer, we need to manually handle the cache
           return sessionInitialState;
         },

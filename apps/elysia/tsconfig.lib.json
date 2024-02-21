@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "../../dist/out-tsc",
     "declaration": true,
-    "types": ["node", "jest"]
+    "types": ["node", "jest"],
+    "skipLibCheck": true
   },
   "files": ["./package.json"],
   "include": ["**/*.ts", "./package.json"],
