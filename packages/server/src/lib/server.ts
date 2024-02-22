@@ -324,6 +324,7 @@ export function createServer({
           console.log('Disconnected Connection:', ws.id);
         }
         await disconnect();
+        BordaLiveConnections.delete(ws.id);
       }
       if (inspect) {
         console.log('Closed Connection:', ws.id);
