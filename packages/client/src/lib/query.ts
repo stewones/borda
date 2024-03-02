@@ -763,13 +763,10 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
             },
 
             onClose: (ws, ev) => {
-              // @todo check production code and reason coming from cloudflare when it disconnects
-              // and try to reproduce realtime features when it's disconnected
-              // if the feature works, then we all good and can uncomment the following line
-              // otherwise we need to handle the reconnection and resubscription
-              // if (this.inspect) {
-              console.log('LiveQuery client closed', ev.code, ev?.reason);
-              // }
+              if (this.inspect) {
+                // code 1006 means the connection was closed abnormally (eg Cloudflare timeout)
+                console.log('LiveQuery client closed', ev.code, ev?.reason);
+              }
               if (
                 wssFinished ||
                 ev?.code === 1000 ||
