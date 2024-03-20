@@ -299,7 +299,7 @@ function memorize<T = StateDocument>(
     if (state) {
       prev = state;
       if (borda.inspect) {
-        console.debug('borda state get', key, prev);
+        console.debug('get state', key, prev);
       }
 
       const response = mutable ? cloneDeep(prev) : prev;
@@ -318,7 +318,7 @@ function memorize<T = StateDocument>(
       if (cache && !state) {
         prev = cache;
         if (borda.inspect) {
-          console.log('borda cache get', key, prev);
+          console.debug('get cache', key, prev);
         }
 
         const response = mutable ? cloneDeep(prev) : prev;
@@ -359,7 +359,7 @@ function memorize<T = StateDocument>(
           if (differ(state, value) && isOnline()) {
             borda.setState(key, value, { useCache: false });
             if (borda.inspect) {
-              console.debug('borda set state', key, value);
+              console.debug('set state', key, value);
             }
           }
 
@@ -369,7 +369,7 @@ function memorize<T = StateDocument>(
           if (differ(cache, value) && isOnline()) {
             borda.cache.set(key, value);
             if (borda.inspect) {
-              console.debug('borda set cache', key, value);
+              console.debug('set cache', key, value);
             }
           }
 

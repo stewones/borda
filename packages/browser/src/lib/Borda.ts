@@ -12,10 +12,19 @@ import {
   isServer,
 } from '@borda/client';
 
-import { Action, Store } from '@reduxjs/toolkit';
+import {
+  Action,
+  Store,
+} from '@reduxjs/toolkit';
 
 import type { FastOptions } from './fast';
-import { borda, bordaReset, bordaSet, bordaUnset, createStore } from './redux';
+import {
+  borda,
+  bordaReset,
+  bordaSet,
+  bordaUnset,
+  createStore,
+} from './redux';
 
 export type BordaStateFastParams = Pick<
   FastOptions,
@@ -191,22 +200,26 @@ export class Borda extends BordaClient {
    *
    * The copy option makes a copy of the state. Default to false.
    *
+   * The borda option allows to access the internal borda state.
+   *
    * @export
    * @template T
    * @param {string} path
    * @param {Partial<ListenerOptions>} [options={
    *     context: false,
    *     copy: false,
+   *     borda: false,
    *   }]
    * @returns {*}  {Observable<T>}
    */
   connect<T = Document>(
     path: string,
     options: Partial<
-      ListenerOptions & { onChanges: (nextValue: any) => void }
+      ListenerOptions & { onChanges: (nextValue: any) => void; borda: boolean }
     > = {
       context: false,
       copy: false,
+      borda: false,
       onChanges: () => {
         //
       },
@@ -216,9 +229,8 @@ export class Borda extends BordaClient {
       return new Observable<T>();
     }
 
-    const isCustomState = get(Borda.App[this.name].store.getState(), path);
-
-    if (!isCustomState) {
+    // can't really rely on auto-detection here so we need to specify it
+    if (options.borda) {
       path = `borda.${path}`;
     }
 
@@ -330,7 +342,7 @@ export class Borda extends BordaClient {
     // try to get from cache
     return Borda.App[this.name].cache.get(path).then((bordaCache) => {
       if (this.#inspect) {
-        console.debug('borda get cache', path, bordaCache);
+        console.debug('get cache', path, bordaCache);
       }
 
       return bordaCache as T;
@@ -362,7 +374,7 @@ export class Borda extends BordaClient {
     );
     if (options.useCache) {
       if (this.#inspect) {
-        console.debug('borda set cache', key, value);
+        console.debug('set cache', key, value);
       }
       await Borda.App[this.name].cache.set(key, value);
     }
