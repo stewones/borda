@@ -7,15 +7,28 @@ export type FetchResponse<T = Document> = T & {
   headers: Headers;
 };
 
-export async function fetcher<T = Document>(
+export interface FetchError {
+  data: string;
+  status: number;
+  [key: string]: unknown;
+}
+
+export async function fetcher<T = Document, E = FetchError>(
   url: string,
   options?: {
     method?: HttpMethod;
     body?: Document | null;
     headers?: Record<string, string>;
-    direct?: boolean; // direct responses
+    direct?: boolean; // direct responses (borda doesn't touch it)
+    transform?: (response: unknown) => E; // transform response before returning
   }
 ): Promise<FetchResponse<T>> {
+  const transformResponse = (response: unknown) => {
+    if (options?.transform) {
+      return options.transform(response);
+    }
+    return response;
+  };
   const fetchOptions: Document = {
     method: options?.method ?? 'GET',
     headers: {
@@ -44,22 +57,24 @@ export async function fetcher<T = Document>(
 
     if (!response.ok || response.status >= 400) {
       if (options?.direct) {
-        return Promise.reject(contentResponse);
+        return Promise.reject(transformResponse(contentResponse));
       }
-      return Promise.reject({
-        data: contentResponse,
-        status: response.status,
-      });
+      return Promise.reject(
+        transformResponse({
+          data: contentResponse,
+          status: response.status,
+        })
+      );
     }
 
     if (options?.direct) {
-      return contentResponse as FetchResponse<T>;
+      return transformResponse(contentResponse) as FetchResponse<T>;
     } else {
-      return {
+      return transformResponse({
         data: await response.json(),
         status: response.status,
         headers: response.headers,
-      } as FetchResponse<T>;
+      }) as FetchResponse<T>;
     }
   });
 }

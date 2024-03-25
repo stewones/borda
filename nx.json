@@ -45,7 +45,7 @@
     "appsDir": "apps",
     "libsDir": "packages"
   },
-  "defaultProject": "express",
+  "defaultProject": "elysia",
   "generators": {
     "@nx/angular:application": {
       "style": "scss",
