@@ -71,7 +71,7 @@ export async function fetcher<T = Document, E = FetchError>(
       return transformResponse(contentResponse) as FetchResponse<T>;
     } else {
       return transformResponse({
-        data: await response.json(),
+        data: contentResponse,
         status: response.status,
         headers: response.headers,
       }) as FetchResponse<T>;

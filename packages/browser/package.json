@@ -1,6 +1,6 @@
 {
   "name": "@borda/browser",
-  "version": "0.0.12",
+  "version": "0.0.15",
   "files": [
     "packages",
     "package.json",
@@ -8,7 +8,7 @@
     "index.esm.js"
   ],
   "peerDependencies": {
-    "@borda/client": "^0.0.0",
+    "@borda/client": "latest",
     "reflect-metadata": "0.2.1",
     "@reduxjs/toolkit": "^2.1.0",
     "redux-watch": "^1.2.0",

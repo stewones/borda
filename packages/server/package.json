@@ -8,7 +8,7 @@
     "index.esm.js"
   ],
   "peerDependencies": {
-    "@borda/client": "^0.0.0",
+    "@borda/client": "latest",
     "rxjs": "^7.8.0",
     "express": "^4.18.2",
     "mongodb": "^6.3.0",
