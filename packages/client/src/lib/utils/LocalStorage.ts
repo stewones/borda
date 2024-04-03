@@ -10,13 +10,27 @@
 
 export class LocalStorage {
   public static get(key: string): any {
-    let result: any = window.localStorage.getItem(key);
+    let result = window.localStorage.getItem(key);
     try {
-      result = JSON.parse(result);
+      return JSON.parse(result as string);
     } catch (err) {
       // that's fine if it's not a JSON
     }
-    return result || null;
+    // but check if it's a boolean
+    result = window.localStorage.getItem(key);
+    if (result === 'true') {
+      return true;
+    }
+    if (result === 'false') {
+      return false;
+    }
+
+    // check for numbers
+    if (!isNaN(Number(result))) {
+      return Number(result);
+    }
+
+    return result || '';
   }
 
   public static set(key: string, value: any): void {
