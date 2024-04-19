@@ -27,6 +27,9 @@ function handlerId(handler: Function): string {
 }
 
 export function publish<T = void>(key: string, value?: T) {
+  if (!Borda.pubsub[key]) {
+    return;
+  }
   for (const listener of Borda.pubsub[key]) {
     listener.handler(value);
   }
