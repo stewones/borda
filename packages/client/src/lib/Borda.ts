@@ -1,6 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-types */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-import { Subject } from 'rxjs';
 
 import { Auth } from './Auth';
 import { Cloud } from './Cloud';
@@ -40,7 +39,7 @@ export class Borda {
   #serverHeaderPrefix!: string;
   #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
 
-  static pubsub: Record<string, Subject<any>> = {};
+  static pubsub: Record<string, { handler: Function; id: string }[]> = {};
 
   get cloud() {
     return this.#cloud;

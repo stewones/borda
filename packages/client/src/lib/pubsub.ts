@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-types */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * @license
  * Copyright Borda All Rights Reserved.
@@ -6,30 +8,53 @@
  * found in the LICENSE file at https://borda.dev/license
  */
 
-import {
-  finalize,
-  Subject,
-} from 'rxjs';
-
 import { Borda } from './Borda';
 
+export interface BordaSubscription {
+  unsubscribe: () => void;
+}
+
+const handlerMap = new WeakMap<Function, string>();
+let handlerCurrentId = 0;
+
+function handlerId(handler: Function): string {
+  let id = handlerMap.get(handler);
+  if (!id) {
+    id = `handler_${++handlerCurrentId}`;
+    handlerMap.set(handler, id);
+  }
+  return id;
+}
+
 export function publish<T = void>(key: string, value?: T) {
-  if (Borda.pubsub[key]) {
-    Borda.pubsub[key].next(value);
+  for (const listener of Borda.pubsub[key]) {
+    listener.handler(value);
   }
 }
 
 export function subscribe<T = void>(key: string, handler: (arg: T) => void) {
-  Borda.pubsub[key] = new Subject<T>();
-  return Borda.pubsub[key]
-    .pipe(finalize(() => unsubscribe(key)))
-    .subscribe((value) => handler(value as T));
+  if (!Borda.pubsub[key]) {
+    Borda.pubsub[key] = [];
+  }
+
+  const id = handlerId(handler);
+  const unsubscribe = () => {
+    Borda.pubsub[key] = Borda.pubsub[key].filter(
+      (listener) => listener.id !== id
+    );
+  };
+
+  Borda.pubsub[key].push({
+    id,
+    handler,
+  });
+
+  return {
+    unsubscribe,
+  } as BordaSubscription;
 }
 
 export function unsubscribe(key: string) {
-  // cancel client listeners
-  if (Borda.pubsub[key]) {
-    Borda.pubsub[key].unsubscribe();
-    delete Borda.pubsub[key];
-  }
+  // cancel all client listeners
+  delete Borda.pubsub[key];
 }
