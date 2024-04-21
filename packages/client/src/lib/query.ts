@@ -6,9 +6,18 @@ import {
 } from 'rxjs';
 
 import { Auth } from './Auth';
-import { BordaError, ErrorCode } from './Error';
-import { fetcher, HttpMethod } from './fetcher';
-import { InternalFieldName, InternalHeaders } from './internal';
+import {
+  BordaError,
+  ErrorCode,
+} from './Error';
+import {
+  fetcher,
+  HttpMethod,
+} from './fetcher';
+import {
+  InternalFieldName,
+  InternalHeaders,
+} from './internal';
 import {
   AggregateOptions,
   BulkWriteResult,
@@ -29,9 +38,14 @@ import {
   QueryMethod,
   Sort,
 } from './types';
-import { cleanKey, isBoolean, isEmpty, isServer } from './utils';
 import {
-  getWebsocketUrl,
+  cleanKey,
+  isBoolean,
+  isEmpty,
+  isServer,
+} from './utils';
+import {
+  getWebSocketURL,
   WebSocketFactory,
   webSocketServer,
 } from './websocket';
@@ -115,7 +129,7 @@ export class BordaQuery<TSchema = Document> {
     this.#inspect = inspect ?? false;
     this.#app = app;
     if (auth) {
-        this.#auth = auth;
+      this.#auth = auth;
     }
   }
 
@@ -514,6 +528,7 @@ export class BordaQuery<TSchema = Document> {
 
 export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
   #serverURL!: string;
+  #webSocketURL!: string;
   #serverKey!: string;
   #serverSecret!: string;
   #serverHeaderPrefix!: string;
@@ -527,6 +542,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
     serverKey,
     serverSecret,
     serverHeaderPrefix,
+    webSocketURL,
   }: {
     app: string;
     auth: Auth;
@@ -536,6 +552,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
     serverKey: string;
     serverSecret: string;
     serverHeaderPrefix: string;
+    webSocketURL?: string;
   }) {
     super({
       inspect,
@@ -547,6 +564,7 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
     this.#serverKey = serverKey;
     this.#serverSecret = serverSecret;
     this.#serverHeaderPrefix = serverHeaderPrefix;
+    this.#webSocketURL = webSocketURL ?? serverURL;
   }
 
   public override get bridge() {
@@ -707,8 +725,8 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
         const source = new Observable<LiveQueryMessage<TSchema>>((observer) => {
           const socketURLPathname = `/${collection}`;
           const socketURL =
-            getWebsocketUrl({
-              serverURL: this.#serverURL,
+            getWebSocketURL({
+              serverURL: this.#webSocketURL,
             }) + socketURLPathname;
 
           const webSocket: WebSocketFactory = {

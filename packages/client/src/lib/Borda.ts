@@ -20,6 +20,7 @@ export interface BordaParams {
   serverURL?: string;
   serverHeaderPrefix?: string;
   serverAdditionalHeaders?: BordaServerAdditionalHeaders;
+  webSocketURL?: string;
 }
 
 export type BordaServerAdditionalHeaders =
