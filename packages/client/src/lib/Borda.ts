@@ -39,6 +39,7 @@ export class Borda {
   #serverURL!: string;
   #serverHeaderPrefix!: string;
   #serverAdditionalHeaders!: BordaServerAdditionalHeaders;
+  #webSocketURL!: string;
 
   static pubsub: Record<string, { handler: Function; id: string }[]> = {};
 
@@ -82,6 +83,10 @@ export class Borda {
     this.#serverSecret = secret;
   }
 
+  get webSocketURL() {
+    return this.#webSocketURL;
+  }
+
   constructor(params?: Partial<BordaParams>) {
     const {
       name,
@@ -91,6 +96,7 @@ export class Borda {
       serverURL,
       serverHeaderPrefix,
       serverAdditionalHeaders,
+      webSocketURL,
     } = params || {};
 
     if (!isServer() && serverSecret) {
@@ -108,6 +114,7 @@ export class Borda {
     this.#serverURL = serverURL || 'http://127.0.0.1:1337';
     this.#serverHeaderPrefix = serverHeaderPrefix || 'X-Borda';
     this.#serverAdditionalHeaders = serverAdditionalHeaders || {};
+    this.#webSocketURL = webSocketURL || serverURL || '';
 
     // instantiate auth
     this.#auth = new Auth({
@@ -150,6 +157,7 @@ export class Borda {
       serverKey: this.serverKey,
       serverSecret: this.serverSecret,
       serverHeaderPrefix: this.serverHeaderPrefix,
+      webSocketURL: this.webSocketURL,
     });
   }
 }
