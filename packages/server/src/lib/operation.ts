@@ -798,7 +798,7 @@ export async function upsert({
       });
     }
 
-    return cursor;
+    return cursor.getRawResponse();
   } else {
     return Promise.reject(
       new BordaError(
@@ -910,7 +910,8 @@ export async function upsertMany({
         cache.invalidate({ collection, data: doc });
       });
     }
-    return cursor;
+
+    return cursor.getRawResponse();
   } else {
     return Promise.reject(
       new BordaError(

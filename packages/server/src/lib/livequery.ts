@@ -88,7 +88,7 @@ export function handleOn<TSchema = Document>({
       {
         $match: {
           operationType: {
-            $in: [event === 'delete' ? 'update' : event], // because we do soft deletes by default
+            $in: [event === 'delete' ? 'update' : event], // because we do soft deletes by default - @todo make this an option
           },
         },
       },
