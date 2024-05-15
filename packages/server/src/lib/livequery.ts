@@ -133,11 +133,16 @@ export function handleOn<TSchema = Document>({
     /**
      * check if it's deleted
      */
+    const isDateExpired = (date: Date) => {
+      return date.getTime() < Date.now();
+    };
+
     const isDeleted =
       event === 'delete' &&
       fullDocument &&
       fullDocument['_expires_at'] &&
-      isDate(fullDocument['_expires_at']);
+      isDate(fullDocument['_expires_at']) &&
+      isDateExpired(fullDocument['_expires_at']);
 
     if (isDeleted) {
       message = {
