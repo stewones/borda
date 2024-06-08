@@ -657,15 +657,17 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
           }
         );
 
-        Reflect.defineMetadata(
-          'key',
-          cleanKey({
-            collection,
-            ...docQuery,
-          }),
-          source
-        );
-        Reflect.defineMetadata('app', this.app, source);
+        if (typeof Reflect !== 'undefined' && Reflect.defineMetadata) {
+          Reflect.defineMetadata(
+            'key',
+            cleanKey({
+              collection,
+              ...docQuery,
+            }),
+            source
+          );
+          Reflect.defineMetadata('app', this.app, source);
+        }
 
         // for some reason TS is hatin' on the RunResult type (precisely the T from the union in MaybeArray<T>)
         // so we're casting for now
@@ -854,9 +856,10 @@ export class BordaClientQuery<TSchema = Document> extends BordaQuery<TSchema> {
             wss && wss.close();
           })
         );
-
-        Reflect.defineMetadata('key', key, source);
-        Reflect.defineMetadata('app', this.app, source);
+        if (typeof Reflect !== 'undefined' && Reflect.defineMetadata) {
+          Reflect.defineMetadata('key', key, source);
+          Reflect.defineMetadata('app', this.app, source);
+        }
         return source;
       },
       once: (liveQuery: DocumentLiveQuery<TSchema>) => {
