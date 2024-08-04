@@ -88,7 +88,7 @@ export const borda = new BordaServer({
     {
       name: 'my-password-reset-template',
       version: '0.0.0',
-      EmailPasswordResetTemplate({ token, user, baseUrl }) {
+      EmailPasswordResetTemplate({ token, user, baseUrl, request }) {
         return {
           subject: 'Custom Password Reset',
           html: `

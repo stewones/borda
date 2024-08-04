@@ -374,6 +374,7 @@ export function restCollectionPost({
         query,
         serverURL,
         plugin,
+        request,
       });
     }
 
@@ -1054,12 +1055,14 @@ export async function restUserForgotPassword({
   query,
   plugin,
   serverURL,
+  request,
 }: {
   docQRL: DocQRL;
   inspect?: boolean;
   query: (collection: string) => BordaServerQuery;
   plugin: (name: PluginHook) => ((params?: any) => any) | undefined;
   serverURL: string;
+  request: Request & { session: Session };
 }) {
   const { projection, include, exclude, doc } = docQRL;
   const { email } = doc ?? {};
@@ -1124,10 +1127,11 @@ export async function restUserForgotPassword({
     );
   }
 
-  const emailTemplate = EmailPasswordResetTemplate({
+  const emailTemplate = await EmailPasswordResetTemplate({
     user: currentUser,
     token: t,
     baseUrl: serverURL,
+    request,
   });
 
   try {
@@ -1138,6 +1142,7 @@ export async function restUserForgotPassword({
       },
       subject: emailTemplate.subject,
       html: emailTemplate.html,
+      request,
     });
 
     return {};

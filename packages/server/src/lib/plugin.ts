@@ -8,6 +8,8 @@ export interface EmailProviderParams {
   };
   subject: string;
   html: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  request?: any | null;
 }
 export interface EmailProvider {
   send: (params: EmailProviderParams) => Promise<void>;
@@ -17,6 +19,8 @@ export interface EmailPasswordResetParams {
   user: User;
   token: string;
   baseUrl: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  request?: any | null;
 }
 
 export interface EmailPasswordResetParamsCallback {
@@ -28,9 +32,11 @@ export interface ServerPlugin {
   name: string;
   version: string;
   EmailProvider?: () => EmailProvider;
-  EmailPasswordResetTemplate?: (
-    params: EmailPasswordResetParams
-  ) => EmailPasswordResetParamsCallback;
+  EmailPasswordResetTemplate?:
+    | ((params: EmailPasswordResetParams) => EmailPasswordResetParamsCallback)
+    | ((
+        params: EmailPasswordResetParams
+      ) => Promise<EmailPasswordResetParamsCallback>);
 }
 
 export function BordaEmailPlugin(): EmailProvider {

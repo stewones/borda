@@ -50,7 +50,7 @@ export async function validate(
     .has()
     .lowercase(undefined, 'Password should have lowercase letters')
     .has()
-    .digits(2, 'Password must have at least 2 digits')
+    .digits(2, 'Password must have at least 2 numbers')
     .has()
     .not()
     .spaces(undefined, 'Password must not have spaces')
