@@ -735,7 +735,7 @@ export function parseResponse(
          * as it's converted anyways in the wire
          * so we need to make it consistent in the server
          */
-        if (obj[field] instanceof Date) {
+        if (obj[field] instanceof Date && !isNaN(obj[field].getTime())) {
           obj[field] = obj[field].toISOString();
         }
 
