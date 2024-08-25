@@ -1,6 +1,6 @@
 {
   "name": "@borda/server",
-  "version": "0.0.25",
+  "version": "0.0.28",
   "files": [
     "packages",
     "package.json",
