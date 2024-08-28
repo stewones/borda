@@ -572,28 +572,3 @@ async function runQueryServerTest() {
     .then((response) => console.log('posts deleted', response))
     .catch((err) => console.log(err));
 }
-
-export async function graceful() {
-  console.log('⛑️  graceful shutdown');
-  process.exit(0);
-}
-
-process.on('SIGTERM', graceful);
-process.on('SIGINT', graceful);
-process.on('SIGQUIT', graceful);
-
-process.on('uncaughtException', (error) => {
-  if (error instanceof Error) {
-    console.log('🙀 uncaught exception', error.message);
-    // log stack trace
-    console.log(error.stack);
-  }
-});
-
-process.on('unhandledRejection', (error) => {
-  if (error instanceof Error) {
-    console.log(`😽 unhandled promise rejection`, error.message);
-    // log stack trace
-    console.log(error.stack);
-  }
-});
