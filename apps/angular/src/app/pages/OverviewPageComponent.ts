@@ -1,14 +1,6 @@
-import {
-  of,
-  Subscription,
-} from 'rxjs';
+import { from, of, Subscription } from 'rxjs';
 
-import {
-  AsyncPipe,
-  JsonPipe,
-  NgForOf,
-  NgIf,
-} from '@angular/common';
+import { AsyncPipe, JsonPipe, NgForOf, NgIf } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
@@ -22,17 +14,10 @@ import {
   ReactiveFormsModule,
 } from '@angular/forms';
 
-import {
-  fast,
-  Fast,
-  from,
-} from '@borda/browser';
-import {
-  Session,
-  User,
-} from '@borda/client';
+import { fast, Fast } from '@borda/browser';
+import { Session, User } from '@borda/client';
 
-import { environment } from '../environment';
+import { environment } from '../../environment';
 import {
   borda,
   coolInitialState,
@@ -44,7 +29,7 @@ import {
   sessionInitialState,
   sessionReset,
   sessionSet,
-} from '../main';
+} from '../../main';
 
 console.time('startup');
 
@@ -68,7 +53,7 @@ function somePromise() {
 
 @Component({
   standalone: true,
-  selector: 'borda-app',
+  selector: 'app-overview-page',
   imports: [
     NgIf,
     NgForOf,
@@ -77,29 +62,8 @@ function somePromise() {
     JsonPipe,
     ReactiveFormsModule,
   ],
-
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styles: [
-    `
-      form {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-      }
-
-      input {
-        padding: 0.25rem;
-      }
-
-      button {
-        padding: 0.45rem;
-      }
-
-      table {
-        width: 100%;
-      }
-    `,
-  ],
+  styles: ``,
   template: `
     <button
       (click)="increase()"
@@ -274,7 +238,7 @@ function somePromise() {
     <br />
   `,
 })
-export class AppComponent {
+export class OverviewPageComponent {
   counterRemote = signal<Partial<Counter>>({
     total: 0,
     name: 'borda',

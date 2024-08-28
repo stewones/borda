@@ -1,12 +1,13 @@
-import { ɵprovideZonelessChangeDetection } from '@angular/core';
+import { provideExperimentalZonelessChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-
 import {
-  Action,
-  Borda,
-  createAction,
-  createReducer,
-} from '@borda/browser';
+  PreloadAllModules,
+  provideRouter,
+  withInMemoryScrolling,
+  withPreloading,
+} from '@angular/router';
+
+import { Action, Borda, createAction, createReducer } from '@borda/browser';
 import {
   BordaClient,
   isEqual,
@@ -16,7 +17,8 @@ import {
   User,
 } from '@borda/client';
 
-import { AppComponent } from './app/app.component';
+import { AppComponent } from './app/AppComponent';
+import { AppRoutes } from './app/AppRoutes';
 import { environment } from './environment';
 
 export interface Counter extends Record {
@@ -137,7 +139,17 @@ borda
      * bootstrap angular app
      */
     bootstrapApplication(AppComponent, {
-      providers: [ɵprovideZonelessChangeDetection()],
+      providers: [
+        provideExperimentalZonelessChangeDetection(),
+        provideRouter(
+          AppRoutes,
+          withPreloading(PreloadAllModules),
+          withInMemoryScrolling({
+            scrollPositionRestoration: 'enabled', // Set the scroll position restoration to 'top'
+            anchorScrolling: 'enabled', // Enable anchor scrolling
+          })
+        ),
+      ],
     });
   })
   .catch((err) => {

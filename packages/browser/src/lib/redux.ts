@@ -19,7 +19,6 @@ import {
   EnhancedStore,
   PayloadActionCreator,
 } from '@reduxjs/toolkit';
-import { ReducerWithInitialState } from '@reduxjs/toolkit/dist/createReducer';
 
 import type { StateDocument } from './Borda';
 
@@ -218,5 +217,4 @@ export type {
   ActionReducerMapBuilder,
   CaseReducer,
   PayloadActionCreator,
-  ReducerWithInitialState,
 };
