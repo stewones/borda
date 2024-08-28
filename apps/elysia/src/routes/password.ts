@@ -1,4 +1,4 @@
-import { borda } from '../';
+import { borda } from '../main';
 
 export function passwordResetGet({ set, query }: { set: any; query: any }) {
   const { token } = query;

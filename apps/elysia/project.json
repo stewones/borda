@@ -1,0 +1,58 @@
+{
+  "name": "elysia",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/elysia/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": []
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx types server",
+          "bun run --env-file apps/elysia/.env --watch apps/elysia/src/main.ts"
+        ]
+      }
+    },
+    "types": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "tsc --noEmit --skipLibCheck --showConfig -p packages/elysia/tsconfig.lib.json"
+        ]
+      }
+    },
+    "compile": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx types server",
+          "bun build --compile --minify --sourcemap ./apps/elysia/index.ts --outfile server"
+        ]
+      }
+    },
+    "inspect": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx types server",
+          "bun run --watch --inspect apps/server/index.ts"
+        ]
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"]
+    },
+    "docker": {
+      "dependsOn": ["build"],
+      "command": "docker build -f apps/server/Dockerfile . -t server"
+    }
+  },
+  "tags": []
+}

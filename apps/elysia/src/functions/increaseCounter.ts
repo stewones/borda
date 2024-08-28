@@ -1,4 +1,4 @@
-import { borda } from '../';
+import { borda } from '../main';
 
 export async function increaseCounter({
   body,

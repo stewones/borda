@@ -1,6 +1,6 @@
 import { CloudTriggerParams } from '@borda/server';
 
-import { borda } from '../';
+import { borda } from '../main';
 
 export function afterSaveUser({ doc, before }: CloudTriggerParams) {
   /**

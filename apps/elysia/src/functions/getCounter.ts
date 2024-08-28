@@ -1,6 +1,6 @@
 import { isEmpty } from '@borda/client';
 
-import { borda } from '../';
+import { borda } from '../main';
 
 export async function getCounter() {
   if (borda.inspect) {
@@ -28,7 +28,7 @@ export async function getCounter() {
       total: 0,
       name: 'borda',
     });
-  } 
+  }
 
   return counter;
 }

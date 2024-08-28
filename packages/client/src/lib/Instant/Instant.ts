@@ -49,7 +49,6 @@ export class Instant {
   #db: Dexie;
 
   #schema: Record<string, z.ZodObject<Record<string, SchemaField>>>;
-  #keyPath = '_id';
 
   get db() {
     return this.#db;

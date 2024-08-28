@@ -52,6 +52,12 @@
       "options": {
         "jestConfig": "packages/server/jest.config.ts"
       }
+    },
+    "coverage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bunx http-server coverage/packages/server -c-1"
+      }
     }
   },
   "tags": ["server"]

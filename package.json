@@ -4,17 +4,7 @@
   "description": "Full application stack powered by Bun, Typescript and Mongodb",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {
-    "check.server.types": "tsc --noEmit --skipLibCheck --showConfig -p packages/server/tsconfig.lib.json",
-    "publish.elysia": "bun build --compile --minify --sourcemap ./apps/elysia/index.ts --outfile elysia",
-    "test.server": "bun test server --codeCoverage",
-    "test.server.coverage": "bunx http-server coverage/packages/server -c-1",
-    "test.server.watch": "nx test server --codeCoverage --watch",
-    "serve.elysia": "bun run check.server.types && bun run --watch apps/elysia/index.ts",
-    "serve.elysia.inspect": "bun run check.server.types && bun run --watch --inspect apps/elysia/index.ts",
-    "serve.elysia.prod": "pm2-runtime start \"bun run apps/elysia/index.ts\" --name borda-elysia -i max",
-    "serve.angular": "nx serve angular"
-  },
+  "scripts": {},
   "devDependencies": {
     "@angular-devkit/build-angular": "17.1.1",
     "@angular-devkit/core": "17.1.1",
