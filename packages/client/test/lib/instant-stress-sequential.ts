@@ -1,7 +1,7 @@
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb';
 import { z } from 'zod';
 
-import { Instant } from './Instant';
+import { Instant } from '../../../client/src/lib/Instant';
 
 const schema = {
   messages: z.object({

@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import {
-  Dexie,
-  Table,
-} from 'dexie';
+import { Dexie, Table } from 'dexie';
 import { singular } from 'pluralize';
 import { z } from 'zod';
+
+import { fetcher } from './';
 
 type SchemaField = z.ZodTypeAny;
 
@@ -18,6 +17,16 @@ export interface iQL<T, TKey, TInsertType> {
     | iQL<T, TKey, TInsertType>
     | Table<T, TKey, TInsertType>
     | iQLByDirective;
+}
+
+export interface InstantSyncResponse {
+  collection: string;
+  objectId: string;
+  status: 'created' | 'updated' | 'deleted';
+  value: unknown;
+  expiresAt: string;
+  error?: unknown;
+  terminated?: boolean;
 }
 
 export const objectId = <T extends string>(p: T) =>
@@ -46,46 +55,183 @@ export const pointerRef = <T = typeof objectPointer>(
 ) => `${collection}$${objectId}` as T;
 
 export class Instant {
-  #db: Dexie;
-
+  #db!: Dexie;
+  #name: string;
+  #serverURL: string;
   #schema: Record<string, z.ZodObject<Record<string, SchemaField>>>;
+  #inspect: boolean;
 
   get db() {
+    if (!this.#db) {
+      throw new Error(
+        'Database not initialized. Try awaiting `ready()` first.'
+      );
+    }
     return this.#db;
   }
 
   constructor({
+    // @todo for isolated tests
     // db,
+    // idb,
+    // idbKeyRange,
     schema,
     name,
-  }: // idb,
-  // idbKeyRange,
-  {
-    //db?: Dexie;
-    name: Capitalize<string>;
-    schema: Record<string, z.ZodObject<any>>;
+    serverURL,
+    inspect,
+  }: {
+    // @todo for isolated tests
+    // db?: Dexie;
     // idb?: typeof indexedDB;
     // idbKeyRange?: typeof IDBKeyRange;
+    name: Capitalize<string>;
+    schema: Record<string, z.ZodObject<any>>;
+    serverURL?: string | undefined;
+    inspect?: boolean | undefined;
   }) {
+    this.#name = name;
     this.#schema = schema;
+    this.#serverURL = serverURL || '';
+    this.#inspect = inspect || false;
+  }
 
-    // generate a new Dexie schema from the zod schema
-    const dexieSchema: Record<string, string> = {};
+  /**
+   * The ready method is required in order to interact with the database.
+   * It will generate a new Dexie schema based on the zod schema
+   * and initialize the local database instance.
+   *
+   * @returns Promise<void>
+   */
+  async ready() {
+    try {
+      // generate a new Dexie schema from the zod schema
+      const dexieSchema: Record<string, string> = {};
 
-    for (const tableName in schema) {
-      // ++id,
-      dexieSchema[tableName] = `${Object.keys(schema[tableName].shape).join(
-        ', '
-      )}`;
+      for (const tableName in this.#schema) {
+        dexieSchema[tableName] = `${Object.keys(
+          this.#schema[tableName].shape
+        ).join(', ')}`;
+      }
+
+      const db = new Dexie(this.#name, {
+        // @todo for isolated tests
+        // indexedDB: idb,
+        // IDBKeyRange: idbKeyRange,
+      });
+
+      db.version(1).stores(dexieSchema);
+      this.#db = db;
+
+      this.#db.on('ready', (db) => {
+        Promise.resolve(db);
+      });
+    } catch (error) {
+      console.error('Error initializing database', error);
+      Promise.reject(error);
+    }
+  }
+
+  async sync() {
+    if (!this.#db) {
+      throw new Error(
+        'Database not initialized. Try awaiting `ready()` first.'
+      );
     }
 
-    const db = new Dexie(name, {
-      // indexedDB: idb,
-      // IDBKeyRange: idbKeyRange,
-    });
-    db.version(1).stores(dexieSchema);
+    if (!this.#serverURL) {
+      throw new Error('Server URL is required to sync');
+    }
 
-    this.#db = db;
+    await this.#syncLive();
+    await this.#syncBatch();
+  }
+
+  async #syncLive() {
+    const url = `${this.#serverURL}/instant/sync/live`;
+    const eventSource = new EventSource(url);
+
+    eventSource.onopen = () => {
+      if (this.#inspect) {
+        console.log('SSE connection opened');
+      }
+    };
+
+    eventSource.onerror = (error: any) => {
+      if (this.#inspect) {
+        console.error('SSE error:', error);
+      }
+    };
+
+    const listener = (eventSource.onmessage = async ({
+      data,
+    }: {
+      data: string;
+    }) => {
+      const eventData = JSON.parse(data) as InstantSyncResponse;
+      const { error, terminated } = eventData;
+
+      // close
+      if (terminated) {
+        console.error('SSE connection terminated', error);
+        eventSource.removeEventListener('message', listener);
+        eventSource.close();
+        return;
+      }
+
+      if (error) {
+        console.error('SSE message error', error);
+        return;
+      }
+
+      // process message
+      if (this.#inspect) {
+        console.log('SSE message', eventData);
+      }
+
+      await this.#syncProcess(eventData);
+    });
+  }
+
+  async #syncBatch() {
+    const url = `${this.#serverURL}/instant/sync/batch`;
+    const collections = Object.keys(this.#schema);
+
+    const response = await fetcher<InstantSyncResponse[]>(url, {
+      direct: true,
+      method: 'POST',
+      // @todo add headers
+      body: {
+        collections,
+        lastSyncAt: null,
+      },
+    });
+
+    for (const update of response) {
+      await this.#syncProcess(update);
+    }
+  }
+
+  async #syncProcess({
+    collection,
+    objectId,
+    status,
+    value,
+  }: Pick<
+    InstantSyncResponse,
+    'collection' | 'objectId' | 'status' | 'value'
+  >) {
+    switch (status) {
+      case 'created':
+        await this.#db.table(collection).add(value);
+        break;
+      case 'updated':
+        console.log('updated', objectId, value);
+        await this.#db.table(collection).update(objectId, value as object);
+        break;
+      case 'deleted':
+        await this.#db.table(collection).delete(objectId);
+        break;
+    }
   }
 
   async query<T, TKey, TInsertType>(iql: iQL<T, TKey, TInsertType>) {

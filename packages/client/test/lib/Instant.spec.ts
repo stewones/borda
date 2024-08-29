@@ -1,17 +1,18 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import 'fake-indexeddb/auto';
 
-// import { openDB } from 'idb';
 import { z } from 'zod';
 
+import * as lib from '../../../client/src/lib';
 import {
   Instant,
+  InstantSyncResponse,
   objectId,
   objectPointer,
   pointerRef,
-} from './Instant';
+} from '../../../client/src/lib/Instant';
 
-// mock structuredClone
+// global mocks
 global.structuredClone = jest.fn((data) => data);
 
 const UserId = objectId('users');
@@ -20,6 +21,8 @@ const CommentId = objectId('comments');
 
 const UserPointer = objectPointer('users');
 const PostPointer = objectPointer('posts');
+
+jest.mock('../../../client/src/lib/fetcher');
 
 describe('Instant', () => {
   const schema = {
@@ -95,19 +98,35 @@ describe('Instant', () => {
   ];
 
   let insta: Instant;
+  let fetcherSpy: jest.SpyInstance;
 
   beforeEach(async () => {
-    insta = new Instant({ schema, name: 'InstantTest' });
+    insta = new Instant({
+      schema,
+      name: 'InstantTest',
+      inspect: true,
+      serverURL: 'https://some.api.com',
+    });
+    await insta.ready();
+
     for (const user of users) {
       await insta.db.table('users').add(user);
     }
     for (const post of posts) {
       await insta.db.table('posts').add(post);
     }
+
+    fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+      // @ts-ignore
+      (url, options) => {
+        return Promise.resolve([]);
+      }
+    );
   });
 
   afterEach(async () => {
     await insta.db.delete();
+    fetcherSpy.mockRestore();
   });
 
   test('list all users', async () => {
@@ -254,5 +273,197 @@ describe('Instant', () => {
         },
       ],
     });
+  });
+
+  test('create records via sync SSE', async () => {
+    // Mock console.log
+    const consoleSpy = jest.spyOn(console, 'log');
+
+    // Mock EventSource
+    const mockEventSource = {
+      addEventListener: jest.fn(),
+      close: jest.fn(),
+      onopen: jest.fn(),
+      onerror: jest.fn(),
+      onmessage: jest.fn(),
+    };
+
+    global.EventSource = jest.fn(() => mockEventSource) as any;
+
+    await insta.sync();
+
+    // dispatch mock message
+    const mockMessage = {
+      data: JSON.stringify({
+        collection: 'users',
+        objectId: 'objId1337',
+        status: 'created',
+        value: {
+          _id: 'objId1337',
+          _created_at: '2024-08-25T03:49:47.352Z',
+          _updated_at: '2024-08-25T03:49:47.352Z',
+          name: 'John Doe',
+        },
+      } as InstantSyncResponse),
+    };
+
+    mockEventSource.onmessage(mockMessage);
+
+    // Check if console.log was called with the expected message
+    expect(consoleSpy).toHaveBeenCalledWith('SSE message', {
+      collection: 'users',
+      objectId: 'objId1337',
+      status: 'created',
+      value: {
+        _id: 'objId1337',
+        _created_at: '2024-08-25T03:49:47.352Z',
+        _updated_at: '2024-08-25T03:49:47.352Z',
+        name: 'John Doe',
+      },
+    });
+
+    // check if data was updated
+    const updatedUser = await insta.db.table('users').get('objId1337');
+    expect(updatedUser.name).toBe('John Doe');
+
+    // Clean up
+    consoleSpy.mockRestore();
+    mockEventSource.close();
+  });
+
+  test('update records via sync SSE', async () => {
+    // Mock console.log
+    const consoleSpy = jest.spyOn(console, 'log');
+
+    // Mock EventSource
+    const mockEventSource = {
+      addEventListener: jest.fn(),
+      close: jest.fn(),
+      onopen: jest.fn(),
+      onerror: jest.fn(),
+      onmessage: jest.fn(),
+    };
+
+    global.EventSource = jest.fn(() => mockEventSource) as any;
+
+    await insta.sync();
+
+    // dispatch mock message
+    const mockMessage = {
+      data: JSON.stringify({
+        collection: 'users',
+        objectId: 'objId2222',
+        value: {
+          name: 'Teobs',
+        },
+        status: 'updated',
+      } as InstantSyncResponse),
+    };
+
+    mockEventSource.onmessage(mockMessage);
+
+    // Check if console.log was called with the expected message
+    expect(consoleSpy).toHaveBeenCalledWith('SSE message', {
+      collection: 'users',
+      objectId: 'objId2222',
+      value: { name: 'Teobs' },
+      status: 'updated',
+    });
+
+    // check if data was updated
+    const updatedUser = await insta.db.table('users').get('objId2222');
+    expect(updatedUser.name).toBe('Teobs');
+
+    // Clean up
+    consoleSpy.mockRestore();
+    mockEventSource.close();
+  });
+
+  test('delete records via sync SSE', async () => {
+    // Mock console.log
+    const consoleSpy = jest.spyOn(console, 'log');
+
+    // Mock EventSource
+    const mockEventSource = {
+      addEventListener: jest.fn(),
+      close: jest.fn(),
+      onopen: jest.fn(),
+      onerror: jest.fn(),
+      onmessage: jest.fn(),
+    };
+
+    global.EventSource = jest.fn(() => mockEventSource) as any;
+
+    await insta.sync();
+
+    // dispatch mock message
+    const mockMessage = {
+      data: JSON.stringify({
+        collection: 'users',
+        objectId: 'objId1337',
+        status: 'deleted',
+        value: {},
+      } as InstantSyncResponse),
+    };
+
+    mockEventSource.onmessage(mockMessage);
+
+    // Check if console.log was called with the expected message
+    expect(consoleSpy).toHaveBeenCalledWith('SSE message', {
+      collection: 'users',
+      objectId: 'objId1337',
+      status: 'deleted',
+      value: {},
+    });
+
+    // check if data was updated
+    const updatedUser = await insta.db.table('users').get('objId1337');
+    expect(updatedUser).toBeUndefined();
+
+    // Clean up
+    consoleSpy.mockRestore();
+    mockEventSource.close();
+  });
+
+  test('create records via sync batch', async () => {
+    fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+      // @ts-ignore
+      (url, options) => {
+        if (url === 'https://some.api.com/instant/sync/batch') {
+          return Promise.resolve([
+            {
+              collection: 'users',
+              objectId: 'objId1337',
+              status: 'created',
+              value: {
+                _id: 'objId1337',
+                _created_at: '2024-08-25T03:49:47.352Z',
+                _updated_at: '2024-08-25T03:49:47.352Z',
+                name: 'John McDoe',
+              },
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      }
+    );
+
+    await insta.sync();
+
+    expect(fetcherSpy).toHaveBeenCalledWith(
+      'https://some.api.com/instant/sync/batch',
+      expect.objectContaining({
+        method: 'POST',
+        direct: true,
+        body: {
+          collections: ['users', 'posts', 'comments'],
+          lastSyncAt: null,
+        },
+      })
+    );
+
+    // check if data was updated
+    const updatedUser = await insta.db.table('users').get('objId1337');
+    expect(updatedUser.name).toBe('John McDoe');
   });
 });
