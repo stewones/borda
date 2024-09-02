@@ -15,7 +15,7 @@
 import { Elysia } from 'elysia';
 
 import { BordaClient, delay, pointer } from '@borda/client';
-import { BordaServer, memoryUsage } from '@borda/server';
+import { BordaServer, Instant, memoryUsage } from '@borda/server';
 
 import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
@@ -97,6 +97,13 @@ export const borda = new BordaServer({
 });
 
 /**
+ * Attach the borda instance to the Instant class
+ */
+const instant = new Instant({
+  size: parseInt(process.env['INSTANT_SIZE']|| '1_000'),
+}).attach(borda);
+
+/**
  * attach some database hooks
  */
 borda.cloud.beforeSignUp(beforeSignUp);
@@ -151,6 +158,7 @@ borda.onReady.subscribe(async ({ db, app }) => {
 const app = new Elysia({
   serve: {
     reusePort: true,
+    idleTimeout: 0,
   },
 });
 
@@ -185,6 +193,23 @@ app
       })
     )
   )
+  // add instant routes
+  .group('sync', (rest) =>
+    rest.get(
+      ':collection',
+      ({ headers, params, query }) => instant.sync({ headers, params, query }),
+      {
+        query: Instant.SyncQuerySchema,
+        params: Instant.SyncParamsSchema([
+          // @todo make a setting
+          'users',
+          'posts',
+          'comments',
+        ]),
+      }
+    )
+  )
+
   // start the server
   .listen(1337);
 

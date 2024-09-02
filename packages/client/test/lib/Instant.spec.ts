@@ -457,7 +457,7 @@ describe('Instant', () => {
         direct: true,
         body: {
           collections: ['users', 'posts', 'comments'],
-          lastSyncAt: null,
+          synced: null,
         },
       })
     );

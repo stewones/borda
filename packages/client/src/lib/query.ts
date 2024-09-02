@@ -107,24 +107,6 @@ export class BordaQuery<TSchema = Document> {
     inspect?: boolean;
     auth?: Auth;
   }) {
-    // ensure collection name doesn't end with "s" because
-    // it's already means plural and for good db hygiene
-    // we should keep it as singular
-    if (collection.endsWith('s')) {
-      throw new BordaError(
-        ErrorCode.QUERY_SINGULAR_COLLECTION_NAME,
-        `collection name should be singular. eg: 'User' instead of 'Users'`
-      );
-    }
-
-    // ensure collection name is in TitleCase
-    if (collection !== collection[0].toUpperCase() + collection.slice(1)) {
-      throw new BordaError(
-        ErrorCode.QUERY_TITLE_CASE_COLLECTION_NAME,
-        `collection name should be TitleCase. eg: 'User' instead of 'user'`
-      );
-    }
-
     this.#collection = collection;
     this.#inspect = inspect ?? false;
     this.#app = app;

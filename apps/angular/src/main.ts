@@ -7,120 +7,24 @@ import {
   withPreloading,
 } from '@angular/router';
 
-import { Action, Borda, createAction, createReducer } from '@borda/browser';
-import {
-  BordaClient,
-  isEqual,
-  isServer,
-  Record,
-  Session,
-  User,
-} from '@borda/client';
+import { BordaClient, isServer, Session } from '@borda/client';
 
 import { AppComponent } from './app/AppComponent';
 import { AppRoutes } from './app/AppRoutes';
+import { borda, insta, sessionSet } from './app/borda';
 import { environment } from './environment';
 
-export interface Counter extends Record {
-  total: number;
-  name: string;
+/**
+ * Setup Instant Worker
+ */
+if (typeof Worker !== 'undefined') {
+  const worker = new Worker(new URL('./app/insta.worker', import.meta.url));
+  insta.setWorker({ worker });
 }
 
-export interface UserExtended extends User {
-  username?: string;
-}
+const startup = [borda.browser(), insta.ready()];
 
-export interface CoolState {
-  hey: string;
-  this: string;
-  cool: string;
-  logged?: string;
-}
-
-/**
- * define initial state
- */
-export const sessionInitialState = {
-  user: {} as User,
-  token: '',
-} as Session;
-
-export const coolInitialState = {
-  hey: 'dude',
-  this: 'is',
-  cool: '🤓',
-} as CoolState;
-
-/**
- * define actions
- */
-export const coolSet = createAction<any>('cool/action/set');
-export const coolSetHey = createAction<string>('cool/action/set/hey');
-export const coolReset = createAction('cool/action/reset');
-
-export const sessionSet = createAction<Session>('session/set');
-export const sessionReset = createAction('session/reset');
-
-/**
- * export borda instance with browser capabilities
- */
-const borda = new Borda({
-  inspect: !environment.production,
-  serverURL: environment.serverURL,
-  serverKey: environment.serverKey,
-  reducers: {
-    session: createReducer<Session>(
-      // preload state
-      sessionInitialState,
-      // handle actions
-      {
-        ['session/set']: (state: Session, action: Action<Session>) => {
-          state.user = action.payload.user;
-          state.token = action.payload.token;
-          borda.cache.set('session', state); // optionally: because it's a custom reducer, we need to manually handle the cache
-        },
-        ['session/reset']: (state: any) => {
-          borda.cache.unset('session'); // optionally: because it's a custom reducer, we need to manually handle the cache
-          return sessionInitialState;
-        },
-      }
-    ),
-    cool: createReducer<CoolState>(
-      // preload state
-      coolInitialState,
-      // handle actions
-      {
-        [coolSet.type]: (state: CoolState, action: Action<CoolState>) => {
-          borda.cache.set('cool', action.payload); // optionally: because it's a custom reducer, we need to manually handle the cache
-          return action.payload;
-        },
-        [coolSetHey.type]: (state: CoolState, action: Action<string>) => {
-          state.hey = action.payload;
-          return state;
-        },
-        [coolReset.type]: (state: any) => {
-          borda.cache.unset('cool'); // optionally: because it's a custom reducer, we need to manually handle the cache
-          return sessionInitialState;
-        },
-      }
-    ),
-  },
-  fast: {
-    /**
-     * implement a custom differ function to compare state changes
-     * this controls wheter the stream should emit a new value or not for fast calls
-     */
-    differ: (prev, next) => {
-      if (borda.inspect) {
-        console.log('custom Fast differ', 'prev', prev, 'next', next);
-      }
-      return !isEqual(prev, next); // replace with your own diffing function
-    },
-  },
-});
-
-borda
-  .browser()
+Promise.allSettled(startup)
   .then(async () => {
     /**
      * dispatch session before initializing angular app
@@ -156,8 +60,6 @@ borda
     console.error(err);
   });
 
-export { borda };
-
 if (!isServer()) {
   if (!environment.production) {
     // @ts-ignore
@@ -166,3 +68,4 @@ if (!isServer()) {
     window['borda'] = borda;
   }
 }
+

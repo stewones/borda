@@ -59,6 +59,8 @@ export function parseDoc<TSchema = Document>({
   query: (collection: string) => BordaServerQuery;
 }): (docQuery: Omit<DocumentQuery, 'method'>) => Promise<TSchema> {
   return async (docQuery) => {
+    const { parse } = docQuery.options ?? {};
+    const { doc } = parse ?? { doc: true };
     await parseInclude({
       obj,
       inspect,
@@ -75,9 +77,11 @@ export function parseDoc<TSchema = Document>({
     });
 
     return Promise.resolve(
-      parseResponse(obj, {
-        removeSensitiveFields: !isUnlocked,
-      })
+      doc
+        ? parseResponse(obj, {
+            removeSensitiveFields: !isUnlocked,
+          })
+        : obj
     );
   };
 }

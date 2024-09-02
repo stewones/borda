@@ -10,3 +10,4 @@ export * from './query';
 export * from './rest';
 export * from './server';
 export * from './version';
+export * from './Instant';

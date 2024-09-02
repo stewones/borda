@@ -4,6 +4,7 @@
   "projectType": "application",
   "sourceRoot": "apps/angular/src",
   "prefix": "borda",
+  "tags": ["consumer"],
   "targets": {
     "build": {
       "executor": "@angular-devkit/build-angular:browser-esbuild",
@@ -16,7 +17,8 @@
         "inlineStyleLanguage": "scss",
         "assets": ["apps/angular/src/favicon.ico", "apps/angular/src/assets"],
         "styles": ["apps/angular/src/styles.scss"],
-        "scripts": []
+        "scripts": [],
+        "webWorkerTsConfig": "apps/angular/tsconfig.worker.json"
       },
       "configurations": {
         "production": {
@@ -73,9 +75,9 @@
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "apps/angular/jest.config.ts"
+        "jestConfig": "apps/angular/jest.config.ts",
+        "webWorkerTsConfig": "apps/angular/tsconfig.worker.json"
       }
     }
-  },
-  "tags": ["consumer"]
+  }
 }

@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { insta } from '../borda';
+
 @Component({
   standalone: true,
   selector: 'app-offline-page',
@@ -13,4 +15,11 @@ import { RouterLink } from '@angular/router';
     asdf
   `,
 })
-export class OfflinePageComponent {}
+export class OfflinePageComponent {
+  async ngOnInit() {
+    /**
+     * starts the sync process
+     */
+    insta.sync();
+  }
+}

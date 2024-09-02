@@ -21,7 +21,7 @@ export * from './pubsub';
 export * from './query';
 export * from './Version';
 export * from './websocket';
-
+export * from './Instant';
 
 
 

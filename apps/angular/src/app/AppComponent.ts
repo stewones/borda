@@ -5,6 +5,8 @@ import {
 } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
+import { insta } from './borda';
+
 @Component({
   standalone: true,
   selector: 'borda-app',
@@ -32,4 +34,9 @@ import { RouterModule } from '@angular/router';
   `,
   template: `<router-outlet></router-outlet>`,
 })
-export class AppComponent {}
+export class AppComponent {
+  async ngOnInit() {
+    const usage = await insta.usage();
+    console.log(`💽 total indexeddb usage`, usage);
+  }
+}

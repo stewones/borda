@@ -29,7 +29,7 @@ import {
   sessionInitialState,
   sessionReset,
   sessionSet,
-} from '../../main';
+} from '../borda';
 
 console.time('startup');
 
