@@ -6,7 +6,7 @@ import { singular } from 'pluralize';
 import { bufferTime, Subject, tap } from 'rxjs';
 import { z } from 'zod';
 
-import { Document } from '@borda/client';
+import { Document, WebSocketFactory } from '@borda/client';
 
 import { fetcher } from './fetcher';
 
@@ -25,9 +25,17 @@ export interface iQL<T, TKey, TInsertType> {
 }
 
 export interface InstantSyncResponseData {
-  objectId: string;
+  collection: string;
   status: InstantSyncStatus;
   value: Document;
+  updatedFields?: Record<string, any>;
+  removedFields?: string[];
+  truncatedArrays?: Array<{
+    /** The name of the truncated field. */
+    field: string;
+    /** The number of elements in the truncated array. */
+    newSize: number;
+  }>;
 }
 
 export type InstantSyncActivity = 'recent' | 'oldest';
@@ -82,10 +90,17 @@ export class Instant {
   #serverURL: string;
   #schema: Record<string, z.ZodObject<Record<string, InstantSchemaField>>>;
   #inspect: boolean;
+  #token!: string;
+  #headers!: Record<string, string>;
+  #params!: Record<string, string>;
+
   #scheduler = new Subject<{
     collection: string;
     synced: string;
     activity: InstantSyncActivity;
+    token: string;
+    headers: Record<string, string>;
+    params: Record<string, string>;
   }>();
 
   get inspect() {
@@ -101,6 +116,8 @@ export class Instant {
     return this.#db;
   }
 
+  #wss: WebSocket | undefined;
+
   constructor({
     // @todo for isolated tests
     // db,
@@ -112,6 +129,9 @@ export class Instant {
     inspect,
     buffer,
     size,
+    token,
+    headers,
+    params,
   }: {
     // @todo for isolated tests
     // db?: Dexie;
@@ -123,6 +143,9 @@ export class Instant {
     inspect?: boolean | undefined;
     buffer?: number | undefined;
     size?: number | undefined;
+    token?: string;
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
   }) {
     this.#name = name;
     this.#schema = schema;
@@ -130,18 +153,33 @@ export class Instant {
     this.#inspect = inspect || false;
     this.#buffer = buffer || this.#buffer;
     this.#size = size || this.#size;
+    this.#token = token || '';
+    this.#headers = headers || {};
+    this.#params = params || {};
     this.#scheduler
       .pipe(
         bufferTime(this.#buffer),
         tap(async (collections) => {
-          for (const { collection, activity, synced } of collections) {
+          for (const {
+            collection,
+            activity,
+            synced,
+            token,
+            headers,
+            params,
+          } of collections) {
             try {
               const perf = performance.now();
               const url = `${
                 this.#serverURL
               }/sync/${collection}?activity=${activity}&synced=${synced}`;
 
-              await this.runWorker({ url });
+              await this.runWorker({
+                url,
+                token,
+                headers,
+                params,
+              });
 
               if (this.inspect) {
                 const syncDuration = performance.now() - perf;
@@ -299,20 +337,101 @@ export class Instant {
   }
 
   /**
+   * worker entry point
+   * should be called with postMessage from the main thread
+   *
+   * @returns void
+   */
+  public worker() {
+    return async ({ data }: { data: string }) => {
+      try {
+        const {
+          url,
+          sync = 'batch',
+          token = '',
+          headers = {},
+          params = {},
+        } = JSON.parse(data);
+
+        const perf = performance.now();
+
+        /**
+         * run the worker, it should:
+         * 1. fetch filtered and paginated data from the server
+         * 2. update the local indexedDB
+         * 3. keep syncing older and new data in background
+         *
+         * 🎉 the ui can just query against the local db instead
+         * including realtime updates via dexie livequery
+         */
+        if (sync === 'batch') {
+          const { collection, activity, synced } = await this.runWorker({
+            url,
+            token,
+            headers,
+            params,
+          });
+
+          if (this.inspect) {
+            const syncDuration = performance.now() - perf;
+            const usage = await this.usage(collection);
+            console.log(
+              `💨 sync ${syncDuration.toFixed(2)}ms`,
+              collection,
+              activity,
+              synced
+            );
+            console.log('💾 estimated usage for', collection, usage);
+          }
+
+          // not needed for now
+          // postMessage(JSON.stringify({ collection, page, synced }));
+        }
+
+        if (sync === 'live') {
+          this.runLiveWorker({ url, token, headers, params });
+        }
+      } catch (err) {
+        if (this.inspect) {
+          console.error('Error running worker', err);
+        }
+      }
+    };
+  }
+
+  /**
    * Sync paginated data from a given collection outside the main thread
    *
    * @returns Promise<void>
    */
-  public async runWorker({ url }: { url: string }) {
+  public async runWorker({
+    url,
+    token,
+    headers,
+    params,
+  }: {
+    url: string;
+    token: string;
+    headers: Record<string, string>;
+    params: Record<string, string>;
+  }) {
     if (!this.#db) {
       await this.ready();
+    }
+
+    const customParams = new URLSearchParams(params).toString();
+    if (customParams) {
+      url += `&${customParams}`;
     }
 
     const { synced, collection, data, count, activity } =
       await fetcher<InstantSyncResponse>(url, {
         direct: true,
         method: 'GET',
-        // @todo add headers
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...headers,
+        },
       });
 
     const isMobile =
@@ -382,6 +501,9 @@ export class Instant {
         collection,
         synced,
         activity,
+        token,
+        headers,
+        params,
       });
     }
 
@@ -393,12 +515,156 @@ export class Instant {
   }
 
   /**
+   * Open a websocket connection to the server
+   * and keep live data in sync with local db
+   *
+   * @returns void
+   */
+  public async runLiveWorker({
+    url,
+    token,
+    headers,
+    params,
+  }: {
+    url: string;
+    token?: string;
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
+  }) {
+    let wssFinished = false;
+    let wssConnected = false;
+    let hasConnected = false;
+
+    if (token && !this.#token) {
+      this.#token = token;
+    }
+    if (headers && !this.#headers) {
+      this.#headers = headers;
+    }
+    if (params && !this.#params) {
+      this.#params = params;
+    }
+
+    const customParams = new URLSearchParams(params);
+    const customHeaders = new Headers(headers);
+
+    const finalParams: Record<string, string> = {};
+
+    customParams.forEach((value, key) => {
+      finalParams[key] = value;
+    });
+
+    customHeaders.forEach((value, key) => {
+      finalParams[key] = value;
+    });
+
+    if (Object.keys(finalParams).length > 0) {
+      url += `&${new URLSearchParams(finalParams).toString()}`;
+    }
+
+    const webSocket: WebSocketFactory = {
+      onOpen: (ws) => {
+        this.#wss = ws;
+        wssConnected = true;
+        if (this.#inspect) {
+          console.log('🟡 sync live worker open');
+        }
+      },
+
+      onError: (ws, err) => {
+        if (this.#inspect) {
+          console.log('🔴 sync live worker error', err);
+        }
+      },
+
+      onConnect: (ws) => {
+        hasConnected = true;
+        if (this.#inspect) {
+          console.log('🟢 sync live worker connected');
+        }
+        // we just need the connection to be open
+        // ws.send(JSON.stringify(body));
+      },
+
+      onMessage: async (ws: WebSocket, message: MessageEvent) => {
+        const { collection, status, value } = JSON.parse(
+          message.data || '{}'
+        ) as InstantSyncResponseData;
+
+        if (this.#inspect) {
+          console.log('🔵 sync live worker message', message.data);
+        }
+
+        await this.#syncProcess({
+          collection,
+          status,
+          value,
+        });
+
+        // update last sync
+        const synced = value['_updated_at'];
+        await this.setSync({
+          collection,
+          activity: 'recent',
+          synced,
+          count: 0,
+        });
+      },
+
+      onClose: (ws, ev) => {
+        if (this.inspect) {
+          console.log('🟣 sync live worker closed', ev.code);
+        }
+
+        // 1000 is a normal close, so we can safely close on it
+        if (wssFinished || ev?.code === 1000 || !hasConnected) {
+          if (this.#inspect) {
+            console.log('🔴 closing websocket', ev.code);
+          }
+          this.#wss?.close();
+          return;
+        }
+
+        if (wssConnected) {
+          wssConnected = false;
+          this.#wss?.close();
+          if (this.inspect) {
+            // code 1006 means the connection was closed abnormally (eg Cloudflare timeout)
+            // locally it also happens on server hot reloads
+            console.log('🔴 sync live worker disconnected', ev.code);
+          }
+        }
+
+        setTimeout(() => {
+          if (this.inspect) {
+            console.log('🟡 sync live worker on retry');
+          }
+          this.#buildWebSocket(url)(webSocket);
+        }, 1_000);
+      },
+    };
+
+    /**
+     * connect to the server
+     */
+    this.#buildWebSocket(url)(webSocket);
+  }
+
+  /**
    * Starts the sync process. Usually called after user login.
    * @todo maybe pass the user session in here along custom client-facing params
    *
    * @returns Promise<void>
    */
-  public sync() {
+  public sync({
+    session,
+    headers,
+    params,
+  }: {
+    session: string;
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
+  }) {
     if (!this.#db) {
       throw new Error(
         'Database not initialized. Try awaiting `ready()` first.'
@@ -416,48 +682,25 @@ export class Instant {
       throw new Error('Server URL is required to sync');
     }
 
+    this.#token = session;
+    this.#headers = headers || {};
+    this.#params = params || {};
+
     this.#syncBatch();
     this.#syncLive();
   }
 
-  // @todo
   async #syncLive() {
-    // const url = `${this.#serverURL}/instant/sync/live`;
-    // const eventSource = new EventSource(url);
-    // eventSource.onopen = () => {
-    //   if (this.#inspect) {
-    //     console.log('SSE connection opened');
-    //   }
-    // };
-    // eventSource.onerror = (error: any) => {
-    //   if (this.#inspect) {
-    //     console.error('SSE error:', error);
-    //   }
-    // };
-    // const listener = (eventSource.onmessage = async ({
-    //   data,
-    // }: {
-    //   data: string;
-    // }) => {
-    //   const eventData = JSON.parse(data) as InstantSyncResponse;
-    //   const { error, terminated } = eventData;
-    //   // close
-    //   if (terminated) {
-    //     console.error('SSE connection terminated', error);
-    //     eventSource.removeEventListener('message', listener);
-    //     eventSource.close();
-    //     return;
-    //   }
-    //   if (error) {
-    //     console.error('SSE message error', error);
-    //     return;
-    //   }
-    //   // process message
-    //   if (this.#inspect) {
-    //     console.log('SSE message', eventData);
-    //   }
-    //   await this.#syncProcess(eventData);
-    // });
+    const url = `${this.#serverURL}/sync/live?session=${this.#token}`;
+    this.#worker.postMessage(
+      JSON.stringify({
+        url,
+        sync: 'live',
+        token: this.#token,
+        headers: this.#headers,
+        params: this.#params,
+      })
+    );
   }
 
   async #syncBatch() {
@@ -488,7 +731,7 @@ export class Instant {
             }
           }
 
-          if (sync.status !== 'complete') {
+          if (sync.status === 'incomplete') {
             await this.#syncWorker({
               collection,
               synced: sync.synced,
@@ -517,18 +760,18 @@ export class Instant {
       url += `&synced=${synced}`;
     }
 
-    this.#worker.postMessage(JSON.stringify({ url }));
+    this.#worker.postMessage(
+      JSON.stringify({
+        url,
+        sync: 'batch',
+        token: this.#token,
+        headers: this.#headers,
+        params: this.#params,
+      })
+    );
   }
 
-  async #syncProcess({
-    collection,
-    status,
-    value,
-  }: {
-    collection: string;
-    status: InstantSyncStatus;
-    value: Document;
-  }) {
+  async #syncProcess({ collection, status, value }: InstantSyncResponseData) {
     const persist: Record<
       InstantSyncStatus,
       (collection: string, value: Document) => Promise<void>
@@ -565,6 +808,25 @@ export class Instant {
       },
     };
     await persist[status](collection, value);
+  }
+
+  #buildWebSocket(url: string) {
+    return (factory: WebSocketFactory) => {
+      const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+      const ws = new WebSocket(url);
+
+      ws.onopen = (ev: Event) => onOpen(ws, ev);
+      ws.onerror = (err: Event) => onError(ws, err);
+      ws.onclose = (ev: CloseEvent) => onClose(ws, ev);
+      ws.onmessage = (ev: MessageEvent) => onMessage(ws, ev);
+
+      const timer = setInterval(() => {
+        if (ws.readyState === 1) {
+          clearInterval(timer);
+          onConnect(ws);
+        }
+      }, 1);
+    };
   }
 
   /**

@@ -8,4 +8,4 @@
 
 import packageJson from '../../package.json';
 
-export const Version = packageJson?.version ?? '0.0.0';
+export const version = packageJson?.version ?? '0.0.0';

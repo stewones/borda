@@ -20,6 +20,11 @@ export class OfflinePageComponent {
     /**
      * starts the sync process
      */
-    insta.sync();
+    insta.sync({
+      session: 'asdf',
+      params: {
+        org: 'my-org-123',
+      },
+    });
   }
 }

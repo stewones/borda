@@ -9,3 +9,7 @@
 export function isDate(date: any) {
   return date instanceof Date;
 }
+
+export function isDateExpired(date: Date) {
+  return date.getTime() < Date.now();
+}

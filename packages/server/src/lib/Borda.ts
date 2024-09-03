@@ -4,7 +4,6 @@ import {
   ElysiaConfig,
 } from 'elysia';
 import { Db } from 'mongodb';
-import { Subject } from 'rxjs';
 
 import {
   Auth,
@@ -23,10 +22,7 @@ import {
   ensureSessionInvalidation,
 } from './Cache';
 import { Cloud } from './Cloud';
-import {
-  mongoConnect,
-  mongoCreateIndexes,
-} from './mongodb';
+import { mongoConnect, mongoCreateIndexes } from './mongodb';
 import {
   BordaEmailPasswordResetTemplatePlugin,
   BordaEmailPlugin,
@@ -35,7 +31,7 @@ import {
 } from './plugin';
 import { BordaServerQuery } from './query';
 import { createServer } from './server';
-import { Version } from './version';
+import { version } from './version';
 
 export type BordaRequest = Request & { session: Session };
 
@@ -116,14 +112,6 @@ export class Borda {
 
   #reservedCollections!: string[];
   #liveCollections!: string[];
-
-  public onReady = new Subject<{
-    db: Db;
-    app: string;
-    server: Elysia;
-    cloud: Cloud;
-    cache: Cache;
-  }>();
 
   get db() {
     return this.#db;
@@ -277,7 +265,7 @@ export class Borda {
     return this.#server;
   }
 
-  async server() {
+  async ready() {
     // instantiate auth
     this.#auth = new Auth({
       name: this.#name,
@@ -299,6 +287,13 @@ export class Borda {
     await mongoCreateIndexes({ db: this.#db });
     // const collections = await this.#db.listCollections().toArray();
 
+    return {
+      db: this.#db,
+      name: this.#name,
+    };
+  }
+
+  server() {
     // instantiate the server
     this.#server = createServer({
       liveCollections: this.#liveCollections,
@@ -334,16 +329,7 @@ export class Borda {
       query: this.query.bind(this),
     });
 
-    // broadcast event
-    this.onReady.next({
-      db: this.#db,
-      app: this.#name,
-      server: this.#server,
-      cloud: this.#cloud,
-      cache: this.#cache,
-    });
-
-    console.log(`📡 Borda Server v${Version}`);
+    console.log(`📡 Borda Server v${version}`);
     return this.#server;
   }
 
