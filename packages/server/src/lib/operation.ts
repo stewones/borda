@@ -374,10 +374,12 @@ export async function remove({
   const { collection, filter, collection$ } = docQRL;
 
   // @todo run beforeDelete
-
+  const in1year = new Date(
+    new Date().setFullYear(new Date().getFullYear() + 1)
+  );
   const cursor = await collection$.findOneAndUpdate(
     filter || ({} as any),
-    { $set: { _expires_at: new Date() } },
+    { $set: { _expires_at: in1year } },
     {
       returnDocument: 'after',
       readPreference: 'primary',
@@ -445,9 +447,13 @@ export async function removeMany({
     .find(filter || ({} as any))
     .toArray();
 
+  const in1year = new Date(
+    new Date().setFullYear(new Date().getFullYear() + 1)
+  );
+
   const cursor = await collection$.updateMany(
     filter || ({} as any),
-    { $set: { _expires_at: new Date() } },
+    { $set: { _expires_at: in1year } },
     {
       readPreference: 'primary',
     }
@@ -1191,9 +1197,12 @@ export async function del({
       },
     };
 
+    const in1year = new Date(
+      new Date().setFullYear(new Date().getFullYear() + 1)
+    );
     const cursor = await collection$!.findOneAndUpdate(
       { ...qrl.filter },
-      { $set: { _expires_at: new Date() } },
+      { $set: { in1year } },
       {
         returnDocument: 'after',
         readPreference: 'primary',

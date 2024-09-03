@@ -14,12 +14,18 @@ import {
   InstantSyncResponseData,
   InstantSyncStatus,
   isDate,
+  pointer,
 } from '@borda/client';
 import { Borda } from '@borda/server';
 
 export interface SetOptions {
   headers: HTTPHeaders;
   status?: number | keyof StatusMap;
+}
+
+export interface SyncConstraint {
+  key: string;
+  collection: string;
 }
 
 const SyncParamsSchema = <T extends string>(collections: readonly T[]) =>
@@ -51,7 +57,7 @@ export class Instant<T extends string> {
   #borda!: Borda;
   #inspect = false;
   #connection = new Map<string, { clients: ElysiaWS<object, object>[] }>();
-  #pointers: string[] = [];
+  #constraints: SyncConstraint[] = [];
 
   static SyncQuery = SyncQuery;
   static SyncQuerySchema = SyncQuerySchema;
@@ -67,16 +73,16 @@ export class Instant<T extends string> {
     size,
     inspect,
     collections,
-    pointers,
+    constraints,
   }: {
     size?: number | undefined;
     inspect?: boolean | undefined;
     collections: T[];
-    pointers?: string[];
+    constraints?: SyncConstraint[];
   }) {
     this.#size = size || this.#size;
     this.#inspect = inspect || this.#inspect;
-    this.#pointers = pointers || [];
+    this.#constraints = constraints || [];
     this.collections = collections;
   }
 
@@ -95,13 +101,18 @@ export class Instant<T extends string> {
    */
   async ready() {
     try {
-      const excludedKeys = ['_id', '_created_at', '_updated_at', '_expires_at'];
+      const excludedFields = [
+        '_id',
+        '_created_at',
+        '_updated_at',
+        '_expires_at',
+      ];
 
       const docQueryParams = (doc: Document) => {
         return Object.entries(doc)
           .filter(
             ([key, value]) =>
-              typeof value === 'string' && !excludedKeys.includes(key)
+              typeof value === 'string' && !excludedFields.includes(key)
           )
           .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
       };
@@ -173,7 +184,7 @@ export class Instant<T extends string> {
 
                 const identifier = this.#buildIdentifier({
                   query: fullDocumentAsQueryParams,
-                  pointers: this.#pointers,
+                  constraints: this.#constraints,
                 });
 
                 const response: InstantSyncResponseData = {
@@ -206,7 +217,7 @@ export class Instant<T extends string> {
 
                 const identifier = this.#buildIdentifier({
                   query: fullDocumentAsQueryParams,
-                  pointers: this.#pointers,
+                  constraints: this.#constraints,
                 });
 
                 const response: InstantSyncResponseData = {
@@ -237,7 +248,7 @@ export class Instant<T extends string> {
 
                 const identifier = this.#buildIdentifier({
                   query: fullDocumentAsQueryParams,
-                  pointers: this.#pointers,
+                  constraints: this.#constraints,
                 });
 
                 const response: InstantSyncResponseData = {
@@ -270,23 +281,23 @@ export class Instant<T extends string> {
 
   #buildIdentifier({
     query,
-    pointers,
+    constraints,
   }: {
     query: Record<string, string>;
-    pointers: string[];
+    constraints: SyncConstraint[];
   }) {
     // build identifier based on query
     let identifier = '';
 
-    for (const pointer of pointers) {
-      if (query[pointer]) {
-        identifier += `@${pointer}:${query[pointer]}`;
+    for (const c of constraints) {
+      if (query[c.key]) {
+        identifier += `@${c.key}:${query[c.key]}`;
       }
     }
 
     if (!identifier) {
       console.warn(
-        '🚨 no pointers found in your config. the sync will be broadcast to everyone.'
+        '🚨 no constraints found. the sync will be broadcast to everyone with no filters.'
       );
       identifier = 'broadcast';
     }
@@ -339,11 +350,13 @@ export class Instant<T extends string> {
       headers,
       params,
       query,
+      set,
     }: {
       headers: Record<string, string | undefined>;
       params: typeof ParamsSchema;
       query: Static<typeof Instant.SyncQuerySchema>;
-    }) => this.sync({ headers, params, query });
+      set: SetOptions;
+    }) => this.sync({ headers, params, query, set });
   }
 
   /**
@@ -359,9 +372,9 @@ export class Instant<T extends string> {
       ) => {
         const id = ws.id;
         const query = ws.data['query'];
-        const pointers = this.#pointers || [];
+        const constraints = this.#constraints || [];
 
-        const identifier = this.#buildIdentifier({ query, pointers });
+        const identifier = this.#buildIdentifier({ query, constraints });
 
         this.#connection.set(identifier, {
           clients: [...(this.#connection.get(identifier)?.clients || []), ws],
@@ -380,9 +393,9 @@ export class Instant<T extends string> {
       close: (ws: ElysiaWS<any, any, any>) => {
         const id = ws.id;
         const query = ws.data['query'];
-        const pointers = this.#pointers || [];
+        const constraints = this.#constraints || [];
 
-        const identifier = this.#buildIdentifier({ query, pointers });
+        const identifier = this.#buildIdentifier({ query, constraints });
 
         const connection = this.#connection.get(identifier);
         if (connection) {
@@ -425,21 +438,53 @@ export class Instant<T extends string> {
     headers,
     params,
     query,
+    set,
   }: {
     params: Record<string, string>;
     query: Static<typeof Instant.SyncQuerySchema>;
     headers: Record<string, string | undefined>;
+    set: SetOptions;
   }) {
     const { collection } = params;
     const { activity, synced } = query;
 
     const operator = activity === 'oldest' ? '$lt' : '$gt';
 
+    const constraints = this.#constraints || [];
+
+    // determine the constraint key and value to be used in the mongo query
+    // based on the query params. it can be multiple constraints
+    // eg: ?synced=2024-01-01&activity=recent&org=orgId&user=userId
+    // where the constraints are `org` and `user`
+    const constraintsQuery = constraints.reduce((acc, constraint) => {
+      const value = query[constraint.key as keyof typeof query];
+      if (value !== undefined && value !== null) {
+        const pKey = !constraint.key.startsWith('_p_')
+          ? `_p_${constraint.key}`
+          : constraint.key;
+
+        acc[pKey] = pointer(constraint.collection, String(value));
+      }
+      return acc;
+    }, {} as Record<string, string>);
+
+    // throw if the constraints defined don't match the query
+    if (Object.keys(constraintsQuery).length !== constraints.length) {
+      set.status = 400;
+      return {
+        type: 'bad_request',
+        message: 'params/constraints mismatch',
+        summary:
+          'you should call the sync method using the same `params` defined as `constraints` in the server.',
+      };
+    }
+
     const count = await this.#borda
       .query(collection)
       .sort({ _updated_at: activity === 'oldest' ? -1 : 1 })
       .filter({
         _updated_at: { [operator]: new Date(synced || new Date()) },
+        ...constraintsQuery,
       })
       .count();
 
@@ -448,7 +493,10 @@ export class Instant<T extends string> {
       .sort({
         _updated_at: activity === 'oldest' ? -1 : 1,
       })
-      .filter(synced ? { _updated_at: { [operator]: new Date(synced) } } : {})
+      .filter({
+        ...(synced ? { _updated_at: { [operator]: new Date(synced) } } : {}),
+        ...constraintsQuery,
+      })
       .limit(this.#size)
       .find({
         parse: {

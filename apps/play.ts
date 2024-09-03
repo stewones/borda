@@ -7,39 +7,68 @@ const borda = new Borda({
   inspect: false,
   mongoURI: 'mongodb://127.0.0.1:27017/borda-dev',
 });
-await borda.server();
+
+await borda.ready();
+
+borda.server();
 
 ////////////////////////////////////////
 
-addManyUsersPostsComments();
+addManyOrgsUsersPostsComments();
 
 ////////////////////////////////////////
 
 /**
- * 1. add many users
- * 2. for each user, add 10 posts
- * 3. for each post, add 10 comments
+ * 1. add some orgs
+ * 2. add some users for each org
+ * 3. for each user, add some posts scopped to the user + org
+ * 4. for each post, add some comments scopped to the post + user + org
  *
- * users posts and comments should be related
+ * orgs, users, posts and comments should be related
  */
-async function addManyUsersPostsComments() {
-  console.log('adding many users > posts > comments');
-  console.time('added many users > posts > comments');
+async function addManyOrgsUsersPostsComments() {
+  const key = 'added orgs > users > posts > comments';
+  console.log(key.replace('added', 'adding'), 'this may take a while...');
+  console.time(key);
 
-  const users = [];
-  for (let i = 0; i < 1000; i++) {
+  const orgs = [];
+  for (let i = 0; i < 10; i++) {
     const _id = newObjectId();
     const _date = new Date();
 
     await delay(1);
 
-    users.push({
+    orgs.push({
       _id,
-      name: faker.person.fullName(),
-      email: faker.internet.email(),
+      name: faker.company.name(),
       _created_at: _date.toISOString(),
       _updated_at: _date.toISOString(),
     });
+  }
+
+  await borda.query('orgs').insertMany(orgs, {
+    parse: {
+      doc: false,
+    },
+  });
+
+  const users = [];
+  for (const org of orgs) {
+    for (let i = 0; i < 500; i++) {
+      const _id = newObjectId();
+      const _date = new Date();
+
+      await delay(1);
+
+      users.push({
+        _id,
+        name: faker.person.fullName(),
+        email: faker.internet.email(),
+        _p_org: pointer('orgs', org._id),
+        _created_at: _date.toISOString(),
+        _updated_at: _date.toISOString(),
+      });
+    }
   }
 
   await borda.query('users').insertMany(users, {
@@ -48,27 +77,23 @@ async function addManyUsersPostsComments() {
     },
   });
 
-  // return console.log('users added');
-
   const posts = [];
-  const postsUser = {};
   for (const user of users) {
-    for (let i = 0; i < 50; i++) {
-      const postId = newObjectId();
+    for (let i = 0; i < 10; i++) {
+      const _id = newObjectId();
       const _date = new Date();
 
       await delay(1);
 
       posts.push({
-        _id: postId,
+        _id,
         title: faker.lorem.sentence(),
         content: faker.lorem.paragraph(),
         _p_user: pointer('users', user._id),
+        _p_org: user._p_org,
         _created_at: _date.toISOString(),
         _updated_at: _date.toISOString(),
       });
-
-      postsUser[postId] = user._id;
     }
   }
 
@@ -79,18 +104,19 @@ async function addManyUsersPostsComments() {
   });
 
   const comments = [];
-
   for (const post of posts) {
     for (let i = 0; i < 4; i++) {
+      const _id = newObjectId();
       const _date = new Date();
 
       await delay(1);
 
       comments.push({
-        _id: newObjectId(),
+        _id,
         content: faker.lorem.paragraph(),
         _p_post: pointer('posts', post._id),
-        _p_user: pointer('users', postsUser[post._id]),
+        _p_user: post._p_user,
+        _p_org: post._p_org,
         _created_at: _date.toISOString(),
         _updated_at: _date.toISOString(),
       });
@@ -102,6 +128,5 @@ async function addManyUsersPostsComments() {
       doc: false,
     },
   });
-
-  console.timeEnd('added many users > posts > comments');
+  console.timeEnd(key);
 }

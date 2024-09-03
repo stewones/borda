@@ -93,8 +93,14 @@ const { db, name } = await borda.ready();
 const insta = new Instant({
   inspect: true,
   size: parseInt(process.env['INSTANT_SIZE'] || '1_000'),
-  collections: ['users', 'posts', 'comments'],
-  // pointers: ['org'], // key filters
+  collections: ['orgs', 'users', 'posts', 'comments'],
+  // set constraints to restrict broadcast and filtered data
+  constraints: [
+    {
+      key: 'org',
+      collection: 'orgs',
+    },
+  ],
 }).attach(borda);
 
 await insta.ready();

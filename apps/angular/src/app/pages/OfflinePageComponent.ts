@@ -23,7 +23,7 @@ export class OfflinePageComponent {
     insta.sync({
       session: 'asdf',
       params: {
-        org: 'my-org-123',
+        org: 'YwkJYEdhgh',
       },
     });
   }

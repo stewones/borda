@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { Dexie, Table } from 'dexie';
+import { Collection, Dexie, IndexableType, Table } from 'dexie';
 import { singular } from 'pluralize';
 import { bufferTime, Subject, tap } from 'rxjs';
 import { z } from 'zod';
 
-import { Document, WebSocketFactory } from '@borda/client';
+import { Document, isServer, WebSocketFactory } from '@borda/client';
 
 import { fetcher } from './fetcher';
 
@@ -16,13 +16,17 @@ export type InstantSyncStatus = 'created' | 'updated' | 'deleted';
 export interface iQLByDirective {
   $by: string;
 }
-
-export interface iQL<T, TKey, TInsertType> {
-  [key: string]:
-    | iQL<T, TKey, TInsertType>
-    | Table<T, TKey, TInsertType>
-    | iQLByDirective;
+export interface iQLLimitDirective {
+  $limit: number;
 }
+
+// export interface iQL<T, TKey, TInsertType> {
+//   [key: string]:
+//     | iQL<T, TKey, TInsertType>
+//     | Table<T, TKey, TInsertType>
+//     | iQLByDirective
+//     | iQLLimitDirective;
+// }
 
 export interface InstantSyncResponseData {
   collection: string;
@@ -47,6 +51,26 @@ export interface InstantSyncResponse {
   data: InstantSyncResponseData[];
   activity: InstantSyncActivity;
 }
+
+// Define types for query directives
+type SortDirection = 1 | -1;
+type FilterCondition = { $exists?: boolean; $nin?: any[] };
+
+interface QueryDirectives<T> {
+  $limit?: number;
+  $skip?: number;
+  $sort?: { [K in keyof T]?: SortDirection };
+  $filter?: { [K in keyof T]?: FilterCondition };
+  $by?: string;
+}
+
+// Update the iQL type to include QueryDirectives
+export type iQL<T, TKey, TInsertType> = {
+  [K in keyof T]?: iQL<T[K], TKey, TInsertType> & QueryDirectives<T[K]>;
+};
+
+// Helper type to extract the document type from a Table
+type TableDocument<T> = T extends Table<infer D, any, any> ? D : never;
 
 export const objectId = <T extends string>(p: T) =>
   z.string().max(9).brand<T>();
@@ -237,6 +261,10 @@ export class Instant {
 
       this.#db.on('ready', (db) => {
         Promise.resolve(db);
+        if (this.#inspect && !isServer()) {
+          // @ts-ignore
+          window['insta'] = this;
+        }
       });
     } catch (error) {
       console.error('Error initializing database', error);
@@ -841,14 +869,14 @@ export class Instant {
    * @example
    * const query = {
    *   users: {
-   *     limit: 10,
-   *     skip: 0,
+   *     $limit: 10,
+   *     $skip: 0,
    *     posts: {
    *       $by: 'author',
-   *       limit: 10,
-   *       skip: 0,
-   *       sort: { rating: -1 },
-   *       filter: {
+   *       $limit: 10,
+   *       $skip: 0,
+   *       $sort: { rating: -1 },
+   *       $filter: {
    *         title: { $exists: true },
    *         status: { $nin: ['draft', 'archived'] },
    *       },
@@ -885,84 +913,102 @@ export class Instant {
       return undefined;
     };
 
-    const executeQuery = async (
-      queryObject: iQL<T, TKey, TInsertType>,
+    const executeQuery = async <T extends Record<string, Table<any, any, any>>>(
+      queryObject: iQL<T, any, any>,
       parentTable?: string,
       parentId?: string
-    ) => {
-      const result: Record<string, T[]> = {};
+    ): Promise<Partial<{ [K in keyof T]: TableDocument<T[K]>[] }>> => {
+      const result: Partial<{ [K in keyof T]: TableDocument<T[K]>[] }> = {};
 
       for (const tableName in queryObject) {
-        if (Object.prototype.hasOwnProperty.call(queryObject, tableName)) {
-          const tableQuery = queryObject[tableName];
-          let tableData;
+        if (
+          Object.prototype.hasOwnProperty.call(queryObject, tableName) &&
+          !tableName.startsWith('$')
+        ) {
+          const table = this.#db.table(tableName);
+          const tableQuery = queryObject[tableName] as QueryDirectives<
+            TableDocument<T[typeof tableName]>
+          > &
+            iQL<T, any, any>;
 
-          const parentTableAsBy = parentTable
-            ? singular(parentTable)
-            : undefined;
+          let collection: Collection<
+            TableDocument<T[typeof tableName]>,
+            IndexableType
+          > = table as unknown as Collection<
+            TableDocument<T[typeof tableName]>,
+            IndexableType
+          >;
 
+          // Handle parent relationship
           if (parentTable && parentId) {
             const pointerField = getPointerField(tableName, parentTable);
+            const parentTableAsBy = `_p_${singular(parentTable)}`;
 
             if (pointerField) {
-              tableData = await this.#db
-                .table(tableName)
-                .where(pointerField)
-                .equals(pointerRef(parentTable, parentId))
-                .toArray();
+              collection = collection.filter(
+                (item) =>
+                  item[pointerField] === pointerRef(parentTable, parentId)
+              );
             } else if (parentTableAsBy) {
-              // console.log('table', tableName);
-              // console.log('where', parentTableAsBy);
-              // console.log('equals', pointerRef(parentTable, parentId));
-              tableData =
-                (await this.#db
-                  .table(tableName)
-                  .where(parentTableAsBy)
-                  .equals(pointerRef(parentTable, parentId))
-                  .toArray()
-                  .catch((err) => console.log(err))) || [];
-            } else {
-              tableData = [];
+              collection = collection.filter(
+                (item) =>
+                  item[parentTableAsBy] === pointerRef(parentTable, parentId)
+              );
             }
-          } else {
-            tableData = await this.#db
-              .table(tableName)
-              .orderBy('_created_at')
-              .reverse()
-              .toArray();
           }
 
-          if (Object.keys(tableQuery).length === 0) {
-            result[tableName] = tableData;
-          } else if ((tableQuery as iQLByDirective).$by) {
-            // Handle $by directive
-            const byField = (tableQuery as iQLByDirective).$by;
-
-            const nestedData = await this.#db
-              .table(tableName)
-              .where(byField)
-              .equals(pointerRef(parentTable!, parentId!))
-              .toArray();
-
-            result[tableName] = nestedData;
-          } else {
-            result[tableName] = await Promise.all(
-              tableData.map(async (item) => {
-                const nestedResult = await executeQuery(
-                  tableQuery as iQL<T, TKey, TInsertType>,
-                  tableName,
-                  item._id
+          // Apply $filter
+          if (tableQuery.$filter) {
+            for (const [field, condition] of Object.entries(
+              tableQuery.$filter ?? {}
+            )) {
+              if (condition?.$exists) {
+                collection = collection.filter((item) => item[field] != null);
+              }
+              if (condition?.$nin) {
+                collection = collection.filter(
+                  (item) => !(condition.$nin ?? []).includes(item[field])
                 );
-                return { ...item, ...nestedResult };
-              })
-            );
+              }
+            }
           }
+
+          // Apply $sort
+          if (tableQuery.$sort) {
+            const [field, order] = Object.entries(tableQuery.$sort)[0];
+            collection = (collection as any).orderBy(field);
+            if (order === -1) {
+              collection = collection.reverse();
+            }
+          }
+
+          // Apply $skip and $limit
+          if (tableQuery.$skip) {
+            collection = collection.offset(tableQuery.$skip);
+          }
+          if (tableQuery.$limit) {
+            collection = collection.limit(tableQuery.$limit);
+          }
+
+          // Execute the query
+          let tableData = await collection.toArray();
+
+          // Process nested queries
+          (result as any)[tableName] = await Promise.all(
+            tableData.map(async (item) => {
+              const nestedResult = await executeQuery(
+                tableQuery as iQL<T, any, any>,
+                tableName,
+                item._id
+              );
+              return { ...item, ...nestedResult };
+            })
+          );
         }
       }
 
       return result;
     };
-
     return executeQuery(iql);
   }
 }
