@@ -20,13 +20,7 @@ export interface iQLLimitDirective {
   $limit: number;
 }
 
-// export interface iQL<T, TKey, TInsertType> {
-//   [key: string]:
-//     | iQL<T, TKey, TInsertType>
-//     | Table<T, TKey, TInsertType>
-//     | iQLByDirective
-//     | iQLLimitDirective;
-// }
+
 
 export interface InstantSyncResponseData {
   collection: string;
@@ -52,25 +46,28 @@ export interface InstantSyncResponse {
   activity: InstantSyncActivity;
 }
 
-// Define types for query directives
-type SortDirection = 1 | -1;
-type FilterCondition = { $exists?: boolean; $nin?: any[] };
-
-interface QueryDirectives<T> {
-  $limit?: number;
-  $skip?: number;
-  $sort?: { [K in keyof T]?: SortDirection };
-  $filter?: { [K in keyof T]?: FilterCondition };
-  $by?: string;
-}
-
-// Update the iQL type to include QueryDirectives
-export type iQL<T, TKey, TInsertType> = {
-  [K in keyof T]?: iQL<T[K], TKey, TInsertType> & QueryDirectives<T[K]>;
-};
-
 // Helper type to extract the document type from a Table
 type TableDocument<T> = T extends Table<infer D, any, any> ? D : never;
+
+type SchemaType = Record<string, z.ZodType<any, any, any>>;
+
+type InferSchemaType<T extends SchemaType> = {
+  [K in keyof T]: z.infer<T[K]>;
+};
+
+type QueryDirectives<T> = {
+  $limit?: number;
+  $skip?: number;
+  $sort?: { [K in keyof T]?: 1 | -1 };
+  $filter?: {
+    [K in keyof T]?: { $exists?: boolean; $nin?: any[] };
+  };
+  $by?: string;
+};
+
+export type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
+  [P in K]?: iQL<T, K> & QueryDirectives<z.infer<T[P]>>;
+};
 
 export const objectId = <T extends string>(p: T) =>
   z.string().max(9).brand<T>();
@@ -105,14 +102,14 @@ const SyncSchema = z.object({
   status: z.enum(['complete', 'incomplete']),
 });
 
-export class Instant {
+export class Instant<T extends SchemaType> {
   #size = 1_000;
   #buffer = 10_000;
   #name: string;
   #db!: Dexie;
   #worker!: Worker;
   #serverURL: string;
-  #schema: Record<string, z.ZodObject<Record<string, InstantSchemaField>>>;
+  #schema: T;
   #inspect: boolean;
   #token!: string;
   #headers!: Record<string, string>;
@@ -162,7 +159,7 @@ export class Instant {
     // idb?: typeof indexedDB;
     // idbKeyRange?: typeof IDBKeyRange;
     name: Capitalize<string>;
-    schema: Record<string, z.ZodObject<any>>;
+    schema: T;
     serverURL?: string | undefined;
     inspect?: boolean | undefined;
     buffer?: number | undefined;
@@ -241,6 +238,7 @@ export class Instant {
 
       for (const tableName in this.#schema) {
         dexieSchema[tableName] = `${Object.keys(
+          // @ts-ignore
           this.#schema[tableName].shape
         ).join(', ')}`;
       }
@@ -884,27 +882,28 @@ export class Instant {
    *   },
    * }
    */
-  public async query<T, TKey, TInsertType>(iql: iQL<T, TKey, TInsertType>) {
-    // ... existing code ...
+
+  public async query<Q extends iQL<T>>(
+    iql: Q
+  ): Promise<{
+    [K in keyof Q]: z.infer<T[K & keyof T]>[];
+  }> {
     const getPointerField = (
-      childTable: string,
-      parentTable: string
+      childTable: keyof T,
+      parentTable: keyof T
     ): string | undefined => {
       const childSchema = this.#schema[childTable];
-      if (!childSchema) return undefined;
+      if (!childSchema || !('shape' in childSchema)) return undefined;
 
       for (const [fieldName, fieldSchema] of Object.entries(
-        childSchema.shape
+        (childSchema as unknown as z.ZodObject<any, any, any>).shape
       )) {
         if (
           fieldSchema instanceof z.ZodBranded &&
           fieldSchema._def.type instanceof z.ZodObject
         ) {
           const innerShape = fieldSchema._def.type.shape;
-          if (
-            innerShape.collection instanceof z.ZodLiteral &&
-            innerShape.collection._def.value === parentTable
-          ) {
+          if ('collection' in innerShape) {
             return fieldName;
           }
         }
@@ -913,12 +912,16 @@ export class Instant {
       return undefined;
     };
 
-    const executeQuery = async <T extends Record<string, Table<any, any, any>>>(
-      queryObject: iQL<T, any, any>,
-      parentTable?: string,
+    const executeQuery = async <Q extends iQL<T>>(
+      queryObject: Q,
+      parentTable?: keyof T,
       parentId?: string
-    ): Promise<Partial<{ [K in keyof T]: TableDocument<T[K]>[] }>> => {
-      const result: Partial<{ [K in keyof T]: TableDocument<T[K]>[] }> = {};
+    ): Promise<{
+      [K in keyof Q]: z.infer<T[K & keyof T]>[];
+    }> => {
+      const result = {} as {
+        [K in keyof Q]: z.infer<T[K & keyof T]>[];
+      };
 
       for (const tableName in queryObject) {
         if (
@@ -927,40 +930,44 @@ export class Instant {
         ) {
           const table = this.#db.table(tableName);
           const tableQuery = queryObject[tableName] as QueryDirectives<
-            TableDocument<T[typeof tableName]>
+            z.infer<T[keyof T]>
           > &
-            iQL<T, any, any>;
+            iQL<T>;
 
           let collection: Collection<
-            TableDocument<T[typeof tableName]>,
+            z.infer<T[keyof T]>,
             IndexableType
           > = table as unknown as Collection<
-            TableDocument<T[typeof tableName]>,
+            z.infer<T[keyof T]>,
             IndexableType
           >;
 
           // Handle parent relationship
           if (parentTable && parentId) {
-            const pointerField = getPointerField(tableName, parentTable);
-            const parentTableAsBy = `_p_${singular(parentTable)}`;
+            const pointerField = getPointerField(
+              tableName as keyof T,
+              parentTable
+            );
+            const parentTableAsBy = `_p_${singular(parentTable as string)}`;
 
-            if (pointerField) {
-              collection = collection.filter(
-                (item) =>
-                  item[pointerField] === pointerRef(parentTable, parentId)
-              );
-            } else if (parentTableAsBy) {
-              collection = collection.filter(
-                (item) =>
-                  item[parentTableAsBy] === pointerRef(parentTable, parentId)
-              );
-            }
+           if (pointerField) {
+               collection = collection.filter(
+                 (item) =>
+                   item[pointerField] === `${parentTable as string}$${parentId}`
+               );
+             } else if (parentTableAsBy in collection) {
+               collection = collection.filter(
+                 (item) =>
+                   item[parentTableAsBy] ===
+                   `${parentTable as string}$${parentId}`
+               );
+             }
           }
 
           // Apply $filter
           if (tableQuery.$filter) {
             for (const [field, condition] of Object.entries(
-              tableQuery.$filter ?? {}
+              tableQuery.$filter
             )) {
               if (condition?.$exists) {
                 collection = collection.filter((item) => item[field] != null);
@@ -976,7 +983,9 @@ export class Instant {
           // Apply $sort
           if (tableQuery.$sort) {
             const [field, order] = Object.entries(tableQuery.$sort)[0];
-            collection = (collection as any).orderBy(field);
+            collection = (
+              collection as unknown as Table<z.infer<T[keyof T]>, IndexableType>
+            ).orderBy(field);
             if (order === -1) {
               collection = collection.reverse();
             }
@@ -994,11 +1003,11 @@ export class Instant {
           let tableData = await collection.toArray();
 
           // Process nested queries
-          (result as any)[tableName] = await Promise.all(
+          result[tableName as keyof Q] = await Promise.all(
             tableData.map(async (item) => {
               const nestedResult = await executeQuery(
-                tableQuery as iQL<T, any, any>,
-                tableName,
+                tableQuery as Q,
+                tableName as keyof T,
                 item._id
               );
               return { ...item, ...nestedResult };
@@ -1009,6 +1018,7 @@ export class Instant {
 
       return result;
     };
+
     return executeQuery(iql);
   }
 }

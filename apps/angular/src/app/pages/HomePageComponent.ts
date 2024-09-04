@@ -1,23 +1,57 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { provideIcons } from '@ng-icons/core';
+import { lucideBox } from '@ng-icons/lucide';
+import {
+  HlmAlertDescriptionDirective,
+  HlmAlertDirective,
+  HlmAlertIconDirective,
+  HlmAlertTitleDirective,
+} from '@spartan-ng/ui-alert-helm';
+import { HlmButtonDirective } from '@spartan-ng/ui-button-helm';
+import { HlmIconComponent } from '@spartan-ng/ui-icon-helm';
+import { BrnSeparatorComponent } from '@spartan-ng/ui-separator-brain';
+import { HlmSeparatorDirective } from '@spartan-ng/ui-separator-helm';
+
 @Component({
   standalone: true,
   selector: 'app-home-page',
-  imports: [RouterLink],
+  imports: [
+    RouterLink,
+    HlmAlertTitleDirective,
+    HlmAlertIconDirective,
+    HlmAlertDescriptionDirective,
+    HlmAlertDirective,
+    HlmIconComponent,
+    HlmSeparatorDirective,
+    BrnSeparatorComponent,
+    HlmButtonDirective,
+  ],
+  providers: [provideIcons({ lucideBox })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: ``,
   template: `
-    <h1>borda.js</h1>
-    <p>Welcome to the angular app example.</p>
-    <ul>
-      <li>
-        <a routerLink="/overview">Overview</a>
-      </li>
-      <li>
-        <a routerLink="/offline">Offline first</a>
-      </li>
-    </ul>
+    <div class="p-4">
+      <div hlmAlert>
+        <hlm-icon hlmAlertIcon name="lucideBox" />
+        <h4 hlmAlertTitle>Introducing borda.js</h4>
+        <p hlmAlertDesc>
+          borda.js helps you build offline-first, real-time and collaborative
+          apps using Bun, Elysia, MongoDB and IndexedDB.
+        </p>
+      </div>
+
+      <div class="flex items-center h-5 text-sm mx-2 my-2">
+        <div>
+          <a hlmBtn routerLink="/users" variant="link"> Manage Users </a>
+        </div>
+        <brn-separator decorative hlmSeparator orientation="vertical" />
+        <div>
+          <a hlmBtn routerLink="/old" variant="link">Old Stuff</a>
+        </div>
+      </div>
+    </div>
   `,
 })
 export class HomePageComponent {}

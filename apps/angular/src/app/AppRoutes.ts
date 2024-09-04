@@ -8,19 +8,15 @@ export const AppRoutes: Route[] = [
       import('./pages/HomePageComponent').then((m) => m.HomePageComponent),
   },
   {
-    path: 'overview',
+    path: 'old',
     canActivate: [],
     loadComponent: () =>
-      import('./pages/OverviewPageComponent').then(
-        (m) => m.OverviewPageComponent
-      ),
+      import('./pages/OldPageComponent').then((m) => m.OldPageComponent),
   },
   {
-    path: 'offline',
+    path: 'users',
     canActivate: [],
     loadComponent: () =>
-      import('./pages/OfflinePageComponent').then(
-        (m) => m.OfflinePageComponent
-      ),
+      import('./pages/UsersPageComponent').then((m) => m.UsersPageComponent),
   },
 ];

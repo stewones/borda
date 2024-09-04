@@ -38,5 +38,14 @@ export class AppComponent {
   async ngOnInit() {
     const usage = await insta.usage();
     console.log(`💽 total indexeddb usage`, usage);
+    /**
+     * starts the sync process
+     */
+    insta.sync({
+      session: 'asdf',
+      params: {
+        org: 'YwkJYEdhgh',
+      },
+    });
   }
 }
