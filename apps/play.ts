@@ -14,9 +14,33 @@ borda.server();
 
 ////////////////////////////////////////
 
-addManyOrgsUsersPostsComments();
+//addManyOrgsUsersPostsComments();
+
+addOneUser();
 
 ////////////////////////////////////////
+
+async function addOneUser() {
+  const _id = newObjectId();
+  const _date = new Date();
+
+  await delay(1);
+
+  const org = await borda.query('orgs').findOne('YwkJYEdhgh');
+
+  if (!org['objectId']) {
+    throw new Error('org not found');
+  }
+
+  await borda.query('users').insert({
+    _id,
+    name: faker.person.fullName(),
+    email: faker.internet.email(),
+    _p_org: pointer('orgs', org['objectId']),
+    _created_at: _date.toISOString(),
+    _updated_at: _date.toISOString(),
+  });
+}
 
 /**
  * 1. add some orgs

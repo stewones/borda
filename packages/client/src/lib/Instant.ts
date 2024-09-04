@@ -110,6 +110,7 @@ export class Instant<T extends SchemaType> {
   #worker!: Worker;
   #serverURL: string;
   #schema: T;
+  #index!: Partial<Record<keyof T, string[]>>;
   #inspect: boolean;
   #token!: string;
   #headers!: Record<string, string>;
@@ -153,6 +154,7 @@ export class Instant<T extends SchemaType> {
     token,
     headers,
     params,
+    index,
   }: {
     // @todo for isolated tests
     // db?: Dexie;
@@ -160,6 +162,7 @@ export class Instant<T extends SchemaType> {
     // idbKeyRange?: typeof IDBKeyRange;
     name: Capitalize<string>;
     schema: T;
+    index?: Partial<Record<keyof T, string[]>>;
     serverURL?: string | undefined;
     inspect?: boolean | undefined;
     buffer?: number | undefined;
@@ -177,6 +180,7 @@ export class Instant<T extends SchemaType> {
     this.#token = token || '';
     this.#headers = headers || {};
     this.#params = params || {};
+    this.#index = index || {};
     this.#scheduler
       .pipe(
         bufferTime(this.#buffer),
@@ -243,16 +247,36 @@ export class Instant<T extends SchemaType> {
         ).join(', ')}`;
       }
 
-      const db = new Dexie(this.#name, {
-        // @todo for isolated tests
-        // indexedDB: idb,
-        // IDBKeyRange: idbKeyRange,
-      });
+      // add custom indices
+      for (const tableName in this.#schema) {
+        const fields = this.#index[tableName] || [];
+        if (fields.length === 0) {
+          continue;
+        }
+        // Add custom indices
+        const customFields = this.#index[tableName] || [];
+
+        // Generate all possible index combinations
+        const indexCombinations = this.#generateIndexCombinations(customFields);
+
+        // Join all index combinations
+        const customIndices = indexCombinations.join(', ');
+
+        dexieSchema[tableName] += `, ${customIndices}`;
+
+        // console.log(dexieSchema[tableName]);
+      }
 
       // add internal schema
       dexieSchema['_sync'] = `[collection+activity], ${Object.keys(
         SyncSchema.shape
       ).join(', ')}`;
+
+      const db = new Dexie(this.#name, {
+        // @todo for isolated tests
+        // indexedDB: idb,
+        // IDBKeyRange: idbKeyRange,
+      });
 
       db.version(1).stores(dexieSchema);
       this.#db = db;
@@ -855,6 +879,52 @@ export class Instant<T extends SchemaType> {
     };
   }
 
+  #generateIndexCombinations(fields: string[]): string[] {
+    const combo: string[] = [];
+
+    const permute = (arr: string[]): string[][] => {
+      if (arr.length <= 1) return [arr];
+      return arr.flatMap((item, i) =>
+        permute([...arr.slice(0, i), ...arr.slice(i + 1)]).map((perm) => [
+          item,
+          ...perm,
+        ])
+      );
+    };
+
+    for (let i = 1; i <= fields.length; i++) {
+      const combs = this.#combinations(fields, i);
+      for (const comb of combs) {
+        const perms = permute(comb);
+        for (const perm of perms) {
+          combo.push(`[${perm.join('+')}]`);
+        }
+      }
+    }
+
+    return [...new Set(combo)]; // Remove any duplicates
+  }
+
+  #combinations(arr: string[], k: number): string[][] {
+    const result: string[][] = [];
+
+    const combine = (start: number, current: string[]) => {
+      if (current.length === k) {
+        result.push([...current]);
+        return;
+      }
+
+      for (let i = start; i < arr.length; i++) {
+        current.push(arr[i]);
+        combine(i + 1, current);
+        current.pop();
+      }
+    };
+
+    combine(0, []);
+    return result;
+  }
+
   /**
    * @todo @experimental
    * WIP: query syntax based on a graph of collections
@@ -950,18 +1020,18 @@ export class Instant<T extends SchemaType> {
             );
             const parentTableAsBy = `_p_${singular(parentTable as string)}`;
 
-           if (pointerField) {
-               collection = collection.filter(
-                 (item) =>
-                   item[pointerField] === `${parentTable as string}$${parentId}`
-               );
-             } else if (parentTableAsBy in collection) {
-               collection = collection.filter(
-                 (item) =>
-                   item[parentTableAsBy] ===
-                   `${parentTable as string}$${parentId}`
-               );
-             }
+            if (pointerField) {
+              collection = collection.filter(
+                (item) =>
+                  item[pointerField] === `${parentTable as string}$${parentId}`
+              );
+            } else if (parentTableAsBy in collection) {
+              collection = collection.filter(
+                (item) =>
+                  item[parentTableAsBy] ===
+                  `${parentTable as string}$${parentId}`
+              );
+            }
           }
 
           // Apply $filter
@@ -981,12 +1051,24 @@ export class Instant<T extends SchemaType> {
           }
 
           // Apply $sort
-          if (tableQuery.$sort) {
-            const [field, order] = Object.entries(tableQuery.$sort)[0];
+          if (tableQuery.$sort && Object.keys(tableQuery.$sort).length > 0) {
+            const sortFields = Object.entries(tableQuery.$sort);
+
+            // Construct the compound index string with brackets
+            const indexString = `[${sortFields
+              .map(([field, _]) => field)
+              .join('+')}]`;
+
+            // console.log(indexString);
+
+            // Apply the sort
             collection = (
               collection as unknown as Table<z.infer<T[keyof T]>, IndexableType>
-            ).orderBy(field);
-            if (order === -1) {
+            ).orderBy(indexString);
+
+            // Apply reverse for descending order for the first field
+            // cause apparently we can't do multi-sorting with compound indexes yet
+            if (sortFields.length > 0 && sortFields[0][1] === -1) {
               collection = collection.reverse();
             }
           }
@@ -1020,5 +1102,51 @@ export class Instant<T extends SchemaType> {
     };
 
     return executeQuery(iql);
+  }
+
+  /**
+   * @todo @experimental
+   * WIP: query syntax based on a graph of collections
+   * so we can easily count nested data, while keeping
+   * the mongodb query syntax which is then translated to dexie
+   *
+   * server should follow the same pattern so we can have
+   * the same query for both client and server
+   *
+   * @example
+   * const count = await insta.count('users', {
+   *     $filter: {
+   *       name: { $exists: true },
+   *     },
+   * });
+   *
+   * // console.log(count)
+   * // 1337
+   *
+   */
+  public async count(
+    collection: string,
+    query: Exclude<QueryDirectives<z.infer<T[keyof T]>>, '$by'> & iQL<T>
+  ) {
+    let table = this.#db.table(collection);
+    const tableQuery = query as QueryDirectives<z.infer<T[keyof T]>> & iQL<T>;
+
+    // Apply $filter
+    if (tableQuery.$filter) {
+      for (const [field, condition] of Object.entries(tableQuery.$filter)) {
+        if (condition?.$exists) {
+          table = table.filter(
+            (item) => item[field] != null
+          ) as unknown as Table<any, IndexableType>;
+        }
+        if (condition?.$nin) {
+          table = table.filter(
+            (item) => !(condition.$nin ?? []).includes(item[field])
+          ) as unknown as Table<any, IndexableType>;
+        }
+      }
+    }
+
+    return table.count();
   }
 }

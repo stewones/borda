@@ -95,6 +95,32 @@ export class Instant<T extends string> {
     return this;
   }
 
+  #buildIdentifier({
+    query,
+    constraints,
+  }: {
+    query: Record<string, string>;
+    constraints: SyncConstraint[];
+  }) {
+    // build identifier based on query
+    let identifier = '';
+
+    for (const c of constraints) {
+      if (query[c.key]) {
+        identifier += `@${c.key}:${query[c.key]}`;
+      }
+    }
+
+    if (!identifier) {
+      console.warn(
+        '🚨 no constraints found. the sync will be broadcast to everyone with no filters.'
+      );
+      identifier = 'broadcast';
+    }
+
+    return identifier;
+  }
+
   /**
    * listen to mongo change stream
    * and notify the clients about the changes
@@ -108,13 +134,30 @@ export class Instant<T extends string> {
         '_expires_at',
       ];
 
+      const maybePointer = (key: string, value: unknown) => {
+        if (
+          key.startsWith('_p_') &&
+          typeof value === 'string' &&
+          value.includes('$')
+        ) {
+          return value.split('$')[1];
+        }
+        return value;
+      };
+
       const docQueryParams = (doc: Document) => {
         return Object.entries(doc)
           .filter(
             ([key, value]) =>
               typeof value === 'string' && !excludedFields.includes(key)
           )
-          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+          .reduce(
+            (acc, [key, value]) => ({
+              ...acc,
+              [key.replace('_p_', '') as string]: maybePointer(key, value),
+            }),
+            {}
+          );
       };
 
       for (const collection of this.collections) {
@@ -206,7 +249,6 @@ export class Instant<T extends string> {
               },
               insert: () => {
                 const { fullDocument } = change as ChangeStreamInsertDocument;
-
                 if (!fullDocument) {
                   return;
                 }
@@ -277,32 +319,6 @@ export class Instant<T extends string> {
       console.error('Instant listener error', err);
       Promise.reject(err);
     }
-  }
-
-  #buildIdentifier({
-    query,
-    constraints,
-  }: {
-    query: Record<string, string>;
-    constraints: SyncConstraint[];
-  }) {
-    // build identifier based on query
-    let identifier = '';
-
-    for (const c of constraints) {
-      if (query[c.key]) {
-        identifier += `@${c.key}:${query[c.key]}`;
-      }
-    }
-
-    if (!identifier) {
-      console.warn(
-        '🚨 no constraints found. the sync will be broadcast to everyone with no filters.'
-      );
-      identifier = 'broadcast';
-    }
-
-    return identifier;
   }
 
   /**

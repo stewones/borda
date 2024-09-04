@@ -110,6 +110,9 @@ const borda = new Borda({
 const insta = new Instant({
   schema,
   name: 'InstantTest',
+  index: {
+    users: ['_updated_at', 'name', 'email'],
+  },
   inspect: true,
   serverURL: environment.serverURL,
   size: environment.instantSize,

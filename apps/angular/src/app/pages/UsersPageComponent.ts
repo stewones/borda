@@ -32,10 +32,10 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
         </a>
       </div>
       <brn-separator decorative hlmSeparator orientation="vertical" />
-      <span class="mx-4">Manage Users</span>
+      <span class="mx-4">Manage Users ({{ table.total() }})</span>
     </div>
     <div class="px-4 py-2.5">
-      <users-table></users-table>
+      <users-table #table></users-table>
     </div>
   `,
 })

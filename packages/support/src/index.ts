@@ -18,6 +18,7 @@ export const UserSchema = z.object({
   _id: UserId,
   _created_at: z.string(),
   _updated_at: z.string(),
+  _expires_at: z.string().optional(),
   _p_org: OrgPointer,
   name: z.string(),
   email: z.string().email(),

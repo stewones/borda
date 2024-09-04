@@ -1,18 +1,14 @@
+import { liveQuery } from 'dexie';
+import { DateFnsModule } from 'ngx-date-fns';
 import { derivedAsync } from 'ngxtension/derived-async';
-import { debounceTime, map } from 'rxjs';
+import { from, map, tap } from 'rxjs';
 import { z } from 'zod';
 
 import { SelectionModel } from '@angular/cdk/collections';
 import { DecimalPipe, TitleCasePipe } from '@angular/common';
-import {
-  Component,
-  computed,
-  effect,
-  signal,
-  TrackByFunction,
-} from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { Component, computed, signal, TrackByFunction } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
 
 import { UserSchema } from '@/support';
 import {
@@ -42,24 +38,17 @@ import { HlmTableModule } from '@spartan-ng/ui-table-helm';
 
 import { insta } from '../borda';
 
-export type Payment = {
-  id: string;
-  amount: number;
-  status: 'pending' | 'processing' | 'success' | 'failed';
-  email: string;
-};
-
 @Component({
   standalone: true,
   selector: 'users-table',
   imports: [
     FormsModule,
-    ReactiveFormsModule,
     BrnMenuTriggerDirective,
     HlmMenuModule,
     BrnTableModule,
     HlmTableModule,
     HlmButtonModule,
+    DateFnsModule,
     DecimalPipe,
     TitleCasePipe,
     HlmIconComponent,
@@ -78,9 +67,6 @@ export type Payment = {
       lucideArrowDown,
     }),
   ],
-  host: {
-    class: 'w-full',
-  },
   template: `
     <div class="flex flex-col justify-between gap-4 sm:flex-row">
       <input
@@ -97,12 +83,12 @@ export type Payment = {
       </button>
       <ng-template #menu>
         <hlm-menu class="w-32">
-          @for (column of _brnColumnManager.allColumns; track column.name) {
+          @for (column of tableColumnManager.allColumns; track column.name) {
           <button
             hlmMenuItemCheckbox
-            [disabled]="_brnColumnManager.isColumnDisabled(column.name)"
-            [checked]="_brnColumnManager.isColumnVisible(column.name)"
-            (triggered)="_brnColumnManager.toggleVisibility(column.name)"
+            [disabled]="tableColumnManager.isColumnDisabled(column.name)"
+            [checked]="tableColumnManager.isColumnVisible(column.name)"
+            (triggered)="tableColumnManager.toggleVisibility(column.name)"
           >
             <hlm-menu-item-check />
             <span>{{ column.label }}</span>
@@ -116,7 +102,7 @@ export type Payment = {
       hlm
       stickyHeader
       class="border-border mt-4 block overflow-auto rounded-md border"
-      [dataSource]="_filteredSortedPaginatedPayments()"
+      [dataSource]="users()"
       [displayedColumns]="_allDisplayedColumns()"
       [trackBy]="_trackBy"
     >
@@ -135,7 +121,29 @@ export type Payment = {
         </hlm-td>
       </brn-column-def>
       <brn-column-def name="status" class="w-24">
-        <hlm-th truncate *brnHeaderDef>Status</hlm-th>
+        <hlm-th *brnHeaderDef>
+          <button
+            hlmBtn
+            size="sm"
+            variant="ghost"
+            (click)="handleStatusSortChange()"
+            class="-ml-3"
+          >
+            Status
+            <hlm-icon
+              class="ml-3"
+              size="xs"
+              [name]="
+                filteredStatusSort() === 'ASC'
+                  ? 'lucideArrowUp'
+                  : filteredStatusSort() === 'DESC'
+                  ? 'lucideArrowDown'
+                  : 'lucideArrowUpDown'
+              "
+            />
+          </button>
+        </hlm-th>
+
         <hlm-td truncate *brnCellDef="let row">
           {{ row._expires_at ? 'Deleted' : 'Active' }}
         </hlm-td>
@@ -152,7 +160,7 @@ export type Payment = {
             Name
             <hlm-icon
               class="ml-3"
-              size="sm"
+              size="xs"
               [name]="
                 filteredNameSort() === 'ASC'
                   ? 'lucideArrowUp'
@@ -180,7 +188,7 @@ export type Payment = {
             Email
             <hlm-icon
               class="ml-3"
-              size="sm"
+              size="xs"
               [name]="
                 filteredEmailSort() === 'ASC'
                   ? 'lucideArrowUp'
@@ -195,10 +203,31 @@ export type Payment = {
           {{ element.email }}
         </hlm-td>
       </brn-column-def>
-      <brn-column-def name="amount" class="justify-end w-20">
-        <hlm-th *brnHeaderDef>Amount</hlm-th>
-        <hlm-td class="font-medium tabular-nums" *brnCellDef="let element">
-          $ {{ element.amount | number : '1.2-2' }}
+      <brn-column-def name="updated" class="justify-end w-20">
+        <hlm-th *brnHeaderDef>
+          <button
+            hlmBtn
+            size="sm"
+            variant="ghost"
+            (click)="handleUpdatedSortChange()"
+            class="-mr-3"
+          >
+            Updated
+            <hlm-icon
+              class="ml-3"
+              size="xs"
+              [name]="
+                filteredUpdatedSort() === 'ASC'
+                  ? 'lucideArrowUp'
+                  : filteredUpdatedSort() === 'DESC'
+                  ? 'lucideArrowDown'
+                  : 'lucideArrowUpDown'
+              "
+            />
+          </button>
+        </hlm-th>
+        <hlm-td class="font-normal whitespace-nowrap" *brnCellDef="let row">
+          {{ row._updated_at | dfnsParseIso | dfnsFormat : 'MMM d, HH:mm' }}
         </hlm-td>
       </brn-column-def>
       <brn-column-def name="actions" class="w-16">
@@ -241,7 +270,7 @@ export type Payment = {
       class="flex flex-col justify-between mt-4 sm:flex-row sm:items-center"
       *brnPaginator="
         let ctx;
-        totalElements: _totalElements();
+        totalElements: total();
         pageSize: _pageSize();
         onStateChange: _onStateChange
       "
@@ -282,8 +311,8 @@ export type Payment = {
             size="sm"
             variant="outline"
             hlmBtn
-            [disabled]="!ctx.incrementable()"
             (click)="ctx.increment()"
+            [disabled]="!ctx.incrementable()"
           >
             Next
           </button>
@@ -295,11 +324,6 @@ export type Payment = {
 export class UsersTableComponent {
   protected readonly _rawFilterInput = signal('');
   protected readonly filteredEmail = signal('');
-  private readonly _debouncedFilter = toSignal(
-    toObservable(this._rawFilterInput).pipe(debounceTime(300))
-  );
-
-  private readonly _displayedIndices = signal({ start: 0, end: 0 });
   protected readonly _availablePageSizes = [5, 10, 20, 10000];
   protected readonly _pageSize = signal(this._availablePageSizes[0]);
 
@@ -317,21 +341,70 @@ export class UsersTableComponent {
     }
   );
 
-  protected readonly _brnColumnManager = useBrnColumnManager({
+  protected readonly tableColumnManager = useBrnColumnManager({
     status: { visible: true, label: 'Status' },
     name: { visible: true, label: 'Name' },
     email: { visible: true, label: 'Email' },
-    amount: { visible: true, label: 'Amount ($)' },
+    updated: { visible: true, label: 'Updated' },
   });
   protected readonly _allDisplayedColumns = computed(() => [
     'select',
-    ...this._brnColumnManager.displayedColumns(),
+    ...this.tableColumnManager.displayedColumns(),
     'actions',
   ]);
 
-  private readonly users = derivedAsync(
+  lastSortedFields = signal(['_updated_at']);
+  skip = signal(0);
+
+  sort = computed(() => {
+    const sort: Record<string, number> = {};
+
+    for (const field of this.lastSortedFields()) {
+      if (field === '_updated_at') {
+        sort['_updated_at'] = this.filteredUpdatedSort() === 'ASC' ? 1 : -1;
+      }
+
+      if (field === 'name') {
+        sort['name'] = this.filteredNameSort() === 'ASC' ? 1 : -1;
+      }
+
+      if (field === 'email') {
+        sort['email'] = this.filteredEmailSort() === 'ASC' ? 1 : -1;
+      }
+    }
+
+    return sort;
+  });
+
+  reload = signal(false);
+
+  query = computed(() => {
+    return {
+      users: {
+        $skip: this.skip(),
+        $limit: this._pageSize(),
+        $sort: this.sort(),
+      },
+    };
+  });
+
+  total = derivedAsync(
     async () => {
-      const { users } = await insta.query({ users: { $limit: 20 } });
+      this.reload(); // to trigger angular change detection
+      const total = await insta.count('users', {});
+      this.reload.set(false);
+      return total;
+    },
+    {
+      initialValue: 0,
+    }
+  );
+
+  users = derivedAsync(
+    async () => {
+      this.reload(); // to trigger angular change detection
+      const { users } = await insta.query(this.query());
+      this.reload.set(false);
       return users;
     },
     {
@@ -339,50 +412,17 @@ export class UsersTableComponent {
     }
   );
 
-  private readonly filteredUsers = computed(() => {
-    const emailFilter = this.filteredEmail()?.trim()?.toLowerCase();
-    if (emailFilter && emailFilter.length > 0) {
-      return this.users().filter((u) =>
-        u.email.toLowerCase().includes(emailFilter)
-      );
-    }
-    return this.users();
-  });
+  users$ = from(liveQuery(() => insta.query(this.query())))
+    .pipe(tap(() => this.reload.set(true))) // to trigger angular change detection
+    .subscribe();
 
   readonly filteredEmailSort = signal<'ASC' | 'DESC' | null>(null);
   readonly filteredNameSort = signal<'ASC' | 'DESC' | null>(null);
-
-  protected readonly _filteredSortedPaginatedPayments = computed(() => {
-    const emailSort = this.filteredEmailSort();
-    const nameSort = this.filteredNameSort();
-    const start = this._displayedIndices().start;
-    const end = this._displayedIndices().end + 1;
-    const users = this.filteredUsers();
-
-    if (!emailSort && !nameSort) {
-      return users.slice(start, end);
-    }
-
-    return [...users]
-      .sort((p1, p2) => {
-        if (emailSort) {
-          const emailComparison = p1.email.localeCompare(p2.email);
-          return emailSort === 'ASC' ? emailComparison : -emailComparison;
-        }
-        if (nameSort) {
-          const nameComparison = p1.name.localeCompare(p2.name);
-          return nameSort === 'ASC' ? nameComparison : -nameComparison;
-        }
-
-        return 0;
-      })
-      .slice(start, end);
-  });
+  readonly filteredUpdatedSort = signal<'ASC' | 'DESC' | null>('DESC');
+  readonly filteredStatusSort = signal<'ASC' | 'DESC' | null>(null);
 
   protected readonly _allFilteredPaginatedPaymentsSelected = computed(() =>
-    this._filteredSortedPaginatedPayments().every((user) =>
-      this._selected().includes(user)
-    )
+    this.users().every((user) => this._selected().includes(user))
   );
 
   protected readonly _checkboxState = computed(() => {
@@ -392,26 +432,20 @@ export class UsersTableComponent {
     return noneSelected ? false : allSelectedOrIndeterminate;
   });
 
-  protected readonly _trackBy: TrackByFunction<Payment> = (
+  protected readonly _trackBy: TrackByFunction<z.infer<typeof UserSchema>> = (
     _: number,
-    p: Payment
-  ) => p.id;
-  protected readonly _totalElements = computed(
-    () => this.filteredUsers().length
-  );
+    p: z.infer<typeof UserSchema>
+  ) => p._id;
+
+  protected readonly _totalElements = computed(() => this.users().length);
+
   protected readonly _onStateChange = ({
     startIndex,
     endIndex,
-  }: PaginatorState) =>
-    this._displayedIndices.set({ start: startIndex, end: endIndex });
-
-  constructor() {
-    // needed to sync the debounced filter to the name filter, but being able to override the
-    // filter when loading new users without debounce
-    effect(() => this.filteredEmail.set(this._debouncedFilter() ?? ''), {
-      allowSignalWrites: true,
-    });
-  }
+  }: PaginatorState) => {
+    this.skip.set(startIndex);
+    this._selectionModel.clear();
+  };
 
   protected togglePayment(payment: z.infer<typeof UserSchema>) {
     this._selectionModel.toggle(payment);
@@ -420,13 +454,16 @@ export class UsersTableComponent {
   protected handleHeaderCheckboxChange() {
     const previousCbState = this._checkboxState();
     if (previousCbState === 'indeterminate' || !previousCbState) {
-      this._selectionModel.select(...this._filteredSortedPaginatedPayments());
+      this._selectionModel.select(...this.users());
     } else {
-      this._selectionModel.deselect(...this._filteredSortedPaginatedPayments());
+      this._selectionModel.deselect(...this.users());
     }
   }
 
   protected handleEmailSortChange() {
+    this.lastSortedFields.set([
+      ...new Set(['email', ...this.lastSortedFields()]),
+    ]);
     const sort = this.filteredEmailSort();
     if (sort === 'ASC') {
       this.filteredEmailSort.set('DESC');
@@ -438,6 +475,9 @@ export class UsersTableComponent {
   }
 
   protected handleNameSortChange() {
+    this.lastSortedFields.set([
+      ...new Set(['name', ...this.lastSortedFields()]),
+    ]);
     const sort = this.filteredNameSort();
     if (sort === 'ASC') {
       this.filteredNameSort.set('DESC');
@@ -445,6 +485,34 @@ export class UsersTableComponent {
       this.filteredNameSort.set(null);
     } else {
       this.filteredNameSort.set('ASC');
+    }
+  }
+
+  protected handleUpdatedSortChange() {
+    this.lastSortedFields.set([
+      ...new Set(['_updated_at', ...this.lastSortedFields()]),
+    ]);
+    const sort = this.filteredUpdatedSort();
+    if (sort === 'ASC') {
+      this.filteredUpdatedSort.set('DESC');
+    } else if (sort === 'DESC') {
+      this.filteredUpdatedSort.set(null);
+    } else {
+      this.filteredUpdatedSort.set('ASC');
+    }
+  }
+
+  protected handleStatusSortChange() {
+    this.lastSortedFields.set([
+      ...new Set(['_expires_at', ...this.lastSortedFields()]),
+    ]);
+    const sort = this.filteredStatusSort();
+    if (sort === 'ASC') {
+      this.filteredStatusSort.set('DESC');
+    } else if (sort === 'DESC') {
+      this.filteredStatusSort.set(null);
+    } else {
+      this.filteredStatusSort.set('ASC');
     }
   }
 }
