@@ -6,7 +6,13 @@ import { z } from 'zod';
 
 import { SelectionModel } from '@angular/cdk/collections';
 import { DecimalPipe, TitleCasePipe } from '@angular/common';
-import { Component, computed, signal, TrackByFunction } from '@angular/core';
+import {
+  Component,
+  computed,
+  signal,
+  TrackByFunction,
+  ViewEncapsulation,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
@@ -38,6 +44,8 @@ import { HlmTableModule } from '@spartan-ng/ui-table-helm';
 
 import { insta } from '../borda';
 
+type EntryType = z.infer<typeof UserSchema>;
+
 @Component({
   standalone: true,
   selector: 'users-table',
@@ -67,6 +75,12 @@ import { insta } from '../borda';
       lucideArrowDown,
     }),
   ],
+  encapsulation: ViewEncapsulation.None,
+  styles: `
+  cdk-header-row {
+   @apply rounded-t-lg;
+  }
+  `,
   template: `
     <div class="flex flex-col justify-between gap-4 sm:flex-row">
       <input
@@ -82,12 +96,12 @@ import { insta } from '../borda';
       </button>
       <ng-template #menu>
         <hlm-menu class="w-32">
-          @for (column of tableColumnManager.allColumns; track column.name) {
+          @for (column of columnManager.allColumns; track column.name) {
           <button
             hlmMenuItemCheckbox
-            [disabled]="tableColumnManager.isColumnDisabled(column.name)"
-            [checked]="tableColumnManager.isColumnVisible(column.name)"
-            (triggered)="tableColumnManager.toggleVisibility(column.name)"
+            [disabled]="columnManager.isColumnDisabled(column.name)"
+            [checked]="columnManager.isColumnVisible(column.name)"
+            (triggered)="columnManager.toggleVisibility(column.name)"
           >
             <hlm-menu-item-check />
             <span>{{ column.label }}</span>
@@ -100,22 +114,22 @@ import { insta } from '../borda';
     <brn-table
       hlm
       stickyHeader
-      class="border-border mt-4 block overflow-auto rounded-md border"
-      [dataSource]="users()"
-      [displayedColumns]="_allDisplayedColumns()"
-      [trackBy]="_trackBy"
+      class="border-border mt-4 block rounded-md border"
+      [dataSource]="entries()"
+      [displayedColumns]="columnsDisplayed()"
+      [trackBy]="trackByEntry"
     >
       <brn-column-def name="select" class="w-12">
         <hlm-th *brnHeaderDef>
           <hlm-checkbox
-            [checked]="_checkboxState()"
-            (changed)="handleHeaderCheckboxChange()"
+            [checked]="checkboxState()"
+            (changed)="toggleEntriesSelection()"
           />
         </hlm-th>
-        <hlm-td *brnCellDef="let element">
+        <hlm-td *brnCellDef="let row">
           <hlm-checkbox
-            [checked]="_isPaymentSelected(element)"
-            (changed)="togglePayment(element)"
+            [checked]="isEntrySelected(row)"
+            (changed)="toggleEntrySelection(row)"
           />
         </hlm-td>
       </brn-column-def>
@@ -133,9 +147,9 @@ import { insta } from '../borda';
               class="ml-3"
               size="xs"
               [name]="
-                filteredStatusSort() === 'ASC'
+                sortStatus() === 'ASC'
                   ? 'lucideArrowUp'
-                  : filteredStatusSort() === 'DESC'
+                  : sortStatus() === 'DESC'
                   ? 'lucideArrowDown'
                   : 'lucideArrowUpDown'
               "
@@ -161,9 +175,9 @@ import { insta } from '../borda';
               class="ml-3"
               size="xs"
               [name]="
-                filteredNameSort() === 'ASC'
+                sortName() === 'ASC'
                   ? 'lucideArrowUp'
-                  : filteredNameSort() === 'DESC'
+                  : sortName() === 'DESC'
                   ? 'lucideArrowDown'
                   : 'lucideArrowUpDown'
               "
@@ -189,17 +203,17 @@ import { insta } from '../borda';
               class="ml-3"
               size="xs"
               [name]="
-                filteredEmailSort() === 'ASC'
+                sortEmail() === 'ASC'
                   ? 'lucideArrowUp'
-                  : filteredEmailSort() === 'DESC'
+                  : sortEmail() === 'DESC'
                   ? 'lucideArrowDown'
                   : 'lucideArrowUpDown'
               "
             />
           </button>
         </hlm-th>
-        <hlm-td truncate *brnCellDef="let element">
-          {{ element.email }}
+        <hlm-td truncate *brnCellDef="let row">
+          {{ row.email }}
         </hlm-td>
       </brn-column-def>
       <brn-column-def name="updated" class="justify-end w-20">
@@ -216,9 +230,9 @@ import { insta } from '../borda';
               class="ml-3"
               size="xs"
               [name]="
-                filteredUpdatedSort() === 'ASC'
+                sortUpdatedAt() === 'ASC'
                   ? 'lucideArrowUp'
-                  : filteredUpdatedSort() === 'DESC'
+                  : sortUpdatedAt() === 'DESC'
                   ? 'lucideArrowDown'
                   : 'lucideArrowUpDown'
               "
@@ -231,7 +245,7 @@ import { insta } from '../borda';
       </brn-column-def>
       <brn-column-def name="actions" class="w-16">
         <hlm-th *brnHeaderDef></hlm-th>
-        <hlm-td *brnCellDef="let element">
+        <hlm-td *brnCellDef="let row">
           <button
             hlmBtn
             variant="ghost"
@@ -247,12 +261,12 @@ import { insta } from '../borda';
               <hlm-menu-label>Actions</hlm-menu-label>
               <hlm-menu-separator />
               <hlm-menu-group>
-                <button hlmMenuItem>Copy payment ID</button>
+                <button hlmMenuItem>Copy entry ID</button>
               </hlm-menu-group>
               <hlm-menu-separator />
               <hlm-menu-group>
                 <button hlmMenuItem>View customer</button>
-                <button hlmMenuItem>View payment details</button>
+                <button hlmMenuItem>View entry details</button>
               </hlm-menu-group>
             </hlm-menu>
           </ng-template>
@@ -270,25 +284,25 @@ import { insta } from '../borda';
       *brnPaginator="
         let ctx;
         totalElements: total();
-        pageSize: _pageSize();
-        onStateChange: _onStateChange
+        pageSize: pageSize();
+        onStateChange: didPaginatorChange
       "
     >
       <span class="text-sm text-muted-foreground text-sm"
-        >{{ _selected().length }} of {{ _totalElements() }} row(s)
+        >{{ selectedEntries().length }} of {{ entries().length }} row(s)
         selected</span
       >
       <div class="flex mt-2 sm:mt-0">
         <brn-select
           class="inline-block"
-          placeholder="{{ _availablePageSizes[0] }}"
-          [(ngModel)]="_pageSize"
+          placeholder="{{ pageSizes[0] }}"
+          [(ngModel)]="pageSize"
         >
           <hlm-select-trigger class="inline-flex mr-1 w-15 h-9">
             <hlm-select-value />
           </hlm-select-trigger>
           <hlm-select-content>
-            @for (size of _availablePageSizes; track size) {
+            @for (size of pageSizes; track size) {
             <hlm-option [value]="size">
               {{ size === 10000 ? 'All' : size }}
             </hlm-option>
@@ -321,66 +335,17 @@ import { insta } from '../borda';
   `,
 })
 export class UsersTableComponent {
-  protected readonly search = signal('');
-  protected readonly _availablePageSizes = [5, 10, 20, 10000];
-  protected readonly _pageSize = signal(this._availablePageSizes[0]);
-
-  private readonly _selectionModel = new SelectionModel<
-    z.infer<typeof UserSchema>
-  >(true);
-  protected readonly _isPaymentSelected = (
-    payment: z.infer<typeof UserSchema>
-  ) => this._selectionModel.isSelected(payment);
-
-  protected readonly _selected = toSignal(
-    this._selectionModel.changed.pipe(map((change) => change.source.selected)),
-    {
-      initialValue: [],
-    }
-  );
-
-  protected readonly tableColumnManager = useBrnColumnManager({
-    status: { visible: true, label: 'Status' },
-    name: { visible: true, label: 'Name' },
-    email: { visible: true, label: 'Email' },
-    updated: { visible: true, label: 'Updated' },
-  });
-  protected readonly _allDisplayedColumns = computed(() => [
-    'select',
-    ...this.tableColumnManager.displayedColumns(),
-    'actions',
-  ]);
-
-  lastSortedFields = signal(['_updated_at']);
+  pageSizes = [5, 10, 20, 10000];
+  pageSize = signal(this.pageSizes[0]);
+  search = signal('');
   skip = signal(0);
-
-  sort = computed(() => {
-    const sort: Record<string, number> = {};
-
-    for (const field of this.lastSortedFields()) {
-      if (field === '_updated_at') {
-        sort['_updated_at'] = this.filteredUpdatedSort() === 'ASC' ? 1 : -1;
-      }
-
-      if (field === 'name') {
-        sort['name'] = this.filteredNameSort() === 'ASC' ? 1 : -1;
-      }
-
-      if (field === 'email') {
-        sort['email'] = this.filteredEmailSort() === 'ASC' ? 1 : -1;
-      }
-    }
-
-    return sort;
-  });
-
   reload = signal(false);
 
   query = computed(() => {
     return {
       users: {
         $skip: this.skip(),
-        $limit: this._pageSize(),
+        $limit: this.pageSize(),
         $sort: this.sort(),
         $or: [
           { name: { $regex: this.search(), $options: 'i' } },
@@ -390,19 +355,11 @@ export class UsersTableComponent {
     };
   });
 
-  total = derivedAsync(
-    async () => {
-      this.reload(); // to trigger angular change detection
-      const total = await insta.count('users', {});
-      this.reload.set(false);
-      return total;
-    },
-    {
-      initialValue: 0,
-    }
-  );
+  entries$ = from(liveQuery(() => insta.query(this.query())))
+    .pipe(tap(() => this.reload.set(true))) // to trigger angular change detection
+    .subscribe();
 
-  users = derivedAsync(
+  entries = derivedAsync(
     async () => {
       this.reload(); // to trigger angular change detection
       const { users } = await insta.query(this.query());
@@ -414,65 +371,113 @@ export class UsersTableComponent {
     }
   );
 
-  users$ = from(liveQuery(() => insta.query(this.query())))
-    .pipe(tap(() => this.reload.set(true))) // to trigger angular change detection
-    .subscribe();
-
-  readonly filteredEmailSort = signal<'ASC' | 'DESC' | null>(null);
-  readonly filteredNameSort = signal<'ASC' | 'DESC' | null>(null);
-  readonly filteredUpdatedSort = signal<'ASC' | 'DESC' | null>('DESC');
-  readonly filteredStatusSort = signal<'ASC' | 'DESC' | null>(null);
-
-  protected readonly _allFilteredPaginatedPaymentsSelected = computed(() =>
-    this.users().every((user) => this._selected().includes(user))
+  total = derivedAsync(
+    async () => {
+      this.reload(); // to trigger angular change detection
+      const count = await insta.count('users', {});
+      this.reload.set(false);
+      return count;
+    },
+    {
+      initialValue: 0,
+    }
   );
 
-  protected readonly _checkboxState = computed(() => {
-    const noneSelected = this._selected().length === 0;
-    const allSelectedOrIndeterminate =
-      this._allFilteredPaginatedPaymentsSelected() ? true : 'indeterminate';
+  columnsDisplayed = computed(() => [
+    'select',
+    ...this.columnManager.displayedColumns(),
+    'actions',
+  ]);
+
+  lastSortedFields = signal(['_updated_at']);
+
+  selectionModel = new SelectionModel<EntryType>(true);
+
+  selectedEntries = toSignal(
+    this.selectionModel.changed.pipe(map((change) => change.source.selected)),
+    {
+      initialValue: [],
+    }
+  );
+  selectedEntriesPaginated = computed(() =>
+    this.entries().every((entry) => this.selectedEntries().includes(entry))
+  );
+
+  columnManager = useBrnColumnManager({
+    status: { visible: true, label: 'Status' },
+    name: { visible: true, label: 'Name' },
+    email: { visible: true, label: 'Email' },
+    updated: { visible: true, label: 'Updated' },
+  });
+
+  checkboxState = computed(() => {
+    const noneSelected = this.selectedEntries().length === 0;
+    const allSelectedOrIndeterminate = this.selectedEntriesPaginated()
+      ? true
+      : 'indeterminate';
     return noneSelected ? false : allSelectedOrIndeterminate;
   });
 
-  protected readonly _trackBy: TrackByFunction<z.infer<typeof UserSchema>> = (
-    _: number,
-    p: z.infer<typeof UserSchema>
-  ) => p._id;
-
-  protected readonly _totalElements = computed(() => this.users().length);
-
-  protected readonly _onStateChange = ({
-    startIndex,
-    endIndex,
-  }: PaginatorState) => {
+  didPaginatorChange = ({ startIndex, endIndex }: PaginatorState) => {
     this.skip.set(startIndex);
-    this._selectionModel.clear();
+    this.selectionModel.clear();
   };
 
-  protected togglePayment(payment: z.infer<typeof UserSchema>) {
-    this._selectionModel.toggle(payment);
+  toggleEntrySelection(entry: EntryType) {
+    this.selectionModel.toggle(entry);
   }
 
-  protected handleHeaderCheckboxChange() {
-    const previousCbState = this._checkboxState();
+  toggleEntriesSelection() {
+    const previousCbState = this.checkboxState();
     if (previousCbState === 'indeterminate' || !previousCbState) {
-      this._selectionModel.select(...this.users());
+      this.selectionModel.select(...this.entries());
     } else {
-      this._selectionModel.deselect(...this.users());
+      this.selectionModel.deselect(...this.entries());
     }
   }
+
+  trackByEntry: TrackByFunction<EntryType> = (_: number, p: EntryType) => p._id;
+  isEntrySelected = (entry: EntryType) => this.selectionModel.isSelected(entry);
+
+  /**
+   * custom implementation below
+   */
+  readonly sortEmail = signal<'ASC' | 'DESC' | null>(null);
+  readonly sortName = signal<'ASC' | 'DESC' | null>(null);
+  readonly sortUpdatedAt = signal<'ASC' | 'DESC' | null>('DESC');
+  readonly sortStatus = signal<'ASC' | 'DESC' | null>(null);
+
+  protected sort = computed(() => {
+    const order: Record<string, number> = {};
+
+    for (const field of this.lastSortedFields()) {
+      if (field === '_updated_at') {
+        order['_updated_at'] = this.sortUpdatedAt() === 'ASC' ? 1 : -1;
+      }
+
+      if (field === 'name') {
+        order['name'] = this.sortName() === 'ASC' ? 1 : -1;
+      }
+
+      if (field === 'email') {
+        order['email'] = this.sortEmail() === 'ASC' ? 1 : -1;
+      }
+    }
+
+    return order;
+  });
 
   protected handleEmailSortChange() {
     this.lastSortedFields.set([
       ...new Set(['email', ...this.lastSortedFields()]),
     ]);
-    const sort = this.filteredEmailSort();
+    const sort = this.sortEmail();
     if (sort === 'ASC') {
-      this.filteredEmailSort.set('DESC');
+      this.sortEmail.set('DESC');
     } else if (sort === 'DESC') {
-      this.filteredEmailSort.set(null);
+      this.sortEmail.set(null);
     } else {
-      this.filteredEmailSort.set('ASC');
+      this.sortEmail.set('ASC');
     }
   }
 
@@ -480,13 +485,13 @@ export class UsersTableComponent {
     this.lastSortedFields.set([
       ...new Set(['name', ...this.lastSortedFields()]),
     ]);
-    const sort = this.filteredNameSort();
+    const sort = this.sortName();
     if (sort === 'ASC') {
-      this.filteredNameSort.set('DESC');
+      this.sortName.set('DESC');
     } else if (sort === 'DESC') {
-      this.filteredNameSort.set(null);
+      this.sortName.set(null);
     } else {
-      this.filteredNameSort.set('ASC');
+      this.sortName.set('ASC');
     }
   }
 
@@ -494,13 +499,13 @@ export class UsersTableComponent {
     this.lastSortedFields.set([
       ...new Set(['_updated_at', ...this.lastSortedFields()]),
     ]);
-    const sort = this.filteredUpdatedSort();
+    const sort = this.sortUpdatedAt();
     if (sort === 'ASC') {
-      this.filteredUpdatedSort.set('DESC');
+      this.sortUpdatedAt.set('DESC');
     } else if (sort === 'DESC') {
-      this.filteredUpdatedSort.set(null);
+      this.sortUpdatedAt.set(null);
     } else {
-      this.filteredUpdatedSort.set('ASC');
+      this.sortUpdatedAt.set('ASC');
     }
   }
 
@@ -508,13 +513,13 @@ export class UsersTableComponent {
     this.lastSortedFields.set([
       ...new Set(['_expires_at', ...this.lastSortedFields()]),
     ]);
-    const sort = this.filteredStatusSort();
+    const sort = this.sortStatus();
     if (sort === 'ASC') {
-      this.filteredStatusSort.set('DESC');
+      this.sortStatus.set('DESC');
     } else if (sort === 'DESC') {
-      this.filteredStatusSort.set(null);
+      this.sortStatus.set(null);
     } else {
-      this.filteredStatusSort.set('ASC');
+      this.sortStatus.set('ASC');
     }
   }
 }
