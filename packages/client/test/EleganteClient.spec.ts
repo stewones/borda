@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://borda.dev/license
  */
 
-import { BordaClient } from '../src/lib/Client';
+import { BordaClient } from '../src';
 
 describe('BordaClient', () => {
   it('should be defined', () => {

@@ -72,9 +72,8 @@ import { insta } from '../borda';
       <input
         hlmInput
         class="w-full md:w-80"
-        placeholder="Filter emails..."
-        [ngModel]="filteredEmail()"
-        (ngModelChange)="_rawFilterInput.set($event)"
+        placeholder="Filter by name and email"
+        [(ngModel)]="search"
       />
 
       <button hlmBtn variant="outline" align="end" [brnMenuTriggerFor]="menu">
@@ -322,8 +321,7 @@ import { insta } from '../borda';
   `,
 })
 export class UsersTableComponent {
-  protected readonly _rawFilterInput = signal('');
-  protected readonly filteredEmail = signal('');
+  protected readonly search = signal('');
   protected readonly _availablePageSizes = [5, 10, 20, 10000];
   protected readonly _pageSize = signal(this._availablePageSizes[0]);
 
@@ -384,6 +382,10 @@ export class UsersTableComponent {
         $skip: this.skip(),
         $limit: this._pageSize(),
         $sort: this.sort(),
+        $or: [
+          { name: { $regex: this.search(), $options: 'i' } },
+          { email: { $regex: this.search(), $options: 'i' } },
+        ],
       },
     };
   });

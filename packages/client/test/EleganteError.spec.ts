@@ -6,19 +6,17 @@
  * found in the LICENSE file at https://borda.dev/license
  */
 
-import { BordaError } from '../src/lib/Error';
+import { BordaError, ErrorCode } from '../src/lib/Error';
 
 describe('BordaError', () => {
-  it('have sensible string representation', () => {
-    const error = new BordaError(1337, 'some error message');
+  it('has sensible string representation', () => {
+    const error = new BordaError(1337 as ErrorCode, 'some error message');
 
-    expect(error.toString()).toMatch('BordaError');
-    expect(error.toString()).toMatch('1337');
-    expect(error.toString()).toMatch('some error message');
+    expect(error.toString()).toMatch('Error 1337: some error message');
   });
 
   it('has a proper json representation', () => {
-    const error = new BordaError(1337, 'some error message');
+    const error = new BordaError(1337 as ErrorCode, 'some error message');
     expect(JSON.parse(JSON.stringify(error))).toEqual({
       message: 'some error message',
       code: 1337,
@@ -28,7 +26,7 @@ describe('BordaError', () => {
   it('message can be a string', () => {
     const someRandomError = 'oh no';
 
-    const error = new BordaError(1337, someRandomError);
+    const error = new BordaError(1337 as ErrorCode, someRandomError);
 
     expect(JSON.parse(JSON.stringify(error))).toEqual({
       message: someRandomError,
@@ -43,7 +41,7 @@ describe('BordaError', () => {
       status: '💨',
     };
 
-    const error = new BordaError(1337, someRandomError);
+    const error = new BordaError(1337 as ErrorCode, someRandomError);
 
     expect(JSON.parse(JSON.stringify(error))).toEqual({
       message: '420 time to chill 💨',
@@ -54,7 +52,7 @@ describe('BordaError', () => {
   it('message can be an Error instance *receiving a string* passed trough some external dependency', () => {
     const someRandomError = new Error('good point');
 
-    const error = new BordaError(1337, someRandomError);
+    const error = new BordaError(1337 as ErrorCode, someRandomError);
 
     expect(JSON.parse(JSON.stringify(error))).toEqual({
       message: 'Error: good point',
@@ -69,10 +67,10 @@ describe('BordaError', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
-    const error = new BordaError(1337, someRandomErrorWrong);
+    const error = new BordaError(1337 as ErrorCode, someRandomErrorWrong);
 
     expect(JSON.parse(JSON.stringify(error))).toEqual({
-      message: '', // <-- Yeah because we can't parse errors used like that. This is unlikely to happen but here I just want to be cautious as object is still a valid syntax for the Error api (even though docs say it's not)
+      message: '',
       code: 1337,
     });
   });

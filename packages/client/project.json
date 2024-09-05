@@ -54,6 +54,12 @@
         "codeCoverage": true,
         "coverageReporters": ["json-summary", "lcov", "html", "text"]
       }
+    },
+    "coverage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bunx http-server coverage/packages/client -c-1"
+      }
     }
   },
   "tags": ["core"]

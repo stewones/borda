@@ -531,4 +531,47 @@ describe('Instant', () => {
     // Clean up
     fetcherSpy.mockRestore();
   });
+
+  test('should filter users using $regex', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          name: { $regex: 't', $options: 'i' },
+        },
+      },
+    });
+
+    expect(users).toHaveLength(2);
+    expect(users[0].name).toBe('Tobias Afonso');
+    expect(users[1].name).toBe('Teobaldo José');
+  });
+
+  test('should filter users using $or', async () => {
+    const { users } = await insta.query({
+      users: {
+        $or: [
+          { name: { $regex: 't', $options: 'i' } },
+          { name: { $eq: 'Elis' } },
+        ],
+      },
+    });
+
+    expect(users).toHaveLength(3);
+    expect(users[0].name).toBe('Elis');
+    expect(users[1].name).toBe('Tobias Afonso');
+    expect(users[2].name).toBe('Teobaldo José');
+  });
+
+  test('should filter users using $eq', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          name: { $eq: 'Raul' },
+        },
+      },
+    });
+
+    expect(users).toHaveLength(1);
+    expect(users[0].name).toBe('Raul');
+  });
 });

@@ -20,8 +20,6 @@ export interface iQLLimitDirective {
   $limit: number;
 }
 
-
-
 export interface InstantSyncResponseData {
   status: InstantSyncStatus;
   value: Document;
@@ -45,13 +43,14 @@ export interface InstantSyncResponse {
   activity: InstantSyncActivity;
 }
 
-// Helper type to extract the document type from a Table
-type TableDocument<T> = T extends Table<infer D, any, any> ? D : never;
-
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
 
-type InferSchemaType<T extends SchemaType> = {
-  [K in keyof T]: z.infer<T[K]>;
+type FilterCondition<T> = {
+  $exists?: boolean;
+  $nin?: any[];
+  $regex?: string;
+  $options?: string;
+  $eq?: any;
 };
 
 type QueryDirectives<T> = {
@@ -59,8 +58,9 @@ type QueryDirectives<T> = {
   $skip?: number;
   $sort?: { [K in keyof T]?: 1 | -1 };
   $filter?: {
-    [K in keyof T]?: { $exists?: boolean; $nin?: any[] };
+    [K in keyof T]?: FilterCondition<T>;
   };
+  $or?: Array<{ [K in keyof T]?: FilterCondition<T> | T }>;
   $by?: string;
 };
 
@@ -205,6 +205,7 @@ export class Instant<T extends SchemaType> {
                 params,
               });
 
+              /* istanbul ignore next */
               if (this.inspect) {
                 const syncDuration = performance.now() - perf;
                 const usage = await this.usage(collection);
@@ -217,6 +218,7 @@ export class Instant<T extends SchemaType> {
                 console.log('💾 estimated usage for', collection, usage);
               }
             } catch (err) {
+              /* istanbul ignore next */
               if (this.#inspect) {
                 console.error('Error scheduling sync', err);
               }
@@ -421,6 +423,7 @@ export class Instant<T extends SchemaType> {
             params,
           });
 
+          /* istanbul ignore next */
           if (this.inspect) {
             const syncDuration = performance.now() - perf;
             const usage = await this.usage(collection);
@@ -441,6 +444,7 @@ export class Instant<T extends SchemaType> {
           this.runLiveWorker({ url, token, headers, params });
         }
       } catch (err) {
+        /* istanbul ignore next */
         if (this.inspect) {
           console.error('Error running worker', err);
         }
@@ -665,6 +669,7 @@ export class Instant<T extends SchemaType> {
       },
 
       onClose: (ws, ev) => {
+        /* istanbul ignore next */
         if (this.inspect) {
           console.log('🟣 sync live worker closed', ev.code);
         }
@@ -681,6 +686,7 @@ export class Instant<T extends SchemaType> {
         if (wssConnected) {
           wssConnected = false;
           this.#wss?.close();
+          /* istanbul ignore next */
           if (this.inspect) {
             // code 1006 means the connection was closed abnormally (eg Cloudflare timeout)
             // locally it also happens on server hot reloads
@@ -689,6 +695,7 @@ export class Instant<T extends SchemaType> {
         }
 
         setTimeout(() => {
+          /* istanbul ignore next */
           if (this.inspect) {
             console.log('🟡 sync live worker on retry');
           }
@@ -951,14 +958,17 @@ export class Instant<T extends SchemaType> {
    *   users: {
    *     $limit: 10,
    *     $skip: 0,
+   *     $or: [
+   *       { title: { $exists: true } },
+   *       { status: { $nin: ['draft', 'archived'] } }
+   *     ],
    *     posts: {
    *       $by: 'author',
    *       $limit: 10,
    *       $skip: 0,
    *       $sort: { rating: -1 },
    *       $filter: {
-   *         title: { $exists: true },
-   *         status: { $nin: ['draft', 'archived'] },
+   *         email: { $regex: 'eli', $options: 'i' }
    *       },
    *     },
    *   },
@@ -1059,6 +1069,17 @@ export class Instant<T extends SchemaType> {
                   (item) => !(condition.$nin ?? []).includes(item[field])
                 );
               }
+              if (condition?.$regex) {
+                const regex = new RegExp(condition.$regex, condition.$options);
+                collection = collection.filter((item) =>
+                  regex.test(item[field])
+                );
+              }
+              if (condition?.$eq) {
+                collection = collection.filter(
+                  (item) => item[field] === condition.$eq
+                );
+              }
             }
           }
 
@@ -1085,12 +1106,51 @@ export class Instant<T extends SchemaType> {
             }
           }
 
-          // Apply $skip and $limit
+          // Apply $skip
           if (tableQuery.$skip) {
             collection = collection.offset(tableQuery.$skip);
           }
+
+          // Apply $limit
           if (tableQuery.$limit) {
             collection = collection.limit(tableQuery.$limit);
+          }
+
+          // Apply $or
+          if (tableQuery.$or) {
+            collection = collection.filter((item) => {
+              return tableQuery.$or!.some((condition) => {
+                return Object.entries(condition).every(
+                  ([field, fieldCondition]) => {
+                    if (typeof fieldCondition === 'object') {
+                      if ('$exists' in fieldCondition) {
+                        return fieldCondition.$exists
+                          ? item[field] != null
+                          : item[field] == null;
+                      }
+                      if ('$nin' in fieldCondition) {
+                        return !(fieldCondition.$nin ?? []).includes(
+                          item[field]
+                        );
+                      }
+                      if ('$regex' in fieldCondition) {
+                        const regex = new RegExp(
+                          fieldCondition.$regex ?? '',
+                          fieldCondition.$options ?? 'i'
+                        );
+                        return regex.test(item[field]);
+                      }
+                      if ('$eq' in fieldCondition) {
+                        return item[field] === fieldCondition.$eq;
+                      }
+                    } else {
+                      return item[field] === fieldCondition;
+                    }
+                    return false;
+                  }
+                );
+              });
+            });
           }
 
           // Execute the query
