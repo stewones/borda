@@ -39,6 +39,4 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
     </div>
   `,
 })
-export class UsersPageComponent {
-  async ngOnInit() {}
-}
+export class UsersPageComponent {}

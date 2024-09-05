@@ -3,14 +3,15 @@ import 'fake-indexeddb/auto';
 
 import { z } from 'zod';
 
-import * as lib from '../../../client/src/lib';
 import {
   Instant,
   InstantSyncResponse,
   objectId,
   objectPointer,
   pointerRef,
-} from '../../../client/src/lib/Instant';
+} from '@borda/client';
+
+import * as lib from '../../../client/src/lib';
 
 // global mocks
 global.structuredClone = jest.fn((data) => data);
@@ -36,15 +37,16 @@ describe('Instant', () => {
       _id: PostId,
       _created_at: z.string(),
       _updated_at: z.string(),
+      _p_user: UserPointer,
       title: z.string(),
       content: z.string(),
       author: UserPointer,
-      user: UserPointer,
     }),
     comments: z.object({
       _id: CommentId,
       _created_at: z.string(),
       _updated_at: z.string(),
+      _p_user: UserPointer,
       author: UserPointer,
       posts: PostPointer,
       content: z.string(),
@@ -86,6 +88,7 @@ describe('Instant', () => {
       title: 'Post 2',
       content: 'Ei gentiii chegueii',
       author: pointerRef('users', 'objId0507'),
+      _p_user: pointerRef('users', 'objId0507'),
     },
     {
       _id: 'post11111',
@@ -94,10 +97,11 @@ describe('Instant', () => {
       title: 'Post 1',
       content: 'Hello world',
       author: pointerRef('users', 'objId2807'),
+      _p_user: pointerRef('users', 'objId2807'),
     },
   ];
 
-  let insta: Instant;
+  let insta: Instant<typeof schema>;
   let fetcherSpy: jest.SpyInstance;
 
   beforeEach(async () => {
@@ -107,7 +111,17 @@ describe('Instant', () => {
       inspect: true,
       serverURL: 'https://some.api.com',
     });
+
     await insta.ready();
+
+    // mock worker
+    const worker = {
+      onmessage: jest.fn(),
+      postMessage: async (payload: string) =>
+        await insta.worker()({ data: payload }),
+    };
+
+    insta.setWorker({ worker } as any);
 
     for (const user of users) {
       await insta.db.table('users').add(user);
@@ -169,8 +183,34 @@ describe('Instant', () => {
     };
 
     const result = await insta.query(iql);
+
     expect(result).toEqual({
-      users: users,
+      users: [
+        {
+          _id: 'objId0507',
+          _created_at: '2022-07-05T03:08:41.768Z',
+          _updated_at: '2022-07-05T03:08:41.768Z',
+          name: 'Elis',
+        },
+        {
+          _id: 'objId1111',
+          _created_at: '2024-08-24T03:49:47.352Z',
+          _updated_at: '2024-08-24T03:49:47.352Z',
+          name: 'Tobias Afonso',
+        },
+        {
+          _id: 'objId2222',
+          _created_at: '2024-08-25T03:49:47.352Z',
+          _updated_at: '2024-08-25T03:49:47.352Z',
+          name: 'Teobaldo José',
+        },
+        {
+          _id: 'objId2807',
+          _created_at: '2020-07-28T03:08:41.768Z',
+          _updated_at: '2020-07-28T03:08:41.768Z',
+          name: 'Raul',
+        },
+      ],
     });
   });
 
@@ -183,8 +223,52 @@ describe('Instant', () => {
     const result = await insta.query(iql);
 
     expect(result).toEqual({
-      users: users,
-      posts: posts,
+      users: [
+        {
+          _id: 'objId0507',
+          _created_at: '2022-07-05T03:08:41.768Z',
+          _updated_at: '2022-07-05T03:08:41.768Z',
+          name: 'Elis',
+        },
+        {
+          _id: 'objId1111',
+          _created_at: '2024-08-24T03:49:47.352Z',
+          _updated_at: '2024-08-24T03:49:47.352Z',
+          name: 'Tobias Afonso',
+        },
+        {
+          _id: 'objId2222',
+          _created_at: '2024-08-25T03:49:47.352Z',
+          _updated_at: '2024-08-25T03:49:47.352Z',
+          name: 'Teobaldo José',
+        },
+        {
+          _id: 'objId2807',
+          _created_at: '2020-07-28T03:08:41.768Z',
+          _updated_at: '2020-07-28T03:08:41.768Z',
+          name: 'Raul',
+        },
+      ],
+      posts: [
+        {
+          _id: 'post11111',
+          _created_at: '2020-07-28T03:08:41.768Z',
+          _updated_at: '2020-07-28T03:08:41.768Z',
+          title: 'Post 1',
+          content: 'Hello world',
+          author: 'users$objId2807',
+          _p_user: 'users$objId2807',
+        },
+        {
+          _id: 'post11112',
+          _created_at: '2022-07-05T03:08:41.768Z',
+          _updated_at: '2022-07-05T03:08:41.768Z',
+          title: 'Post 2',
+          content: 'Ei gentiii chegueii',
+          author: 'users$objId0507',
+          _p_user: 'users$objId0507',
+        },
+      ],
     });
   });
 
@@ -198,23 +282,54 @@ describe('Instant', () => {
     });
 
     expect(result).toEqual({
-      // all users and inside each user, all posts
       users: [
         {
-          ...users[0],
+          _id: 'objId0507',
+          _created_at: '2022-07-05T03:08:41.768Z',
+          _updated_at: '2022-07-05T03:08:41.768Z',
+          name: 'Elis',
+          posts: [
+            {
+              _id: 'post11112',
+              _created_at: '2022-07-05T03:08:41.768Z',
+              _updated_at: '2022-07-05T03:08:41.768Z',
+              title: 'Post 2',
+              content: 'Ei gentiii chegueii',
+              author: 'users$objId0507',
+              _p_user: 'users$objId0507',
+            },
+          ],
+        },
+        {
+          _id: 'objId1111',
+          _created_at: '2024-08-24T03:49:47.352Z',
+          _updated_at: '2024-08-24T03:49:47.352Z',
+          name: 'Tobias Afonso',
           posts: [],
         },
         {
-          ...users[1],
+          _id: 'objId2222',
+          _created_at: '2024-08-25T03:49:47.352Z',
+          _updated_at: '2024-08-25T03:49:47.352Z',
+          name: 'Teobaldo José',
           posts: [],
         },
         {
-          ...users[2],
-          posts: [posts[0]],
-        },
-        {
-          ...users[3],
-          posts: [posts[1]],
+          _id: 'objId2807',
+          _created_at: '2020-07-28T03:08:41.768Z',
+          _updated_at: '2020-07-28T03:08:41.768Z',
+          name: 'Raul',
+          posts: [
+            {
+              _id: 'post11111',
+              _created_at: '2020-07-28T03:08:41.768Z',
+              _updated_at: '2020-07-28T03:08:41.768Z',
+              title: 'Post 1',
+              content: 'Hello world',
+              author: 'users$objId2807',
+              _p_user: 'users$objId2807',
+            },
+          ],
         },
       ],
     });
@@ -229,6 +344,7 @@ describe('Instant', () => {
         title: 'Post 2',
         content: 'Ei gentiii chegueii',
         user: pointerRef('users', 'objId0507'),
+        _p_user: pointerRef('users', 'objId0507'),
       },
       {
         _id: 'post11111',
@@ -237,6 +353,7 @@ describe('Instant', () => {
         title: 'Post 1',
         content: 'Hello world',
         user: pointerRef('users', 'objId2807'),
+        _p_user: pointerRef('users', 'objId2807'),
       },
     ];
 
@@ -253,121 +370,122 @@ describe('Instant', () => {
     });
 
     expect(result).toEqual({
-      // all users and inside each user, all posts
       users: [
         {
-          ...users[0],
+          _id: 'objId0507',
+          _created_at: '2022-07-05T03:08:41.768Z',
+          _updated_at: '2022-07-05T03:08:41.768Z',
+          name: 'Elis',
+          posts: [
+            {
+              _id: 'post11112',
+              _created_at: '2022-07-05T03:08:41.768Z',
+              _updated_at: '2022-07-05T03:08:41.768Z',
+              title: 'Post 2',
+              content: 'Ei gentiii chegueii',
+              user: 'users$objId0507',
+              _p_user: 'users$objId0507',
+            },
+          ],
+        },
+        {
+          _id: 'objId1111',
+          _created_at: '2024-08-24T03:49:47.352Z',
+          _updated_at: '2024-08-24T03:49:47.352Z',
+          name: 'Tobias Afonso',
           posts: [],
         },
         {
-          ...users[1],
+          _id: 'objId2222',
+          _created_at: '2024-08-25T03:49:47.352Z',
+          _updated_at: '2024-08-25T03:49:47.352Z',
+          name: 'Teobaldo José',
           posts: [],
         },
         {
-          ...users[2],
-          posts: [posts2[0]],
-        },
-        {
-          ...users[3],
-          posts: [posts2[1]],
+          _id: 'objId2807',
+          _created_at: '2020-07-28T03:08:41.768Z',
+          _updated_at: '2020-07-28T03:08:41.768Z',
+          name: 'Raul',
+          posts: [
+            {
+              _id: 'post11111',
+              _created_at: '2020-07-28T03:08:41.768Z',
+              _updated_at: '2020-07-28T03:08:41.768Z',
+              title: 'Post 1',
+              content: 'Hello world',
+              user: 'users$objId2807',
+              _p_user: 'users$objId2807',
+            },
+          ],
         },
       ],
     });
   });
 
-  test('create records via sync SSE', async () => {
-    // Mock console.log
-    const consoleSpy = jest.spyOn(console, 'log');
+  test('create records via batch sync', async () => {
+    const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+      // @ts-ignore
+      (url, options) => {
+        return Promise.resolve({
+          activity: 'recent',
+          collection: 'users',
+          count: 1,
+          synced: new Date().toISOString(),
+          data: [
+            {
+              status: 'created',
+              value: {
+                _id: 'objId1337',
+                _created_at: '2024-08-25T03:49:47.352Z',
+                _updated_at: '2024-08-25T03:49:47.352Z',
+                name: 'John Doez',
+              },
+            },
+          ],
+        } as InstantSyncResponse);
+      }
+    );
 
-    // Mock EventSource
-    const mockEventSource = {
-      addEventListener: jest.fn(),
-      close: jest.fn(),
-      onopen: jest.fn(),
-      onerror: jest.fn(),
-      onmessage: jest.fn(),
-    };
-
-    global.EventSource = jest.fn(() => mockEventSource) as any;
-
-    await insta.sync();
-
-    // dispatch mock message
-    const mockMessage = {
-      data: JSON.stringify({
-        collection: 'users',
-        objectId: 'objId1337',
-        status: 'created',
-        value: {
-          _id: 'objId1337',
-          _created_at: '2024-08-25T03:49:47.352Z',
-          _updated_at: '2024-08-25T03:49:47.352Z',
-          name: 'John Doe',
-        },
-      } as InstantSyncResponse),
-    };
-
-    mockEventSource.onmessage(mockMessage);
-
-    // Check if console.log was called with the expected message
-    expect(consoleSpy).toHaveBeenCalledWith('SSE message', {
-      collection: 'users',
-      objectId: 'objId1337',
-      status: 'created',
-      value: {
-        _id: 'objId1337',
-        _created_at: '2024-08-25T03:49:47.352Z',
-        _updated_at: '2024-08-25T03:49:47.352Z',
-        name: 'John Doe',
-      },
+    await insta.sync({
+      session: '1337',
     });
 
     // check if data was updated
     const updatedUser = await insta.db.table('users').get('objId1337');
-    expect(updatedUser.name).toBe('John Doe');
+
+    expect(updatedUser.name).toBe('John Doez');
 
     // Clean up
-    consoleSpy.mockRestore();
-    mockEventSource.close();
+    fetcherSpy.mockRestore();
   });
 
-  test('update records via sync SSE', async () => {
-    // Mock console.log
-    const consoleSpy = jest.spyOn(console, 'log');
+  test('update records via batch sync', async () => {
+    const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+      // @ts-ignore
+      (url, options) => {
+        return Promise.resolve({
+          activity: 'recent',
+          collection: 'users',
+          count: 1,
+          synced: new Date().toISOString(),
+          data: [
+            {
+              status: 'updated',
+              value: {
+                _id: 'objId2222',
+                _created_at: '2024-08-25T03:49:47.352Z',
+                _updated_at: '2024-08-25T03:49:47.352Z',
+                name: 'Teobs',
+              },
+            },
+          ],
+        } as InstantSyncResponse);
+      }
+    );
 
-    // Mock EventSource
-    const mockEventSource = {
-      addEventListener: jest.fn(),
-      close: jest.fn(),
-      onopen: jest.fn(),
-      onerror: jest.fn(),
-      onmessage: jest.fn(),
-    };
-
-    global.EventSource = jest.fn(() => mockEventSource) as any;
-
-    await insta.sync();
-
-    // dispatch mock message
-    const mockMessage = {
-      data: JSON.stringify({
-        collection: 'users',
-        objectId: 'objId2222',
-        value: {
-          name: 'Teobs',
-        },
-        status: 'updated',
-      } as InstantSyncResponse),
-    };
-
-    mockEventSource.onmessage(mockMessage);
-
-    // Check if console.log was called with the expected message
-    expect(consoleSpy).toHaveBeenCalledWith('SSE message', {
-      collection: 'users',
-      objectId: 'objId2222',
-      value: { name: 'Teobs' },
-      status: 'updated',
+    await insta.sync({
+      session: '1337',
     });
 
     // check if data was updated
@@ -375,45 +493,35 @@ describe('Instant', () => {
     expect(updatedUser.name).toBe('Teobs');
 
     // Clean up
-    consoleSpy.mockRestore();
-    mockEventSource.close();
+    fetcherSpy.mockRestore();
   });
 
-  test('delete records via sync SSE', async () => {
-    // Mock console.log
-    const consoleSpy = jest.spyOn(console, 'log');
+  test('delete records via batch sync', async () => {
+    const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+      // @ts-ignore
+      (url, options) => {
+        return Promise.resolve({
+          activity: 'recent',
+          collection: 'users',
+          count: 1,
+          synced: new Date().toISOString(),
+          data: [
+            {
+              status: 'deleted',
+              value: {
+                _id: 'objId1337',
+                _created_at: '2024-08-25T03:49:47.352Z',
+                _updated_at: '2024-08-25T03:49:47.352Z',
+                name: 'Someone',
+              },
+            },
+          ],
+        } as InstantSyncResponse);
+      }
+    );
 
-    // Mock EventSource
-    const mockEventSource = {
-      addEventListener: jest.fn(),
-      close: jest.fn(),
-      onopen: jest.fn(),
-      onerror: jest.fn(),
-      onmessage: jest.fn(),
-    };
-
-    global.EventSource = jest.fn(() => mockEventSource) as any;
-
-    await insta.sync();
-
-    // dispatch mock message
-    const mockMessage = {
-      data: JSON.stringify({
-        collection: 'users',
-        objectId: 'objId1337',
-        status: 'deleted',
-        value: {},
-      } as InstantSyncResponse),
-    };
-
-    mockEventSource.onmessage(mockMessage);
-
-    // Check if console.log was called with the expected message
-    expect(consoleSpy).toHaveBeenCalledWith('SSE message', {
-      collection: 'users',
-      objectId: 'objId1337',
-      status: 'deleted',
-      value: {},
+    await insta.sync({
+      session: '1337',
     });
 
     // check if data was updated
@@ -421,49 +529,6 @@ describe('Instant', () => {
     expect(updatedUser).toBeUndefined();
 
     // Clean up
-    consoleSpy.mockRestore();
-    mockEventSource.close();
-  });
-
-  test('create records via sync batch', async () => {
-    fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
-      // @ts-ignore
-      (url, options) => {
-        if (url === 'https://some.api.com/instant/sync/batch') {
-          return Promise.resolve([
-            {
-              collection: 'users',
-              objectId: 'objId1337',
-              status: 'created',
-              value: {
-                _id: 'objId1337',
-                _created_at: '2024-08-25T03:49:47.352Z',
-                _updated_at: '2024-08-25T03:49:47.352Z',
-                name: 'John McDoe',
-              },
-            },
-          ]);
-        }
-        return Promise.resolve([]);
-      }
-    );
-
-    await insta.sync();
-
-    expect(fetcherSpy).toHaveBeenCalledWith(
-      'https://some.api.com/instant/sync/batch',
-      expect.objectContaining({
-        method: 'POST',
-        direct: true,
-        body: {
-          collections: ['users', 'posts', 'comments'],
-          synced: null,
-        },
-      })
-    );
-
-    // check if data was updated
-    const updatedUser = await insta.db.table('users').get('objId1337');
-    expect(updatedUser.name).toBe('John McDoe');
+    fetcherSpy.mockRestore();
   });
 });

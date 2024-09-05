@@ -23,7 +23,6 @@ export interface iQLLimitDirective {
 
 
 export interface InstantSyncResponseData {
-  collection: string;
   status: InstantSyncStatus;
   value: Document;
   updatedFields?: Record<string, any>;
@@ -639,7 +638,11 @@ export class Instant<T extends SchemaType> {
       onMessage: async (ws: WebSocket, message: MessageEvent) => {
         const { collection, status, value } = JSON.parse(
           message.data || '{}'
-        ) as InstantSyncResponseData;
+        ) as {
+          collection: string;
+          status: InstantSyncStatus;
+          value: Document;
+        };
 
         if (this.#inspect) {
           console.log('🔵 sync live worker message', message.data);
@@ -706,7 +709,7 @@ export class Instant<T extends SchemaType> {
    *
    * @returns Promise<void>
    */
-  public sync({
+  public async sync({
     session,
     headers,
     params,
@@ -736,12 +739,13 @@ export class Instant<T extends SchemaType> {
     this.#headers = headers || {};
     this.#params = params || {};
 
-    this.#syncBatch();
-    this.#syncLive();
+    await Promise.allSettled([this.#syncLive(), this.#syncBatch()]);
   }
 
   async #syncLive() {
-    const url = `${this.#serverURL}/sync/live?session=${this.#token}`;
+    const url = `${this.#serverURL.replace('http', 'ws')}/sync/live?session=${
+      this.#token
+    }`;
     this.#worker.postMessage(
       JSON.stringify({
         url,
@@ -810,7 +814,7 @@ export class Instant<T extends SchemaType> {
       url += `&synced=${synced}`;
     }
 
-    this.#worker.postMessage(
+    await this.#worker.postMessage(
       JSON.stringify({
         url,
         sync: 'batch',
@@ -821,7 +825,15 @@ export class Instant<T extends SchemaType> {
     );
   }
 
-  async #syncProcess({ collection, status, value }: InstantSyncResponseData) {
+  async #syncProcess({
+    collection,
+    status,
+    value,
+  }: {
+    collection: string;
+    status: InstantSyncStatus;
+    value: Document;
+  }) {
     const persist: Record<
       InstantSyncStatus,
       (collection: string, value: Document) => Promise<void>
