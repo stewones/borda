@@ -1,11 +1,12 @@
 import { liveQuery } from 'dexie';
 import { DateFnsModule } from 'ngx-date-fns';
+import { toast } from 'ngx-sonner';
 import { derivedAsync } from 'ngxtension/derived-async';
 import { from, map, tap } from 'rxjs';
 import { z } from 'zod';
 
 import { SelectionModel } from '@angular/cdk/collections';
-import { DecimalPipe, TitleCasePipe } from '@angular/common';
+import { DecimalPipe, NgClass, TitleCasePipe } from '@angular/common';
 import {
   Component,
   computed,
@@ -16,7 +17,9 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
-import { UserSchema } from '@/support';
+import { ejectPointer } from '@borda/client';
+
+import { UserSchema } from '@/common';
 import {
   lucideArrowDown,
   lucideArrowUp,
@@ -24,7 +27,10 @@ import {
   lucideChevronDown,
 } from '@ng-icons/lucide';
 import { tablerDots } from '@ng-icons/tabler-icons';
-import { HlmButtonModule } from '@spartan-ng/ui-button-helm';
+import {
+  HlmButtonDirective,
+  HlmButtonModule,
+} from '@spartan-ng/ui-button-helm';
 import {
   HlmCheckboxCheckIconComponent,
   HlmCheckboxComponent,
@@ -35,6 +41,7 @@ import { BrnMenuTriggerDirective } from '@spartan-ng/ui-menu-brain';
 import { HlmMenuModule } from '@spartan-ng/ui-menu-helm';
 import { BrnSelectModule } from '@spartan-ng/ui-select-brain';
 import { HlmSelectModule } from '@spartan-ng/ui-select-helm';
+import { HlmToasterComponent } from '@spartan-ng/ui-sonner-helm';
 import {
   BrnTableModule,
   PaginatorState,
@@ -43,6 +50,8 @@ import {
 import { HlmTableModule } from '@spartan-ng/ui-table-helm';
 
 import { insta } from '../borda';
+import { DeleteDialog } from './DeleteDialog';
+import { UsersMenuBarComponent } from './UsersMenuBarComponent';
 
 type EntryType = z.infer<typeof UserSchema>;
 
@@ -51,6 +60,7 @@ type EntryType = z.infer<typeof UserSchema>;
   selector: 'users-table',
   imports: [
     FormsModule,
+    UsersMenuBarComponent,
     BrnMenuTriggerDirective,
     HlmMenuModule,
     BrnTableModule,
@@ -63,8 +73,12 @@ type EntryType = z.infer<typeof UserSchema>;
     HlmInputDirective,
     HlmCheckboxCheckIconComponent,
     HlmCheckboxComponent,
+    HlmToasterComponent,
+    HlmButtonDirective,
     BrnSelectModule,
     HlmSelectModule,
+    DeleteDialog,
+    NgClass,
   ],
   providers: [
     provideIcons({
@@ -83,12 +97,15 @@ type EntryType = z.infer<typeof UserSchema>;
   `,
   template: `
     <div class="flex flex-col justify-between gap-4 sm:flex-row">
-      <input
-        hlmInput
-        class="w-full md:w-80"
-        placeholder="Filter by name and email"
-        [(ngModel)]="search"
-      />
+      <div class="flex flex-col sm:flex-row gap-4">
+        <input
+          hlmInput
+          class="w-full md:w-80"
+          placeholder="Filter by name and email"
+          [(ngModel)]="search"
+        />
+        <users-menu-bar></users-menu-bar>
+      </div>
 
       <button hlmBtn variant="outline" align="end" [brnMenuTriggerFor]="menu">
         Columns
@@ -114,7 +131,7 @@ type EntryType = z.infer<typeof UserSchema>;
     <brn-table
       hlm
       stickyHeader
-      class="border-border mt-4 block rounded-md border"
+      class="border-border mt-4 block rounded-md border overflow-auto"
       [dataSource]="entries()"
       [displayedColumns]="columnsDisplayed()"
       [trackBy]="trackByEntry"
@@ -133,32 +150,17 @@ type EntryType = z.infer<typeof UserSchema>;
           />
         </hlm-td>
       </brn-column-def>
-      <brn-column-def name="status" class="w-24">
-        <hlm-th *brnHeaderDef>
-          <button
-            hlmBtn
-            size="sm"
-            variant="ghost"
-            (click)="handleStatusSortChange()"
-            class="-ml-3"
-          >
-            Status
-            <hlm-icon
-              class="ml-3"
-              size="xs"
-              [name]="
-                sortStatus() === 'ASC'
-                  ? 'lucideArrowUp'
-                  : sortStatus() === 'DESC'
-                  ? 'lucideArrowDown'
-                  : 'lucideArrowUpDown'
-              "
-            />
-          </button>
-        </hlm-th>
+      <brn-column-def name="status" class="w-40">
+        <hlm-th *brnHeaderDef> Organization </hlm-th>
 
-        <hlm-td truncate *brnCellDef="let row">
-          {{ row._expires_at ? 'Deleted' : 'Active' }}
+        <hlm-td
+          truncate
+          *brnCellDef="let row"
+          [ngClass]="{
+            'text-muted-foreground': row._expires_at,
+          }"
+        >
+          {{ row.org?.name || row._p_org }}
         </hlm-td>
       </brn-column-def>
       <brn-column-def name="name" class="w-40 sm:w-48">
@@ -185,7 +187,13 @@ type EntryType = z.infer<typeof UserSchema>;
           </button>
         </hlm-th>
 
-        <hlm-td truncate *brnCellDef="let row">
+        <hlm-td
+          truncate
+          *brnCellDef="let row"
+          [ngClass]="{
+            'text-muted-foreground': row._expires_at,
+          }"
+        >
           {{ row.name }}
         </hlm-td>
       </brn-column-def>
@@ -212,7 +220,13 @@ type EntryType = z.infer<typeof UserSchema>;
             />
           </button>
         </hlm-th>
-        <hlm-td truncate *brnCellDef="let row">
+        <hlm-td
+          truncate
+          *brnCellDef="let row"
+          [ngClass]="{
+            'text-muted-foreground': row._expires_at,
+          }"
+        >
           {{ row.email }}
         </hlm-td>
       </brn-column-def>
@@ -239,7 +253,13 @@ type EntryType = z.infer<typeof UserSchema>;
             />
           </button>
         </hlm-th>
-        <hlm-td class="font-normal whitespace-nowrap" *brnCellDef="let row">
+        <hlm-td
+          class="font-normal whitespace-nowrap"
+          *brnCellDef="let row"
+          [ngClass]="{
+            'text-muted-foreground': row._expires_at,
+          }"
+        >
           {{ row._updated_at | dfnsParseIso | dfnsFormat : 'MMM d, HH:mm' }}
         </hlm-td>
       </brn-column-def>
@@ -258,16 +278,29 @@ type EntryType = z.infer<typeof UserSchema>;
 
           <ng-template #menu>
             <hlm-menu>
-              <hlm-menu-label>Actions</hlm-menu-label>
-              <hlm-menu-separator />
               <hlm-menu-group>
-                <button hlmMenuItem>Copy entry ID</button>
+                <button hlmMenuItem (click)="copyEntryId(row)">
+                  Copy entry ID
+                </button>
               </hlm-menu-group>
               <hlm-menu-separator />
               <hlm-menu-group>
-                <button hlmMenuItem>View customer</button>
-                <button hlmMenuItem>View entry details</button>
+                <button hlmMenuItem>View org</button>
+                <button hlmMenuItem>View posts</button>
+                <button hlmMenuItem>View comments</button>
               </hlm-menu-group>
+              <hlm-menu-separator />
+              <button
+                hlmMenuItem
+                (click)="
+                  deleteDialog.open({
+                    action: 'Delete user',
+                    onAction: onEntryDelete(row)
+                  })
+                "
+              >
+                Delete user
+              </button>
             </hlm-menu>
           </ng-template>
         </hlm-td>
@@ -288,10 +321,9 @@ type EntryType = z.infer<typeof UserSchema>;
         onStateChange: didPaginatorChange
       "
     >
-      <span class="text-sm text-muted-foreground text-sm"
-        >{{ selectedEntries().length }} of {{ entries().length }} row(s)
-        selected</span
-      >
+      <span class="text-sm text-muted-foreground">
+        {{ selectedEntries().length }} of {{ entries().length }} row(s) selected
+      </span>
       <div class="flex mt-2 sm:mt-0">
         <brn-select
           class="inline-block"
@@ -332,6 +364,9 @@ type EntryType = z.infer<typeof UserSchema>;
         </div>
       </div>
     </div>
+
+    <hlm-toaster [theme]="'dark'" />
+    <delete-dialog #deleteDialog></delete-dialog>
   `,
 })
 export class UsersTableComponent {
@@ -348,8 +383,8 @@ export class UsersTableComponent {
         $limit: this.pageSize(),
         $sort: this.sort(),
         $or: [
-          { name: { $regex: this.search(), $options: 'i' } },
-          { email: { $regex: this.search(), $options: 'i' } },
+          { name: { $regex: this.search() } },
+          { email: { $regex: this.search() } },
         ],
       },
     };
@@ -363,6 +398,23 @@ export class UsersTableComponent {
     async () => {
       this.reload(); // to trigger angular change detection
       const { users } = await insta.query(this.query());
+
+      // for each user, get the org
+      for (const user of users) {
+        const org = await insta
+          .query({
+            orgs: {
+              $limit: 1,
+              $filter: {
+                _id: { $eq: ejectPointer(user._p_org) },
+              },
+            },
+          })
+          .then(({ orgs }) => orgs[0]);
+
+        user.org = org;
+      }
+
       this.reload.set(false);
       return users;
     },
@@ -439,13 +491,23 @@ export class UsersTableComponent {
   trackByEntry: TrackByFunction<EntryType> = (_: number, p: EntryType) => p._id;
   isEntrySelected = (entry: EntryType) => this.selectionModel.isSelected(entry);
 
+  copyEntryId(entry: EntryType) {
+    navigator.clipboard.writeText(entry._id);
+    toast('Entry ID copied to clipboard', {
+      description: `ID: ${entry._id}`,
+      action: {
+        label: 'Gotcha',
+        onClick: () => console.log('📎'),
+      },
+    });
+  }
+
   /**
    * custom implementation below
    */
   readonly sortEmail = signal<'ASC' | 'DESC' | null>(null);
   readonly sortName = signal<'ASC' | 'DESC' | null>(null);
   readonly sortUpdatedAt = signal<'ASC' | 'DESC' | null>('DESC');
-  readonly sortStatus = signal<'ASC' | 'DESC' | null>(null);
 
   protected sort = computed(() => {
     const order: Record<string, number> = {};
@@ -464,6 +526,7 @@ export class UsersTableComponent {
       }
     }
 
+    console.log(order);
     return order;
   });
 
@@ -509,17 +572,10 @@ export class UsersTableComponent {
     }
   }
 
-  protected handleStatusSortChange() {
-    this.lastSortedFields.set([
-      ...new Set(['_expires_at', ...this.lastSortedFields()]),
-    ]);
-    const sort = this.sortStatus();
-    if (sort === 'ASC') {
-      this.sortStatus.set('DESC');
-    } else if (sort === 'DESC') {
-      this.sortStatus.set(null);
-    } else {
-      this.sortStatus.set('ASC');
-    }
+  protected onEntryDelete(entry: EntryType) {
+    return async () => {
+      this.selectionModel.deselect(entry);
+      await insta.mutate('users').delete(entry._id);
+    };
   }
 }

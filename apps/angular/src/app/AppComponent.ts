@@ -44,7 +44,8 @@ export class AppComponent {
     insta.sync({
       session: 'asdf',
       params: {
-        org: 'YwkJYEdhgh',
+        // org: 'YwkJYEdhgh,HnPHIL7PKx,r24qXJr9nh,LNcx7jlL7P',
+        // something: 'else',
       },
     });
   }

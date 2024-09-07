@@ -1,5 +1,11 @@
-import { delay, pointer } from '@borda/client';
-import { Borda, newObjectId } from '@borda/server';
+import {
+  delay,
+  pointer,
+} from '@borda/client';
+import {
+  Borda,
+  newObjectId,
+} from '@borda/server';
 
 import { faker } from '@faker-js/faker';
 
@@ -14,9 +20,9 @@ borda.server();
 
 ////////////////////////////////////////
 
-//addManyOrgsUsersPostsComments();
+addManyOrgsUsersPostsComments();
 
-addOneUser();
+//addOneUser();
 
 ////////////////////////////////////////
 
@@ -78,7 +84,7 @@ async function addManyOrgsUsersPostsComments() {
 
   const users = [];
   for (const org of orgs) {
-    for (let i = 0; i < 500; i++) {
+    for (let i = 0; i < 250; i++) {
       const _id = newObjectId();
       const _date = new Date();
 
@@ -103,7 +109,7 @@ async function addManyOrgsUsersPostsComments() {
 
   const posts = [];
   for (const user of users) {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 5; i++) {
       const _id = newObjectId();
       const _date = new Date();
 
@@ -129,7 +135,7 @@ async function addManyOrgsUsersPostsComments() {
 
   const comments = [];
   for (const post of posts) {
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       const _id = newObjectId();
       const _date = new Date();
 

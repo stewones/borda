@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 
 import { lucideChevronLeft } from '@ng-icons/lucide';
@@ -6,7 +7,14 @@ import { HlmButtonDirective } from '@spartan-ng/ui-button-helm';
 import { HlmIconComponent, provideIcons } from '@spartan-ng/ui-icon-helm';
 import { BrnSeparatorComponent } from '@spartan-ng/ui-separator-brain';
 import { HlmSeparatorDirective } from '@spartan-ng/ui-separator-helm';
+import { BrnTooltipContentDirective } from '@spartan-ng/ui-tooltip-brain';
+import {
+  HlmTooltipComponent,
+  HlmTooltipTriggerDirective,
+} from '@spartan-ng/ui-tooltip-helm';
 
+import { insta } from '../borda';
+import { PulsingDot } from '../components/PulsingDot';
 import { UsersTableComponent } from '../components/UsersTableComponent';
 
 @Component({
@@ -17,8 +25,12 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
     HlmIconComponent,
     HlmButtonDirective,
     HlmSeparatorDirective,
+    BrnTooltipContentDirective,
+    HlmTooltipTriggerDirective,
+    HlmTooltipComponent,
     BrnSeparatorComponent,
     UsersTableComponent,
+    PulsingDot,
   ],
   providers: [provideIcons({ lucideChevronLeft })],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -32,11 +44,27 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
         </a>
       </div>
       <brn-separator decorative hlmSeparator orientation="vertical" />
-      <span class="mx-4">Manage Users ({{ table.total() }})</span>
+      <div class="w-full flex items-center mx-4">
+        @if (syncing()) {
+        <div class="mr-3">
+          <hlm-tooltip>
+            <span hlmTooltipTrigger>
+              <pulsing-dot></pulsing-dot>
+            </span>
+            <span *brnTooltipContent class="text-xs text-muted-foreground">
+              Syncronizing data...
+            </span>
+          </hlm-tooltip>
+        </div>
+        }
+        <span>Manage Users ({{ table.total() }})</span>
+      </div>
     </div>
     <div class="px-4 py-2.5">
       <users-table #table></users-table>
     </div>
   `,
 })
-export class UsersPageComponent {}
+export class UsersPageComponent {
+  syncing = toSignal(insta.syncing);
+}

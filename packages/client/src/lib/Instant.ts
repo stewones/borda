@@ -1,12 +1,31 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { Collection, Dexie, IndexableType, Table } from 'dexie';
+import {
+  Collection,
+  Dexie,
+  IndexableType,
+  liveQuery,
+  Table,
+} from 'dexie';
 import { singular } from 'pluralize';
-import { bufferTime, Subject, tap } from 'rxjs';
+import {
+  bufferTime,
+  from,
+  interval,
+  map,
+  startWith,
+  Subject,
+  tap,
+} from 'rxjs';
 import { z } from 'zod';
 
-import { Document, isServer, WebSocketFactory } from '@borda/client';
+import {
+  Document,
+  guid,
+  isServer,
+  WebSocketFactory,
+} from '@borda/client';
 
 import { fetcher } from './fetcher';
 
@@ -23,6 +42,7 @@ export interface iQLLimitDirective {
 export interface InstantSyncResponseData {
   status: InstantSyncStatus;
   value: Document;
+  collection?: string;
   updatedFields?: Record<string, any>;
   removedFields?: string[];
   truncatedArrays?: Array<{
@@ -68,30 +88,49 @@ export type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
   [P in K]?: iQL<T, K> & QueryDirectives<z.infer<T[P]>>;
 };
 
-export const objectId = <T extends string>(p: T) =>
+export const ejectPointer = <T extends z.BRAND<any>>(pointer: T) => {
+  return (pointer as unknown as string).split('$')[1];
+};
+
+export const createObjectIdSchema = <T extends string>(p: T) =>
   z.string().max(9).brand<T>();
 
-export const objectPointer = <T extends string>(p: T) =>
+export const createPointerSchema = <T extends string>(p: T) =>
   z
     .object({ collection: z.string().max(42), objectId: z.string().max(9) })
     .brand<T>();
 
+export const createSchema = <T extends SchemaType>(collection: string, p: T) =>
+  z.object({
+    _id: createObjectIdSchema(collection),
+    _sync: z.optional(z.number()),
+    _created_at: z.string(),
+    _updated_at: z.string(),
+    _expires_at: z.string().optional(),
+    _created_by: createPointerSchema('users'),
+    _updated_by: createPointerSchema('users'),
+    _deleted_by: createPointerSchema('users'),
+    ...p,
+  });
+
 /**
- * The returned string is a representation of the pointer
+ * A brand typed string representation of the pointer
  * which identifies the collection and the objectId
  *
  * @example
- * const userId = pointerRef('users', 'a1b2c3');
+ * const userId = createPointer('users', 'a1b2c3');
  * // userId => 'users$a1b2c3'
  *
  * @param p - pointer
  * @param objectId - objectId
  * @returns string
  */
-export const pointerRef = <T = typeof objectPointer>(
+export const createPointer = <T extends z.ZodType<any, any, any>>(
   collection: string,
-  objectId: string
-) => `${collection}$${objectId}` as T;
+  id: string
+) => {
+  return `${collection}$${id}` as z.infer<T>;
+};
 
 const SyncSchema = z.object({
   collection: z.string(),
@@ -114,12 +153,23 @@ export class Instant<T extends SchemaType> {
   #token!: string;
   #headers!: Record<string, string>;
   #params!: Record<string, string>;
+  #wss: WebSocket | undefined;
 
-  #scheduler = new Subject<{
+  #batch = new Subject<{
     collection: string;
     synced: string;
     activity: InstantSyncActivity;
     token: string;
+    headers: Record<string, string>;
+    params: Record<string, string>;
+  }>();
+
+  #queue = new Subject<{
+    collection: string;
+    url: string;
+    method: 'POST' | 'PUT' | 'DELETE';
+    token: string;
+    data: Document;
     headers: Record<string, string>;
     params: Record<string, string>;
   }>();
@@ -137,7 +187,16 @@ export class Instant<T extends SchemaType> {
     return this.#db;
   }
 
-  #wss: WebSocket | undefined;
+  public syncing = from(
+    liveQuery(() => this.#db.table('_sync').toArray())
+  ).pipe(
+    map((activities) =>
+      activities.some(
+        (item) => item.activity === 'oldest' && item.status === 'incomplete'
+      )
+    ),
+    startWith(false)
+  );
 
   constructor({
     // @todo for isolated tests
@@ -180,7 +239,7 @@ export class Instant<T extends SchemaType> {
     this.#headers = headers || {};
     this.#params = params || {};
     this.#index = index || {};
-    this.#scheduler
+    this.#batch
       .pipe(
         bufferTime(this.#buffer),
         tap(async (collections) => {
@@ -193,12 +252,13 @@ export class Instant<T extends SchemaType> {
             params,
           } of collections) {
             try {
+              // this.#worker.postMessage(JSON.stringify({ syncing: true }));
               const perf = performance.now();
               const url = `${
                 this.#serverURL
               }/sync/${collection}?activity=${activity}&synced=${synced}`;
 
-              await this.runWorker({
+              await this.#runBatchWorker({
                 url,
                 token,
                 headers,
@@ -217,6 +277,7 @@ export class Instant<T extends SchemaType> {
                 );
                 console.log('💾 estimated usage for', collection, usage);
               }
+              // this.#worker.postMessage(JSON.stringify({ syncing: false }));
             } catch (err) {
               /* istanbul ignore next */
               if (this.#inspect) {
@@ -227,6 +288,87 @@ export class Instant<T extends SchemaType> {
         })
       )
       .subscribe();
+
+    this.#queue
+      .pipe(
+        bufferTime(this.#buffer),
+        tap(async (collections) => {
+          // this.#worker.postMessage(JSON.stringify({ syncing: true }));
+          for (const {
+            collection,
+            url,
+            method,
+            data,
+            token,
+            headers,
+            params,
+          } of collections) {
+            await this.#runMutationWorker({
+              collection,
+              url,
+              data,
+              method,
+              token,
+              headers,
+              params,
+            });
+          }
+          // this.#worker.postMessage(JSON.stringify({ syncing: false }));
+        })
+      )
+      .subscribe();
+
+    /**
+     * initialize the mutation scheduler
+     */
+    if (isServer()) {
+      // @todo the interval should check if there's no item in the quue yet
+      // to avoid bloating the server with unecessary requests
+
+      interval(5_000)
+        .pipe(
+          tap(async () => {
+            const collections = Object.keys(this.#schema);
+            for (const collection of collections) {
+              // check for mutations pending
+              const query = {
+                [collection as keyof T]: {
+                  $filter: {
+                    _sync: {
+                      $eq: 1,
+                    },
+                  },
+                },
+              };
+
+              // Check for pending mutations
+              const pending = await this.query(query as unknown as iQL<T>);
+              const data = pending[collection as keyof T];
+
+              if (data.length > 0) {
+                console.log('🔵 pending mutations', data);
+
+                for (const item of data) {
+                  const url = `${this.#serverURL}/sync/${collection}`;
+                  const token = this.#token;
+                  const headers = this.#headers;
+                  const params = this.#params;
+                  const method = item['_expires_at']
+                    ? 'DELETE'
+                    : item['_created_at'] !== item['_updated_at']
+                    ? 'PUT'
+                    : 'POST';
+
+                  console.log('🔵 pending mutation', item, method);
+                }
+              } else {
+                continue;
+              }
+            }
+          })
+        )
+        .subscribe();
+    }
   }
 
   /**
@@ -258,7 +400,7 @@ export class Instant<T extends SchemaType> {
         const customFields = this.#index[tableName] || [];
 
         // Generate all possible index combinations
-        const indexCombinations = this.#generateIndexCombinations(customFields);
+        const indexCombinations = this.#buildIndexCombinations(customFields);
 
         // Join all index combinations
         const customIndices = indexCombinations.join(', ');
@@ -335,56 +477,14 @@ export class Instant<T extends SchemaType> {
     return `${total.toFixed(2)} MB`;
   }
 
-  public async useSync({
-    collection,
-    activity,
-  }: {
-    collection: string;
-    activity: InstantSyncActivity;
-  }) {
-    return ((await this.#db
-      .table('_sync')
-      .where({ collection, activity })
-      .first()) || {
-      activity,
-      synced: null,
-      status: 'incomplete',
-    }) as z.infer<typeof SyncSchema>;
-  }
-
-  public async setSync({
-    collection,
-    synced,
-    activity,
-    count,
-    status = 'incomplete',
-  }: {
-    collection: string;
-    synced?: string;
-    activity: InstantSyncActivity;
-    count: number;
-    status?: 'complete' | 'incomplete';
-  }) {
-    const sync = await this.#db
-      .table('_sync')
-      .where({ collection, activity })
-      .first();
-
-    if (sync) {
-      return this.#db
-        .table('_sync')
-        .where({ collection, activity })
-        .modify({ collection, synced, count, status });
-    }
-
-    return this.#db
-      .table('_sync')
-      .put({ collection, activity, count, status, synced });
-  }
-
   public setWorker({ worker }: { worker: Worker }) {
     this.#worker = worker;
-    // this.#worker.onmessage = ({}) => {}; // no need for now
+    // didn't play well
+    // this.#worker.onmessage = (ev) => {
+    //   console.log('ev', ev);
+    //   const { syncing } = JSON.parse(ev.data || '{}');
+    //   this.syncing.next(!!syncing);
+    // };
   }
 
   /**
@@ -398,11 +498,24 @@ export class Instant<T extends SchemaType> {
       try {
         const {
           url,
+          syncing,
           sync = 'batch',
           token = '',
           headers = {},
           params = {},
         } = JSON.parse(data);
+
+        if (!token) {
+          throw new Error('Token is required');
+        }
+
+        if (syncing) {
+          return;
+        }
+
+        this.#token = token;
+        this.#headers = headers || {};
+        this.#params = params || {};
 
         const perf = performance.now();
 
@@ -416,7 +529,8 @@ export class Instant<T extends SchemaType> {
          * including realtime updates via dexie livequery
          */
         if (sync === 'batch') {
-          const { collection, activity, synced } = await this.runWorker({
+          // postMessage(JSON.stringify({ syncing: true }));
+          const { collection, activity, synced } = await this.#runBatchWorker({
             url,
             token,
             headers,
@@ -435,13 +549,11 @@ export class Instant<T extends SchemaType> {
             );
             console.log('💾 estimated usage for', collection, usage);
           }
-
-          // not needed for now
-          // postMessage(JSON.stringify({ collection, page, synced }));
+          // this.#worker.postMessage(JSON.stringify({ syncing: false }));
         }
 
         if (sync === 'live') {
-          this.runLiveWorker({ url, token, headers, params });
+          this.#runLiveWorker({ url, token, headers, params });
         }
       } catch (err) {
         /* istanbul ignore next */
@@ -452,12 +564,71 @@ export class Instant<T extends SchemaType> {
     };
   }
 
+  async #useSync({
+    collection,
+    activity,
+  }: {
+    collection: string;
+    activity: InstantSyncActivity;
+  }) {
+    return ((await this.#db
+      .table('_sync')
+      .where({ collection, activity })
+      .first()) || {
+      activity,
+      synced: null,
+      status: 'incomplete',
+    }) as z.infer<typeof SyncSchema>;
+  }
+
+  async #setSync({
+    collection,
+    synced,
+    activity,
+    count,
+    status = 'incomplete',
+  }: {
+    collection: string;
+    synced?: string;
+    activity: InstantSyncActivity;
+    count: number;
+    status?: 'complete' | 'incomplete';
+  }) {
+    const sync = await this.#db
+      .table('_sync')
+      .where({ collection, activity })
+      .first();
+
+    const payload = { collection, synced, count, status };
+
+    if (sync) {
+      // make sure to only modify the synced date
+      // if the current one is older than the new one
+      // if (synced) {
+      //   const currentSynced = new Date(sync.synced);
+      //   const nextSynced = new Date(synced);
+      //   if (nextSynced > currentSynced) {
+      //     payload.synced = synced;
+      //   } else {
+      //     payload.synced = currentSynced.toISOString();
+      //   }
+      // }
+
+      return this.#db
+        .table('_sync')
+        .where({ collection, activity })
+        .modify(payload);
+    }
+
+    return this.#db.table('_sync').put({ ...payload, activity });
+  }
+
   /**
    * Sync paginated data from a given collection outside the main thread
    *
    * @returns Promise<void>
    */
-  public async runWorker({
+  async #runBatchWorker({
     url,
     token,
     headers,
@@ -526,7 +697,7 @@ export class Instant<T extends SchemaType> {
     // so it then only fetch new data via recent order
     // recent never ends so the client can always try to catch up
     if (localCount >= remoteCount && activity === 'oldest') {
-      await this.setSync({
+      await this.#setSync({
         collection,
         activity,
         count,
@@ -534,7 +705,7 @@ export class Instant<T extends SchemaType> {
         status: 'complete',
       });
     } else {
-      await this.setSync({ collection, activity, count, synced });
+      await this.#setSync({ collection, activity, count, synced });
     }
 
     // schedule next sync
@@ -550,7 +721,7 @@ export class Instant<T extends SchemaType> {
           synced
         );
       }
-      this.#scheduler.next({
+      this.#batch.next({
         collection,
         synced,
         activity,
@@ -573,9 +744,8 @@ export class Instant<T extends SchemaType> {
    *
    * @returns void
    */
-  public async runLiveWorker({
+  async #runLiveWorker({
     url,
-    token,
     headers,
     params,
   }: {
@@ -587,16 +757,6 @@ export class Instant<T extends SchemaType> {
     let wssFinished = false;
     let wssConnected = false;
     let hasConnected = false;
-
-    if (token && !this.#token) {
-      this.#token = token;
-    }
-    if (headers && !this.#headers) {
-      this.#headers = headers;
-    }
-    if (params && !this.#params) {
-      this.#params = params;
-    }
 
     const customParams = new URLSearchParams(params);
     const customHeaders = new Headers(headers);
@@ -648,10 +808,6 @@ export class Instant<T extends SchemaType> {
           value: Document;
         };
 
-        if (this.#inspect) {
-          console.log('🔵 sync live worker message', message.data);
-        }
-
         await this.#syncProcess({
           collection,
           status,
@@ -660,7 +816,7 @@ export class Instant<T extends SchemaType> {
 
         // update last sync
         const synced = value['_updated_at'];
-        await this.setSync({
+        await this.#setSync({
           collection,
           activity: 'recent',
           synced,
@@ -711,42 +867,80 @@ export class Instant<T extends SchemaType> {
   }
 
   /**
-   * Starts the sync process. Usually called after user login.
-   * @todo maybe pass the user session in here along custom client-facing params
+   * A batch that requests mutation from the server
+   * and update the local db with the new timestamp and id
    *
    * @returns Promise<void>
    */
-  public async sync({
-    session,
+  async #runMutationWorker({
+    url,
+    collection,
+    data,
+    token,
     headers,
     params,
+    method,
   }: {
-    session: string;
+    url: string;
+    method: 'POST' | 'PUT' | 'DELETE';
+    collection: keyof T;
+    data: Document;
+    token?: string;
     headers?: Record<string, string>;
     params?: Record<string, string>;
   }) {
-    if (!this.#db) {
-      throw new Error(
-        'Database not initialized. Try awaiting `ready()` first.'
-      );
+    const customParams = new URLSearchParams(params);
+    const customHeaders = new Headers(headers);
+
+    const finalParams: Record<string, string> = {};
+
+    customParams.forEach((value, key) => {
+      finalParams[key] = value;
+    });
+
+    customHeaders.forEach((value, key) => {
+      finalParams[key] = value;
+    });
+
+    if (Object.keys(finalParams).length > 0) {
+      url += `?${new URLSearchParams(finalParams).toString()}`;
     }
 
-    if (!this.#worker) {
-      throw new Error(
-        // @todo add documentation and links
-        'Worker not initialized. Try instantiating a worker and adding it to Instant.setWorker({ worker })'
-      );
+    try {
+      // post to the server
+      const maybeTemporaryId = data['_id'];
+      const response = await fetcher(url, {
+        direct: true,
+        method,
+        body: data,
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...headers,
+        },
+      });
+
+      if (
+        response['_id'] &&
+        response['_updated_at'] &&
+        response['_created_at']
+      ) {
+        // mark as synced and update with server timestamp
+        await this.#db.table(collection as string).update(maybeTemporaryId, {
+          _sync: 0,
+          _id: response['_id'],
+          _created_at: response['_created_at'],
+          _updated_at: response['_updated_at'],
+        });
+      } else {
+        if (this.#inspect) {
+          console.log('🔴 mutation failed', response);
+        }
+      }
+    } catch (error) {
+      if (this.#inspect) {
+        console.error('🔴 mutation failed', error);
+      }
     }
-
-    if (!this.#serverURL) {
-      throw new Error('Server URL is required to sync');
-    }
-
-    this.#token = session;
-    this.#headers = headers || {};
-    this.#params = params || {};
-
-    await Promise.allSettled([this.#syncLive(), this.#syncBatch()]);
   }
 
   async #syncLive() {
@@ -770,7 +964,7 @@ export class Instant<T extends SchemaType> {
 
       for (const collection of collections) {
         for (const activity of ['oldest', 'recent'] as const) {
-          const sync = await this.useSync({
+          const sync = await this.#useSync({
             collection,
             activity,
           });
@@ -793,6 +987,7 @@ export class Instant<T extends SchemaType> {
           }
 
           if (sync.status === 'incomplete') {
+            console.log('🔵 syncing', collection, sync);
             await this.#syncWorker({
               collection,
               synced: sync.synced,
@@ -848,7 +1043,7 @@ export class Instant<T extends SchemaType> {
       created: async (collection: string, value: Document) => {
         await this.#db
           .table(collection)
-          .add(value)
+          .add({ ...value, _sync: 0 })
           .catch((err) => {
             if (this.#inspect) {
               console.error('Error adding document', collection, value, err);
@@ -856,14 +1051,25 @@ export class Instant<T extends SchemaType> {
           });
       },
       updated: async (collection: string, value: Document) => {
-        await this.#db
-          .table(collection)
-          .update(value['_id'], value as object)
-          .catch((err) => {
-            if (this.#inspect) {
-              console.error('Error updating document', collection, value, err);
-            }
-          });
+        // check if doc exits, if not, create it
+        const doc = await this.#db.table(collection).get(value['_id']);
+        if (!doc) {
+          await persist.created(collection, value);
+        } else {
+          await this.#db
+            .table(collection)
+            .update(value['_id'], { ...value, _sync: 0 })
+            .catch((err) => {
+              if (this.#inspect) {
+                console.error(
+                  'Error updating document',
+                  collection,
+                  value,
+                  err
+                );
+              }
+            });
+        }
       },
       deleted: async (collection: string, value: Document) => {
         await this.#db
@@ -898,7 +1104,7 @@ export class Instant<T extends SchemaType> {
     };
   }
 
-  #generateIndexCombinations(fields: string[]): string[] {
+  #buildIndexCombinations(fields: string[]): string[] {
     const combo: string[] = [];
 
     const permute = (arr: string[]): string[][] => {
@@ -912,7 +1118,7 @@ export class Instant<T extends SchemaType> {
     };
 
     for (let i = 1; i <= fields.length; i++) {
-      const combs = this.#combinations(fields, i);
+      const combs = this.#getIndexCombinations(fields, i);
       for (const comb of combs) {
         const perms = permute(comb);
         for (const perm of perms) {
@@ -924,7 +1130,7 @@ export class Instant<T extends SchemaType> {
     return [...new Set(combo)]; // Remove any duplicates
   }
 
-  #combinations(arr: string[], k: number): string[][] {
+  #getIndexCombinations(arr: string[], k: number): string[][] {
     const result: string[][] = [];
 
     const combine = (start: number, current: string[]) => {
@@ -942,6 +1148,154 @@ export class Instant<T extends SchemaType> {
 
     combine(0, []);
     return result;
+  }
+
+  public mutate(collection: string) {
+    return {
+      add: async (
+        value: Partial<z.infer<T[keyof T]>> & {
+          _id?: string;
+          _sync?: number;
+          _created_at?: string;
+          _updated_at?: string;
+          _created_by?: string;
+          _updated_by?: string;
+          _expires_at?: string;
+          _deleted_by?: string;
+        }
+      ) => {
+        const now = new Date().toISOString();
+        value._sync = 1;
+        value._created_at = now;
+        value._updated_at = now;
+        value._id = guid();
+        value._created_by = createPointer('users', this.#token);
+        value._updated_by = createPointer('users', this.#token);
+
+        await this.#db.transaction(
+          'rw!',
+          this.#db.table(collection),
+          async () => {
+            await this.#db.table(collection).add(value);
+          }
+        );
+
+        return value;
+      },
+      update: async (id: string, value: z.infer<T[keyof T]>) => {
+        await this.#db.transaction(
+          'rw!',
+          this.#db.table(collection),
+          async () => {
+            await this.#db.table(collection).update(id, {
+              ...value,
+              _sync: 1,
+              _updated_at: new Date().toISOString(),
+              _updated_by: createPointer('users', this.#token),
+            });
+          }
+        );
+      },
+      delete: async (id: string) => {
+        await this.#db.transaction(
+          'rw!',
+          this.#db.table(collection),
+          async () => {
+            await this.#db.table(collection).update(id, {
+              _sync: 1,
+              _updated_at: new Date().toISOString(),
+              _expires_at: new Date().toISOString(),
+              _deleted_by: createPointer('users', this.#token),
+            });
+          }
+        );
+      },
+    };
+  }
+
+  /**
+   * Starts the sync process. Usually called after user login.
+   * @todo maybe pass the user session in here along custom client-facing params
+   *
+   * @returns Promise<void>
+   */
+  public async sync({
+    session,
+    headers,
+    params,
+  }: {
+    session: string;
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
+  }) {
+    if (!this.#db) {
+      throw new Error(
+        'Database not initialized. Try awaiting `ready()` first.'
+      );
+    }
+
+    if (!this.#worker) {
+      throw new Error(
+        // @todo add documentation and links
+        'Worker not initialized. Try instantiating a worker and adding it to Instant.setWorker({ worker })'
+      );
+    }
+
+    if (!this.#serverURL) {
+      throw new Error('Server URL is required to sync');
+    }
+
+    this.#token = session;
+    this.#headers = headers || {};
+    this.#params = params || {};
+
+    await Promise.allSettled([this.#syncLive(), this.#syncBatch()]);
+  }
+
+  /**
+   * @todo @experimental
+   * WIP: query syntax based on a graph of collections
+   * so we can easily count nested data, while keeping
+   * the mongodb query syntax which is then translated to dexie
+   *
+   * server should follow the same pattern so we can have
+   * the same query for both client and server
+   *
+   * @example
+   * const count = await insta.count('users', {
+   *     $filter: {
+   *       name: { $exists: true },
+   *     },
+   * });
+   *
+   * // console.log(count)
+   * // 1337
+   *
+   */
+  public async count(
+    collection: string,
+    query: Exclude<QueryDirectives<z.infer<T[keyof T]>>, '$by'> & iQL<T>
+  ) {
+    let table = this.#db.table(collection);
+    const tableQuery = query as QueryDirectives<z.infer<T[keyof T]>> & iQL<T>;
+
+    // Apply $filter
+    if (tableQuery.$filter) {
+      for (const [field, condition] of Object.entries(tableQuery.$filter)) {
+        if (condition?.$exists) {
+          table = table.filter(
+            (item) => item[field] != null
+          ) as unknown as Table<any, IndexableType>;
+        }
+        if (condition?.$nin) {
+          table = table.filter(
+            (item) => !(condition.$nin ?? []).includes(item[field])
+          ) as unknown as Table<any, IndexableType>;
+        }
+      }
+    }
+
+    return table.count();
   }
 
   /**
@@ -1061,21 +1415,24 @@ export class Instant<T extends SchemaType> {
             for (const [field, condition] of Object.entries(
               tableQuery.$filter
             )) {
-              if (condition?.$exists) {
+              if (condition && '$exists' in condition) {
                 collection = collection.filter((item) => item[field] != null);
               }
-              if (condition?.$nin) {
+              if (condition && '$nin' in condition && condition.$nin) {
                 collection = collection.filter(
                   (item) => !(condition.$nin ?? []).includes(item[field])
                 );
               }
-              if (condition?.$regex) {
-                const regex = new RegExp(condition.$regex, condition.$options);
+              if (condition && '$regex' in condition && condition.$regex) {
+                const regex = new RegExp(
+                  condition.$regex,
+                  condition.$options ?? 'i'
+                );
                 collection = collection.filter((item) =>
                   regex.test(item[field])
                 );
               }
-              if (condition?.$eq) {
+              if (condition && '$eq' in condition) {
                 collection = collection.filter(
                   (item) => item[field] === condition.$eq
                 );
@@ -1174,51 +1531,5 @@ export class Instant<T extends SchemaType> {
     };
 
     return executeQuery(iql);
-  }
-
-  /**
-   * @todo @experimental
-   * WIP: query syntax based on a graph of collections
-   * so we can easily count nested data, while keeping
-   * the mongodb query syntax which is then translated to dexie
-   *
-   * server should follow the same pattern so we can have
-   * the same query for both client and server
-   *
-   * @example
-   * const count = await insta.count('users', {
-   *     $filter: {
-   *       name: { $exists: true },
-   *     },
-   * });
-   *
-   * // console.log(count)
-   * // 1337
-   *
-   */
-  public async count(
-    collection: string,
-    query: Exclude<QueryDirectives<z.infer<T[keyof T]>>, '$by'> & iQL<T>
-  ) {
-    let table = this.#db.table(collection);
-    const tableQuery = query as QueryDirectives<z.infer<T[keyof T]>> & iQL<T>;
-
-    // Apply $filter
-    if (tableQuery.$filter) {
-      for (const [field, condition] of Object.entries(tableQuery.$filter)) {
-        if (condition?.$exists) {
-          table = table.filter(
-            (item) => item[field] != null
-          ) as unknown as Table<any, IndexableType>;
-        }
-        if (condition?.$nin) {
-          table = table.filter(
-            (item) => !(condition.$nin ?? []).includes(item[field])
-          ) as unknown as Table<any, IndexableType>;
-        }
-      }
-    }
-
-    return table.count();
   }
 }

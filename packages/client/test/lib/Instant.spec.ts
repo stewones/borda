@@ -4,11 +4,11 @@ import 'fake-indexeddb/auto';
 import { z } from 'zod';
 
 import {
+  createObjectIdSchema,
+  createPointer,
+  createPointerSchema,
   Instant,
   InstantSyncResponse,
-  objectId,
-  objectPointer,
-  pointerRef,
 } from '@borda/client';
 
 import * as lib from '../../../client/src/lib';
@@ -16,12 +16,12 @@ import * as lib from '../../../client/src/lib';
 // global mocks
 global.structuredClone = jest.fn((data) => data);
 
-const UserId = objectId('users');
-const PostId = objectId('posts');
-const CommentId = objectId('comments');
+const UserId = createObjectIdSchema('users');
+const PostId = createObjectIdSchema('posts');
+const CommentId = createObjectIdSchema('comments');
 
-const UserPointer = objectPointer('users');
-const PostPointer = objectPointer('posts');
+const UserPointer = createPointerSchema('users');
+const PostPointer = createPointerSchema('posts');
 
 jest.mock('../../../client/src/lib/fetcher');
 
@@ -87,8 +87,8 @@ describe('Instant', () => {
       _updated_at: '2022-07-05T03:08:41.768Z',
       title: 'Post 2',
       content: 'Ei gentiii chegueii',
-      author: pointerRef('users', 'objId0507'),
-      _p_user: pointerRef('users', 'objId0507'),
+      author: createPointer('users', 'objId0507'),
+      _p_user: createPointer('users', 'objId0507'),
     },
     {
       _id: 'post11111',
@@ -96,8 +96,8 @@ describe('Instant', () => {
       _updated_at: '2020-07-28T03:08:41.768Z',
       title: 'Post 1',
       content: 'Hello world',
-      author: pointerRef('users', 'objId2807'),
-      _p_user: pointerRef('users', 'objId2807'),
+      author: createPointer('users', 'objId2807'),
+      _p_user: createPointer('users', 'objId2807'),
     },
   ];
 
@@ -343,8 +343,8 @@ describe('Instant', () => {
         _updated_at: '2022-07-05T03:08:41.768Z',
         title: 'Post 2',
         content: 'Ei gentiii chegueii',
-        user: pointerRef('users', 'objId0507'),
-        _p_user: pointerRef('users', 'objId0507'),
+        user: createPointer('users', 'objId0507'),
+        _p_user: createPointer('users', 'objId0507'),
       },
       {
         _id: 'post11111',
@@ -352,8 +352,8 @@ describe('Instant', () => {
         _updated_at: '2020-07-28T03:08:41.768Z',
         title: 'Post 1',
         content: 'Hello world',
-        user: pointerRef('users', 'objId2807'),
-        _p_user: pointerRef('users', 'objId2807'),
+        user: createPointer('users', 'objId2807'),
+        _p_user: createPointer('users', 'objId2807'),
       },
     ];
 
@@ -546,6 +546,19 @@ describe('Instant', () => {
     expect(users[1].name).toBe('Teobaldo José');
   });
 
+  test('should filter users using $regex with $options i by default', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          name: { $regex: 'Te' },
+        },
+      },
+    });
+
+    expect(users).toHaveLength(1);
+    expect(users[0].name).toBe('Teobaldo José');
+  });
+
   test('should filter users using $or', async () => {
     const { users } = await insta.query({
       users: {
@@ -573,5 +586,89 @@ describe('Instant', () => {
 
     expect(users).toHaveLength(1);
     expect(users[0].name).toBe('Raul');
+  });
+
+  test('mutate add', async () => {
+    const user = await insta.mutate('users').add({
+      name: 'Elon Musk',
+    });
+
+    expect(user).toEqual({
+      _id: expect.any(String),
+      _sync: 1,
+      _created_at: expect.any(String),
+      _updated_at: expect.any(String),
+      _created_by: expect.any(String),
+      _updated_by: expect.any(String),
+      name: 'Elon Musk',
+    });
+
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          name: { $eq: 'Elon Musk' },
+        },
+      },
+    });
+
+    expect(users).toHaveLength(1);
+    expect(users[0].name).toBe('Elon Musk');
+  });
+
+  test('filter with nullish $eq', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          _sync: { $eq: null },
+        },
+      },
+    } as unknown as any);
+
+    expect(users).toHaveLength(0);
+  });
+
+  test('filter with $eq zero', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          _sync: { $eq: 0 },
+        },
+      },
+    } as unknown as any);
+
+    expect(users).toHaveLength(0);
+  });
+
+  test('should filter and sort using _update_at by default', async () => {
+    const { users } = await insta.query({
+      users: {},
+    });
+
+    expect(users[0].name).toBe('Elis');
+
+    // add new user
+    await insta.mutate('users').add({
+      name: 'Tunico',
+    });
+
+    const { users: usersUpdated } = await insta.query({
+      users: {},
+    });
+
+    expect(usersUpdated[0].name).toBe('Tunico');
+  });
+
+  test('should filter $regex with $options `i` by default', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          name: { $regex: 't' },
+        },
+      },
+    });
+
+    expect(users).toHaveLength(2);
+    expect(users[0].name).toBe('Tobias Afonso');
+    expect(users[1].name).toBe('Teobaldo José');
   });
 });

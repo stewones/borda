@@ -1,7 +1,7 @@
 import { Action, Borda, createAction, createReducer } from '@borda/browser';
 import { Instant, isEqual, Record, Session, User } from '@borda/client';
 
-import { schema } from '@/support';
+import { schema } from '@/common';
 
 import { environment } from '../environment';
 
@@ -110,13 +110,13 @@ const borda = new Borda({
 const insta = new Instant({
   schema,
   name: 'InstantTest',
-  index: {
-    users: ['_updated_at', 'name', 'email'],
-  },
   inspect: true,
-  serverURL: environment.serverURL,
+  index: {
+    users: ['_updated_at', '_expires_at', 'name', 'email'],
+  },
   size: environment.instantSize,
   buffer: environment.instantBuffer,
+  serverURL: environment.serverURL,
 });
 
 export { borda, insta };

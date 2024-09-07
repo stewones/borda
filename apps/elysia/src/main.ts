@@ -95,36 +95,44 @@ const insta = new Instant({
   size: parseInt(process.env['INSTANT_SIZE'] || '1_000'),
   collections: ['orgs', 'users', 'posts', 'comments'],
   // set constraints to restrict broadcast and filtered data
-  constraints: [
-    {
-      key: 'org',
-      collection: 'orgs',
-    },
-  ],
+  // constraints: [
+  //   {
+  //     key: 'org',
+  //     collection: 'orgs',
+  //   },
+  // ],
 }).attach(borda);
 
 await insta.ready();
 
 // custom route params schema
-const SyncParamsCustomSchema = Instant.SyncParamsSchema(insta.collections);
+const SyncParamsSchema = Instant.SyncParamsSchema(insta.collections);
+const SyncMutationParamsSchema = Instant.SyncMutationParamsSchema(
+  insta.collections
+);
 
 // custom query schema
-const SyncQueryCustomSchema = t.Object({
-  ...Instant.SyncQuery,
-  org: t.String(),
+const SyncBatchQueryCustomSchema = t.Object({
+  ...Instant.SyncBatchQuery,
+  //org: t.String(), // can also be multiple orgs split by comma
+});
+
+// custom mutation query schema
+const SyncMutationQueryCustomSchema = t.Object({
+  // org: t.String(), // can also be multiple orgs split by comma
 });
 
 // custom headers schema
 const SyncHeadersCustomSchema = t.Object({
   ...Instant.SyncHeaders,
   // another custom header
-  someCustomHeaderParam: t.Optional(t.String()),
+  //someCustomHeaderParam: t.Optional(t.String()),
 });
 
 // custom live query schema
 const SyncLiveQueryOrgSchema = t.Object({
   ...Instant.SyncLiveQuery,
-  org: t.String(),
+  // org: t.String(), // can also be multiple orgs split by comma
 });
 
 /**
@@ -193,12 +201,42 @@ api
   // add custom instant server
   .group('sync', (endpoint) =>
     endpoint
-      .get(':collection', insta.collection(), {
-        query: SyncQueryCustomSchema,
-        params: SyncParamsCustomSchema,
+      .get(':collection', insta.collection().get(), {
+        query: SyncBatchQueryCustomSchema,
+        params: SyncParamsSchema,
         headers: SyncHeadersCustomSchema,
         // custom logic to validate request before it's handled
         beforeHandle({ headers, params }) {
+          // console.log('params', params);
+          // console.log('headers', headers);
+        },
+      })
+      .post(':collection', insta.collection().post(), {
+        query: SyncMutationQueryCustomSchema,
+        params: SyncParamsSchema,
+        headers: SyncHeadersCustomSchema,
+        // custom logic to validate request before it's handled
+        beforeHandle({ headers, params, body }) {
+          // console.log('params', params);
+          // console.log('headers', headers);
+        },
+      })
+      .put(':collection/:id', insta.collection().put(), {
+        query: SyncMutationQueryCustomSchema,
+        params: SyncMutationParamsSchema,
+        headers: SyncHeadersCustomSchema,
+        // custom logic to validate request before it's handled
+        beforeHandle({ headers, params, body }) {
+          // console.log('params', params);
+          // console.log('headers', headers);
+        },
+      })
+      .delete(':collection/:id', insta.collection().delete(), {
+        query: SyncMutationQueryCustomSchema,
+        params: SyncMutationParamsSchema,
+        headers: SyncHeadersCustomSchema,
+        // custom logic to validate request before it's handled
+        beforeHandle({ headers, params, body }) {
           // console.log('params', params);
           // console.log('headers', headers);
         },
