@@ -1,5 +1,5 @@
 import { NgClass } from '@angular/common';
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 
@@ -99,20 +99,5 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
 })
 export class UsersPageComponent {
   syncing = toSignal(insta.syncing);
-
-  online = signal(navigator.onLine);
-
-  ngOnInit() {
-    window.addEventListener('online', this.updateOnlineStatus.bind(this));
-    window.addEventListener('offline', this.updateOnlineStatus.bind(this));
-  }
-
-  ngOnDestroy() {
-    window.removeEventListener('online', this.updateOnlineStatus.bind(this));
-    window.removeEventListener('offline', this.updateOnlineStatus.bind(this));
-  }
-
-  updateOnlineStatus() {
-    this.online.set(navigator.onLine);
-  }
+  online = toSignal(insta.online);
 }

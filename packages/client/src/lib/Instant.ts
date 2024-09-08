@@ -11,11 +11,16 @@ import {
 import { singular } from 'pluralize';
 import {
   bufferTime,
+  distinctUntilChanged,
   from,
+  fromEvent,
   interval,
   map,
+  merge,
+  Observable,
   startWith,
   Subject,
+  Subscription,
   tap,
 } from 'rxjs';
 import { z } from 'zod';
@@ -156,6 +161,7 @@ export class Instant<T extends SchemaType> {
   #headers!: Record<string, string>;
   #params!: Record<string, string>;
   #wss: WebSocket | undefined;
+  #online!: Subscription;
 
   #batch = new Subject<{
     collection: string;
@@ -203,6 +209,8 @@ export class Instant<T extends SchemaType> {
     startWith(false)
   );
 
+  public online!: Observable<boolean>;
+
   constructor({
     // @todo for isolated tests
     // db,
@@ -242,134 +250,6 @@ export class Instant<T extends SchemaType> {
     this.#headers = headers || {};
     this.#params = params || {};
     this.#index = index || {};
-
-    /**
-     * initialize the mutation scheduler
-     */
-    if (isServer()) {
-      /**
-       * schedule a runner for pending mutations
-       */
-      interval(100)
-        .pipe(tap(async () => await this.#runQueue()))
-        .subscribe();
-
-      /**
-       * schedule a check for pending mutations
-       */
-      interval(1_000)
-        .pipe(
-          tap(async () => {
-            const collections = Object.keys(this.#schema);
-            for (const collection of collections) {
-              // check for mutations pending
-              const query = {
-                [collection as keyof T]: {
-                  $filter: {
-                    _sync: {
-                      $eq: 1,
-                    },
-                  },
-                },
-              };
-
-              // Check for pending mutations
-              const pending = await this.query(query as unknown as iQL<T>);
-              const data = pending[collection as keyof T];
-
-              for (const item of data) {
-                let url = `${this.#serverURL}/sync/${collection}`;
-                const token = this.#token;
-                const headers = this.#headers;
-                const params = this.#params;
-                const method = item['_expires_at']
-                  ? 'DELETE'
-                  : item['_created_at'] !== item['_updated_at']
-                  ? 'PUT'
-                  : 'POST';
-
-                if (['DELETE', 'PUT'].includes(method)) {
-                  url += `/${item['_id']}`;
-                }
-                const key = `${method}-${item['_id']}`;
-
-                if (!this.#queue.has(key)) {
-                  // push to the queue
-                  this.#queue.set(key, {
-                    url,
-                    method,
-                    token,
-                    data: item,
-                    headers,
-                    params,
-                    locked: false,
-                  });
-                }
-              }
-
-              if (data.length > 0) {
-                if (this.#inspect) {
-                  console.log('🔵 pending mutations', data);
-                }
-              }
-            }
-          })
-        )
-        .subscribe();
-
-      /**
-       * schedule a stream for the batch sync
-       */
-      this.#batch
-        .pipe(
-          bufferTime(this.#buffer),
-          tap(async (collections) => {
-            for (const {
-              collection,
-              activity,
-              synced,
-              token,
-              headers,
-              params,
-            } of collections) {
-              try {
-                // this.#worker.postMessage(JSON.stringify({ syncing: true }));
-                const perf = performance.now();
-                const url = `${
-                  this.#serverURL
-                }/sync/${collection}?activity=${activity}&synced=${synced}`;
-
-                await this.#runBatchWorker({
-                  url,
-                  token,
-                  headers,
-                  params,
-                });
-
-                /* istanbul ignore next */
-                if (this.inspect) {
-                  const syncDuration = performance.now() - perf;
-                  const usage = await this.usage(collection);
-                  console.log(
-                    `💨 sync ${syncDuration.toFixed(2)}ms`,
-                    collection,
-                    activity,
-                    synced
-                  );
-                  console.log('💾 estimated usage for', collection, usage);
-                }
-                // this.#worker.postMessage(JSON.stringify({ syncing: false }));
-              } catch (err) {
-                /* istanbul ignore next */
-                if (this.#inspect) {
-                  console.error('Error scheduling sync', err);
-                }
-              }
-            }
-          })
-        )
-        .subscribe();
-    }
   }
 
   /**
@@ -426,6 +306,152 @@ export class Instant<T extends SchemaType> {
       this.#db = db;
 
       this.#db.on('ready', (db) => {
+        /**
+         * initialize the mutation scheduler
+         */
+
+        if (isServer()) {
+          /**
+           * schedule a runner for pending mutations
+           */
+          interval(100)
+            .pipe(tap(async () => await this.#runQueue()))
+            .subscribe();
+
+          /**
+           * schedule a check for pending mutations
+           */
+          interval(1_000)
+            .pipe(
+              tap(async () => {
+                const collections = Object.keys(this.#schema);
+                for (const collection of collections) {
+                  // check for mutations pending
+                  const query = {
+                    [collection as keyof T]: {
+                      $filter: {
+                        _sync: {
+                          $eq: 1,
+                        },
+                      },
+                    },
+                  };
+
+                  // Check for pending mutations
+                  const pending = await this.query(query as unknown as iQL<T>);
+                  const data = pending[collection as keyof T];
+
+                  for (const item of data) {
+                    let url = `${this.#serverURL}/sync/${collection}`;
+                    const token = this.#token;
+                    const headers = this.#headers;
+                    const params = this.#params;
+                    const method = item['_expires_at']
+                      ? 'DELETE'
+                      : item['_created_at'] !== item['_updated_at']
+                      ? 'PUT'
+                      : 'POST';
+
+                    if (['DELETE', 'PUT'].includes(method)) {
+                      url += `/${item['_id']}`;
+                    }
+                    const key = `${method}-${item['_id']}`;
+
+                    if (!this.#queue.has(key)) {
+                      // push to the queue
+                      this.#queue.set(key, {
+                        url,
+                        method,
+                        token,
+                        data: item,
+                        headers,
+                        params,
+                        locked: false,
+                      });
+                    }
+                  }
+
+                  if (data.length > 0) {
+                    if (this.#inspect) {
+                      console.log('🔵 pending mutations', data);
+                    }
+                  }
+                }
+              })
+            )
+            .subscribe();
+
+          /**
+           * schedule a stream for the batch sync
+           */
+          this.#batch
+            .pipe(
+              bufferTime(this.#buffer),
+              tap(async (collections) => {
+                for (const {
+                  collection,
+                  activity,
+                  synced,
+                  token,
+                  headers,
+                  params,
+                } of collections) {
+                  try {
+                    // this.#worker.postMessage(JSON.stringify({ syncing: true }));
+                    const perf = performance.now();
+                    const url = `${
+                      this.#serverURL
+                    }/sync/${collection}?activity=${activity}&synced=${synced}`;
+
+                    await this.#runBatchWorker({
+                      url,
+                      token,
+                      headers,
+                      params,
+                    });
+
+                    /* istanbul ignore next */
+                    if (this.inspect) {
+                      const syncDuration = performance.now() - perf;
+                      const usage = await this.usage(collection);
+                      console.log(
+                        `💨 sync ${syncDuration.toFixed(2)}ms`,
+                        collection,
+                        activity,
+                        synced
+                      );
+                      console.log('💾 estimated usage for', collection, usage);
+                    }
+                    // this.#worker.postMessage(JSON.stringify({ syncing: false }));
+                  } catch (err) {
+                    /* istanbul ignore next */
+                    if (this.#inspect) {
+                      console.error('Error scheduling sync', err);
+                    }
+                  }
+                }
+              })
+            )
+            .subscribe();
+        } else {
+          /**
+           * monitor network activity
+           */
+
+          // Subscribe to network changes
+          this.online = merge(
+            fromEvent(window, 'online').pipe(map(() => true)),
+            fromEvent(window, 'offline').pipe(map(() => false))
+          ).pipe(startWith(navigator.onLine), distinctUntilChanged());
+
+           this.#online = this.online.subscribe(async (isOnline) => {
+           if (isOnline) {
+             console.log('🔴 online');
+             this.#syncBatch('recent');
+           }
+         });
+        }
+
         Promise.resolve(db);
         if (this.#inspect && !isServer()) {
           // @ts-ignore
@@ -476,6 +502,22 @@ export class Instant<T extends SchemaType> {
     const total = indexedDB / (1024 * 1024);
 
     return `${total.toFixed(2)} MB`;
+  }
+
+  public destroy() {
+    this.#worker.terminate();
+    this.#db.close();
+    this.#queue.clear();
+    this.#batch.complete();
+    if (this.#online) {
+      this.#online.unsubscribe();
+    }
+    if (this.#wss && this.#wss.readyState === WebSocket.OPEN) {
+      this.#wss.close();
+    }
+    if (this.#inspect) {
+      console.log('🧹 Instant instance destroyed');
+    }
   }
 
   public setWorker({ worker }: { worker: Worker }) {
@@ -1000,42 +1042,40 @@ export class Instant<T extends SchemaType> {
     );
   }
 
-  async #syncBatch() {
+  async #syncBatch(activity: InstantSyncActivity) {
     try {
       const collections = Object.keys(this.#schema);
 
       for (const collection of collections) {
-        for (const activity of ['oldest', 'recent'] as const) {
-          const sync = await this.#useSync({
+        const sync = await this.#useSync({
+          collection,
+          activity,
+        });
+
+        if (activity === 'recent' && !sync.synced) {
+          // try to get the most recent _updated_at from the local db
+          const mostRecentUpdatedAt = await this.#db
+            .table(collection)
+            .orderBy('_updated_at')
+            .reverse()
+            .first()
+            .then((doc) => doc?._updated_at);
+
+          if (mostRecentUpdatedAt) {
+            sync.synced = mostRecentUpdatedAt;
+          } else {
+            // otherwise we default to current date
+            sync.synced = new Date().toISOString();
+          }
+        }
+
+        if (sync.status === 'incomplete') {
+          console.log('🔵 syncing', collection, sync);
+          await this.#syncWorker({
             collection,
+            synced: sync.synced,
             activity,
           });
-
-          if (activity === 'recent' && !sync.synced) {
-            // try to get the most recent _updated_at from the local db
-            const mostRecentUpdatedAt = await this.#db
-              .table(collection)
-              .orderBy('_updated_at')
-              .reverse()
-              .first()
-              .then((doc) => doc?._updated_at);
-
-            if (mostRecentUpdatedAt) {
-              sync.synced = mostRecentUpdatedAt;
-            } else {
-              // otherwise we default to current date
-              sync.synced = new Date().toISOString();
-            }
-          }
-
-          if (sync.status === 'incomplete') {
-            console.log('🔵 syncing', collection, sync);
-            await this.#syncWorker({
-              collection,
-              synced: sync.synced,
-              activity,
-            });
-          }
         }
       }
     } catch (err) {
@@ -1258,7 +1298,7 @@ export class Instant<T extends SchemaType> {
         if (!currentDoc) {
           throw new Error('Document not found');
         }
-        
+
         // calc what changed excluding _updated_at, _created_at, _sync
         const updatedFields = Object.keys(value).reduce((acc, key) => {
           if (
@@ -1357,7 +1397,7 @@ export class Instant<T extends SchemaType> {
     this.#headers = headers || {};
     this.#params = params || {};
 
-    await Promise.allSettled([this.#syncLive(), this.#syncBatch()]);
+    await Promise.allSettled([this.#syncLive(), this.#syncBatch('oldest')]);
   }
 
   public syncPending(row: Document) {
