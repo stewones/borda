@@ -824,7 +824,12 @@ export class Instant<T extends string> {
   }) {
     try {
       const { collection, id } = params;
-      const data = omit(body, ['_id', '_created_at', '_updated_at']);
+      const data = omit(body, [
+        '_id',
+        '_created_at',
+        '_updated_at',
+        '_updated_fields',
+      ]);
 
       if (data['_sync']) {
         delete data['_sync'];

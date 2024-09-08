@@ -1,3 +1,4 @@
+import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
@@ -32,6 +33,7 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
     BrnSeparatorComponent,
     UsersTableComponent,
     PulsingDot,
+    NgClass,
   ],
   providers: [provideIcons({ lucideChevronLeft, tablerWifiOff, tablerWifi })],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -67,7 +69,8 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
               hlmBtn
               size="sm"
               variant="ghost"
-              class="whitespace-nowrap text-xs text-muted-foreground"
+              class="whitespace-nowrap text-xs"
+              [ngClass]="{ 'text-muted-foreground': !online() }"
             >
               <hlm-icon
                 size="base"
@@ -81,8 +84,8 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
             class="text-xs text-right text-muted-foreground"
             [innerHTML]="
               online()
-                ? 'You are online.<br/> try to set your computer offline<br/> to see what happens 😉'
-                : 'You are offline.<br/> try to set your computer online<br/> to see the magic 😛'
+                ? 'You are online.<br/> try to set your computer offline, make some changes,<br/>then set it back online to see what happens 😉'
+                : 'You are offline.<br/> try to make some changes and then, <br /> set your computer online to see the magic 😛'
             "
           >
           </span>

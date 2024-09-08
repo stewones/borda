@@ -250,14 +250,14 @@ export class Instant<T extends SchemaType> {
       /**
        * schedule a runner for pending mutations
        */
-      interval(1_000)
+      interval(100)
         .pipe(tap(async () => await this.#runQueue()))
         .subscribe();
 
       /**
        * schedule a check for pending mutations
        */
-      interval(2_000)
+      interval(1_000)
         .pipe(
           tap(async () => {
             const collections = Object.keys(this.#schema);
@@ -673,10 +673,10 @@ export class Instant<T extends SchemaType> {
         },
       });
 
-    const isMobile =
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        navigator.userAgent
-      );
+    // const isMobile =
+    //   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    //     navigator.userAgent
+    //   );
 
     await this.#db.transaction('rw!', this.#db.table(collection), async () => {
       for (const { status, value } of data) {
@@ -725,7 +725,8 @@ export class Instant<T extends SchemaType> {
 
     // schedule next sync
     // we skip this on mobile devices to avoid unecessary data consumption
-    if (!isMobile && localCount < remoteCount) {
+    // !isMobile && (needs a more robust implementation, like set a max storage setting)
+    if (localCount < remoteCount) {
       if (this.#inspect) {
         console.log(
           '⏰ scheduling next sync in',
@@ -813,12 +814,13 @@ export class Instant<T extends SchemaType> {
       },
 
       onMessage: async (ws: WebSocket, message: MessageEvent) => {
-        const { collection, status, value } = JSON.parse(
+        const { collection, status, value, updatedFields } = JSON.parse(
           message.data || '{}'
         ) as {
           collection: string;
           status: InstantSyncStatus;
           value: Document;
+          updatedFields?: Record<string, any>;
         };
 
         try {
@@ -855,6 +857,7 @@ export class Instant<T extends SchemaType> {
               collection,
               status,
               value,
+              updatedFields,
             });
           }
 
@@ -1070,14 +1073,20 @@ export class Instant<T extends SchemaType> {
     collection,
     status,
     value,
+    updatedFields,
   }: {
     collection: string;
     status: InstantSyncStatus;
     value: Document;
+    updatedFields?: Record<string, any>;
   }) {
     const persist: Record<
       InstantSyncStatus,
-      (collection: string, value: Document) => Promise<void>
+      (
+        collection: string,
+        value: Document,
+        updatedFields?: Record<string, any>
+      ) => Promise<void>
     > = {
       created: async (collection: string, value: Document) => {
         // account for local id
@@ -1103,7 +1112,11 @@ export class Instant<T extends SchemaType> {
             }
           });
       },
-      updated: async (collection: string, value: Document) => {
+      updated: async (
+        collection: string,
+        value: Document,
+        updatedFields?: Record<string, any>
+      ) => {
         // check if doc exits, if not, create it
         const doc = await this.#db.table(collection).get(value['_id']);
         if (!doc) {
@@ -1111,7 +1124,10 @@ export class Instant<T extends SchemaType> {
         } else {
           await this.#db
             .table(collection)
-            .update(value['_id'], { ...value, _sync: 0 })
+            .update(value['_id'], {
+              ...(updatedFields ? updatedFields : value),
+              _sync: 0,
+            })
             .catch((err) => {
               if (this.#inspect) {
                 console.error(
@@ -1135,7 +1151,7 @@ export class Instant<T extends SchemaType> {
           });
       },
     };
-    await persist[status](collection, value);
+    await persist[status](collection, value, updatedFields);
   }
 
   #buildWebSocket(url: string) {
@@ -1238,6 +1254,27 @@ export class Instant<T extends SchemaType> {
         return value;
       },
       update: async (id: string, value: Partial<z.infer<T[keyof T]>>) => {
+        const currentDoc = await this.#db.table(collection as string).get(id);
+        if (!currentDoc) {
+          throw new Error('Document not found');
+        }
+        
+        // calc what changed excluding _updated_at, _created_at, _sync
+        const updatedFields = Object.keys(value).reduce((acc, key) => {
+          if (
+            !['_updated_at', '_created_at', '_sync'].includes(key) &&
+            value[key] !== currentDoc[key]
+          ) {
+            acc[key] = value[key];
+          }
+          return acc;
+        }, {} as Record<string, any>);
+
+        // skip if nothing changed
+        if (Object.keys(updatedFields).length === 0) {
+          return;
+        }
+
         await this.#db.transaction(
           'rw!',
           this.#db.table(collection as string),
@@ -1247,6 +1284,7 @@ export class Instant<T extends SchemaType> {
               _sync: 1,
               _updated_at: new Date().toISOString(),
               _updated_by: createPointer('users', this.#user),
+              _updated_fields: updatedFields,
             });
           }
         );
@@ -1323,7 +1361,7 @@ export class Instant<T extends SchemaType> {
   }
 
   public syncPending(row: Document) {
-    return row['_expires_at'] || row['_id'].includes('-');
+    return row['_expires_at'] || row['_id'].includes('-') || row['_sync'] === 1;
   }
 
   /**

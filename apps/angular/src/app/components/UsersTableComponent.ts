@@ -20,6 +20,7 @@ import {
   computed,
   signal,
   TrackByFunction,
+  viewChild,
   ViewEncapsulation,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -43,10 +44,7 @@ import {
   HlmCheckboxCheckIconComponent,
   HlmCheckboxComponent,
 } from '@spartan-ng/ui-checkbox-helm';
-import {
-  HlmIconComponent,
-  provideIcons,
-} from '@spartan-ng/ui-icon-helm';
+import { HlmIconComponent, provideIcons } from '@spartan-ng/ui-icon-helm';
 import { HlmInputDirective } from '@spartan-ng/ui-input-helm';
 import { BrnMenuTriggerDirective } from '@spartan-ng/ui-menu-brain';
 import { HlmMenuModule } from '@spartan-ng/ui-menu-helm';
@@ -298,14 +296,7 @@ type EntryType = z.infer<typeof UserSchema>;
               </hlm-menu-group>
               <hlm-menu-separator />
               <hlm-menu-group>
-                <button
-                  hlmMenuItem
-                  (click)="
-                   editUser(row)
-                  "
-                >
-                  Edit user
-                </button>
+                <button hlmMenuItem (click)="editUser(row)">Edit user</button>
                 <button hlmMenuItem>View posts</button>
                 <button hlmMenuItem>View comments</button>
               </hlm-menu-group>
@@ -416,6 +407,9 @@ export class UsersTableComponent {
     };
   });
 
+  entryDialog = viewChild(UsersDialogComponent);
+  lastEntries = signal<EntryType[]>([]);
+
   entries$ = from(liveQuery(() => insta.query(this.query())))
     .pipe(tap(() => this.reload.set(true))) // to trigger angular change detection
     .subscribe();
@@ -441,7 +435,39 @@ export class UsersTableComponent {
         user.org = org;
       }
 
+      // update current selected user
+      if (this.showUsersDialogEntry()) {
+        const index = users.findIndex(
+          (user) => user._id === this.showUsersDialogEntry()?._id
+        );
+        const lastIndex = this.lastEntries().findIndex(
+          (user) => user._id === this.showUsersDialogEntry()?._id
+        );
+        if (index !== -1) {
+          // calc what changed
+          const lastUser = this.lastEntries()[lastIndex];
+          const updatedFields = Object.keys(users[index]).reduce((acc, key) => {
+            // @ts-ignore
+            if (users[index][key] !== lastUser[key]) {
+              // @ts-ignore
+              acc[key] = users[index][key];
+            }
+            return acc;
+          }, {} as Record<string, any>);
+
+          const currentFormState = this.entryDialog()?.form.getRawValue() || {};
+
+          const mergedUser = {
+            ...(currentFormState ? currentFormState : users[index]),
+            ...updatedFields,
+          };
+
+          this.showUsersDialogEntry.set(mergedUser as EntryType);
+        }
+      }
+
       this.reload.set(false);
+      this.lastEntries.set(users);
       return users;
     },
     {
@@ -555,7 +581,6 @@ export class UsersTableComponent {
       }
     }
 
-    console.log(order);
     return order;
   });
 
