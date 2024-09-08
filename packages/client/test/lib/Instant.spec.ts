@@ -449,6 +449,7 @@ describe('Instant', () => {
 
     await insta.sync({
       session: '1337',
+      user: '420',
     });
 
     // check if data was updated
@@ -486,6 +487,7 @@ describe('Instant', () => {
 
     await insta.sync({
       session: '1337',
+      user: '420',
     });
 
     // check if data was updated
@@ -522,6 +524,7 @@ describe('Instant', () => {
 
     await insta.sync({
       session: '1337',
+      user: '420',
     });
 
     // check if data was updated
@@ -595,6 +598,7 @@ describe('Instant', () => {
 
     expect(user).toEqual({
       _id: expect.any(String),
+      _uuid: expect.any(String),
       _sync: 1,
       _created_at: expect.any(String),
       _updated_at: expect.any(String),

@@ -18,8 +18,6 @@ import {
   InstantSyncResponse,
   InstantSyncResponseData,
   InstantSyncStatus,
-  isDate,
-  isDateExpired,
   omit,
   pointer,
 } from '@borda/client';
@@ -232,15 +230,11 @@ export class Instant<T extends string> {
                 const { fullDocument, updateDescription } =
                   change as ChangeStreamUpdateDocument;
 
-                if (!fullDocument || fullDocument['_sync'] === 1) {
+                if (!fullDocument) {
                   return;
                 }
 
-                if (
-                  fullDocument['_expires_at'] &&
-                  isDate(fullDocument['_expires_at']) &&
-                  isDateExpired(fullDocument['_expires_at'])
-                ) {
+                if (fullDocument['_expires_at']) {
                   return broadcast.delete();
                 }
 
@@ -289,7 +283,7 @@ export class Instant<T extends string> {
               },
               insert: () => {
                 const { fullDocument } = change as ChangeStreamInsertDocument;
-                if (!fullDocument || fullDocument['_sync'] === 1) {
+                if (!fullDocument) {
                   return;
                 }
 
@@ -331,18 +325,18 @@ export class Instant<T extends string> {
                 }
               },
               delete: () => {
-                const { fullDocumentBeforeChange } =
-                  change as ChangeStreamDeleteDocument;
+                const { fullDocument, fullDocumentBeforeChange } =
+                  change as ChangeStreamDeleteDocument & {
+                    fullDocument: Document;
+                  };
 
-                if (
-                  !fullDocumentBeforeChange ||
-                  fullDocumentBeforeChange['_sync'] === 1
-                ) {
+                const doc = fullDocument || fullDocumentBeforeChange;
+                if (!doc) {
                   return;
                 }
 
                 const fullDocumentAsQueryParams: Record<string, string> =
-                  docQueryParams(fullDocumentBeforeChange || {});
+                  docQueryParams(doc || {});
 
                 const constraintsKeys = this.#constraints.map(
                   (constraint) => constraint.key
@@ -353,8 +347,7 @@ export class Instant<T extends string> {
                     (key) => key === collection
                   );
                   if (theKey) {
-                    fullDocumentAsQueryParams[theKey] =
-                      fullDocumentBeforeChange['_id'];
+                    fullDocumentAsQueryParams[theKey] = doc['_id'];
                   }
                 }
 
@@ -366,7 +359,7 @@ export class Instant<T extends string> {
                 const response: InstantSyncResponseData = {
                   collection: collection,
                   status: 'deleted',
-                  value: fullDocumentBeforeChange,
+                  value: doc,
                 };
 
                 for (const identifier of identifiers) {
@@ -720,7 +713,7 @@ export class Instant<T extends string> {
             }),
       };
 
-           console.log('filter', collection, filter);
+      console.log('filter', collection, filter);
 
       const count = await this.#borda
         .query(collection)
@@ -802,31 +795,12 @@ export class Instant<T extends string> {
         data['_expires_at'] = new Date(data['_expires_at']);
       }
 
-      return await this.#borda.query(collection).insert({ ...data });
-    } catch (error) {
-      console.error('sync error', error);
-      set.status = 500;
-      return {
-        type: 'internal_server_error',
-        message: 'an error occurred while syncing',
-        summary:
-          'we were not able to process your request. please try again later.',
-      };
-    }
-  }
+      await this.#borda.query(collection).insert({ ...data });
 
-  async #deleteData({
-    params,
-    set,
-  }: {
-    params: Record<string, string>;
-    query: Static<typeof Instant.SyncBatchQuerySchema>;
-    headers: Record<string, string | undefined>;
-    set: SetOptions;
-  }) {
-    try {
-      const { collection, id } = params;
-      return await this.#borda.query(collection).delete(id);
+      return {
+        _id: body['_id'], // because it can also be uuid
+        _updated_at: new Date().toISOString(),
+      };
     } catch (error) {
       console.error('sync error', error);
       set.status = 500;
@@ -856,16 +830,66 @@ export class Instant<T extends string> {
         delete data['_sync'];
       }
 
+      await this.#borda
+        .query(collection)
+        .filter({
+          $or: [
+            {
+              _id: id,
+            },
+            {
+              _uuid: id,
+            },
+          ],
+        })
+        .update(data);
+
       const now = new Date();
 
-      data['_updated_at'] = now;
-      data['_created_at'] = now;
+      return {
+        ...data,
+        _updated_at: now.toISOString(),
+      };
+    } catch (error) {
+      console.error('sync error', error);
+      set.status = 500;
+      return {
+        type: 'internal_server_error',
+        message: 'an error occurred while syncing',
+        summary:
+          'we were not able to process your request. please try again later.',
+      };
+    }
+  }
 
-      await this.#borda.query(collection).update(id, data);
+  async #deleteData({
+    params,
+    set,
+  }: {
+    params: Record<string, string>;
+    query: Static<typeof Instant.SyncBatchQuerySchema>;
+    headers: Record<string, string | undefined>;
+    set: SetOptions;
+  }) {
+    try {
+      const { collection, id } = params;
+      const now = new Date();
+      await this.#borda
+        .query(collection)
+        .filter({
+          $or: [
+            {
+              _id: id,
+            },
+            {
+              _uuid: id,
+            },
+          ],
+        })
+        .delete();
 
       return {
-        id,
-        ...data,
+        _updated_at: now.toISOString(),
       };
     } catch (error) {
       console.error('sync error', error);

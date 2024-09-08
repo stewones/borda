@@ -52,7 +52,7 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
               <pulsing-dot></pulsing-dot>
             </span>
             <span *brnTooltipContent class="text-xs text-muted-foreground">
-              Syncronizing data...
+              Syncronizing data for the first time...
             </span>
           </hlm-tooltip>
         </div>

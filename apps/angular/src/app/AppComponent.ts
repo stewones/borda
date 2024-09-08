@@ -42,7 +42,8 @@ export class AppComponent {
      * starts the sync process
      */
     insta.sync({
-      session: 'asdf',
+      session: 'the-token',
+      user: 'the-user-id',
       params: {
         // org: 'YwkJYEdhgh,HnPHIL7PKx,r24qXJr9nh,LNcx7jlL7P',
         // something: 'else',

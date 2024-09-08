@@ -103,6 +103,7 @@ export const createPointerSchema = <T extends string>(p: T) =>
 export const createSchema = <T extends SchemaType>(collection: string, p: T) =>
   z.object({
     _id: createObjectIdSchema(collection),
+    _uuid: z.optional(z.string()),
     _sync: z.optional(z.number()),
     _created_at: z.string(),
     _updated_at: z.string(),
@@ -151,6 +152,7 @@ export class Instant<T extends SchemaType> {
   #index!: Partial<Record<keyof T, string[]>>;
   #inspect: boolean;
   #token!: string;
+  #user!: string;
   #headers!: Record<string, string>;
   #params!: Record<string, string>;
   #wss: WebSocket | undefined;
@@ -164,15 +166,18 @@ export class Instant<T extends SchemaType> {
     params: Record<string, string>;
   }>();
 
-  #queue = new Subject<{
-    collection: string;
-    url: string;
-    method: 'POST' | 'PUT' | 'DELETE';
-    token: string;
-    data: Document;
-    headers: Record<string, string>;
-    params: Record<string, string>;
-  }>();
+  #queue = new Map<
+    string,
+    {
+      url: string;
+      method: 'POST' | 'PUT' | 'DELETE';
+      token: string;
+      data: Document;
+      headers: Record<string, string>;
+      params: Record<string, string>;
+      locked: boolean;
+    }
+  >();
 
   get inspect() {
     return this.#inspect;
@@ -209,7 +214,6 @@ export class Instant<T extends SchemaType> {
     inspect,
     buffer,
     size,
-    token,
     headers,
     params,
     index,
@@ -235,97 +239,25 @@ export class Instant<T extends SchemaType> {
     this.#inspect = inspect || false;
     this.#buffer = buffer || this.#buffer;
     this.#size = size || this.#size;
-    this.#token = token || '';
     this.#headers = headers || {};
     this.#params = params || {};
     this.#index = index || {};
-    this.#batch
-      .pipe(
-        bufferTime(this.#buffer),
-        tap(async (collections) => {
-          for (const {
-            collection,
-            activity,
-            synced,
-            token,
-            headers,
-            params,
-          } of collections) {
-            try {
-              // this.#worker.postMessage(JSON.stringify({ syncing: true }));
-              const perf = performance.now();
-              const url = `${
-                this.#serverURL
-              }/sync/${collection}?activity=${activity}&synced=${synced}`;
-
-              await this.#runBatchWorker({
-                url,
-                token,
-                headers,
-                params,
-              });
-
-              /* istanbul ignore next */
-              if (this.inspect) {
-                const syncDuration = performance.now() - perf;
-                const usage = await this.usage(collection);
-                console.log(
-                  `💨 sync ${syncDuration.toFixed(2)}ms`,
-                  collection,
-                  activity,
-                  synced
-                );
-                console.log('💾 estimated usage for', collection, usage);
-              }
-              // this.#worker.postMessage(JSON.stringify({ syncing: false }));
-            } catch (err) {
-              /* istanbul ignore next */
-              if (this.#inspect) {
-                console.error('Error scheduling sync', err);
-              }
-            }
-          }
-        })
-      )
-      .subscribe();
-
-    this.#queue
-      .pipe(
-        bufferTime(this.#buffer),
-        tap(async (collections) => {
-          // this.#worker.postMessage(JSON.stringify({ syncing: true }));
-          for (const {
-            collection,
-            url,
-            method,
-            data,
-            token,
-            headers,
-            params,
-          } of collections) {
-            await this.#runMutationWorker({
-              collection,
-              url,
-              data,
-              method,
-              token,
-              headers,
-              params,
-            });
-          }
-          // this.#worker.postMessage(JSON.stringify({ syncing: false }));
-        })
-      )
-      .subscribe();
 
     /**
      * initialize the mutation scheduler
      */
     if (isServer()) {
-      // @todo the interval should check if there's no item in the quue yet
-      // to avoid bloating the server with unecessary requests
+      /**
+       * schedule a runner for pending mutations
+       */
+      interval(1_000)
+        .pipe(tap(async () => await this.#runQueue()))
+        .subscribe();
 
-      interval(5_000)
+      /**
+       * schedule a check for pending mutations
+       */
+      interval(2_000)
         .pipe(
           tap(async () => {
             const collections = Object.keys(this.#schema);
@@ -345,24 +277,93 @@ export class Instant<T extends SchemaType> {
               const pending = await this.query(query as unknown as iQL<T>);
               const data = pending[collection as keyof T];
 
-              if (data.length > 0) {
-                console.log('🔵 pending mutations', data);
+              for (const item of data) {
+                let url = `${this.#serverURL}/sync/${collection}`;
+                const token = this.#token;
+                const headers = this.#headers;
+                const params = this.#params;
+                const method = item['_expires_at']
+                  ? 'DELETE'
+                  : item['_created_at'] !== item['_updated_at']
+                  ? 'PUT'
+                  : 'POST';
 
-                for (const item of data) {
-                  const url = `${this.#serverURL}/sync/${collection}`;
-                  const token = this.#token;
-                  const headers = this.#headers;
-                  const params = this.#params;
-                  const method = item['_expires_at']
-                    ? 'DELETE'
-                    : item['_created_at'] !== item['_updated_at']
-                    ? 'PUT'
-                    : 'POST';
-
-                  console.log('🔵 pending mutation', item, method);
+                if (['DELETE', 'PUT'].includes(method)) {
+                  url += `/${item['_id']}`;
                 }
-              } else {
-                continue;
+                const key = `${method}-${item['_id']}`;
+
+                if (!this.#queue.has(key)) {
+                  // push to the queue
+                  this.#queue.set(key, {
+                    url,
+                    method,
+                    token,
+                    data: item,
+                    headers,
+                    params,
+                    locked: false,
+                  });
+                }
+              }
+
+              if (data.length > 0) {
+                if (this.#inspect) {
+                  console.log('🔵 pending mutations', data);
+                }
+              }
+            }
+          })
+        )
+        .subscribe();
+
+      /**
+       * schedule a stream for the batch sync
+       */
+      this.#batch
+        .pipe(
+          bufferTime(this.#buffer),
+          tap(async (collections) => {
+            for (const {
+              collection,
+              activity,
+              synced,
+              token,
+              headers,
+              params,
+            } of collections) {
+              try {
+                // this.#worker.postMessage(JSON.stringify({ syncing: true }));
+                const perf = performance.now();
+                const url = `${
+                  this.#serverURL
+                }/sync/${collection}?activity=${activity}&synced=${synced}`;
+
+                await this.#runBatchWorker({
+                  url,
+                  token,
+                  headers,
+                  params,
+                });
+
+                /* istanbul ignore next */
+                if (this.inspect) {
+                  const syncDuration = performance.now() - perf;
+                  const usage = await this.usage(collection);
+                  console.log(
+                    `💨 sync ${syncDuration.toFixed(2)}ms`,
+                    collection,
+                    activity,
+                    synced
+                  );
+                  console.log('💾 estimated usage for', collection, usage);
+                }
+                // this.#worker.postMessage(JSON.stringify({ syncing: false }));
+              } catch (err) {
+                /* istanbul ignore next */
+                if (this.#inspect) {
+                  console.error('Error scheduling sync', err);
+                }
               }
             }
           })
@@ -602,18 +603,6 @@ export class Instant<T extends SchemaType> {
     const payload = { collection, synced, count, status };
 
     if (sync) {
-      // make sure to only modify the synced date
-      // if the current one is older than the new one
-      // if (synced) {
-      //   const currentSynced = new Date(sync.synced);
-      //   const nextSynced = new Date(synced);
-      //   if (nextSynced > currentSynced) {
-      //     payload.synced = synced;
-      //   } else {
-      //     payload.synced = currentSynced.toISOString();
-      //   }
-      // }
-
       return this.#db
         .table('_sync')
         .where({ collection, activity })
@@ -621,6 +610,32 @@ export class Instant<T extends SchemaType> {
     }
 
     return this.#db.table('_sync').put({ ...payload, activity });
+  }
+
+  async #runQueue() {
+    const queue = this.#queue.values();
+    for (const { url, data, method, token, headers, params } of queue) {
+      const key = `${method}-${data['_id']}`;
+      const item = this.#queue.get(key);
+
+      if (!navigator.onLine && item?.locked) {
+        continue;
+      }
+
+      this.#queue.set(key, {
+        ...item,
+        locked: true,
+      } as any);
+
+      await this.#runMutationWorker({
+        url,
+        data,
+        method,
+        token,
+        headers,
+        params,
+      });
+    }
   }
 
   /**
@@ -795,8 +810,6 @@ export class Instant<T extends SchemaType> {
         if (this.#inspect) {
           console.log('🟢 sync live worker connected');
         }
-        // we just need the connection to be open
-        // ws.send(JSON.stringify(body));
       },
 
       onMessage: async (ws: WebSocket, message: MessageEvent) => {
@@ -808,20 +821,51 @@ export class Instant<T extends SchemaType> {
           value: Document;
         };
 
-        await this.#syncProcess({
-          collection,
-          status,
-          value,
-        });
+        try {
+          // needs to handle data owner scenario with uuid
+          if (status === 'created') {
+            // make sure to mark as synced and update with server timestamp
+            const uuid = value['_uuid'];
+            const localDocByUuid = await this.#db
+              .table(collection as string)
+              .get(uuid);
 
-        // update last sync
-        const synced = value['_updated_at'];
-        await this.#setSync({
-          collection,
-          activity: 'recent',
-          synced,
-          count: 0,
-        });
+            if (localDocByUuid) {
+              await this.#db.transaction(
+                'rw!',
+                this.#db.table(collection as string),
+                async () => {
+                  // gotta delete the old doc and create new one with server timestamp
+                  await this.#db.table(collection as string).delete(uuid);
+                  await this.#db.table(collection as string).add({
+                    ...value,
+                    _sync: 0, // to make sure response is marked as synced
+                  });
+                }
+              );
+            }
+          } else {
+            // handle all other cases
+            await this.#syncProcess({
+              collection,
+              status,
+              value,
+            });
+          }
+
+          // update last sync
+          const synced = value['_updated_at'];
+          await this.#setSync({
+            collection,
+            activity: 'recent',
+            synced,
+            count: 0,
+          });
+        } catch (err) {
+          if (this.#inspect) {
+            console.log('🔴 mutation failed', collection, value);
+          }
+        }
       },
 
       onClose: (ws, ev) => {
@@ -850,6 +894,7 @@ export class Instant<T extends SchemaType> {
           }
         }
 
+        // retry
         setTimeout(() => {
           /* istanbul ignore next */
           if (this.inspect) {
@@ -874,7 +919,6 @@ export class Instant<T extends SchemaType> {
    */
   async #runMutationWorker({
     url,
-    collection,
     data,
     token,
     headers,
@@ -883,12 +927,17 @@ export class Instant<T extends SchemaType> {
   }: {
     url: string;
     method: 'POST' | 'PUT' | 'DELETE';
-    collection: keyof T;
     data: Document;
     token?: string;
     headers?: Record<string, string>;
     params?: Record<string, string>;
   }) {
+    if (!navigator.onLine) {
+      if (this.#inspect) {
+        console.log('🔴 mutation skipped', 'no internet');
+      }
+      return;
+    }
     const customParams = new URLSearchParams(params);
     const customHeaders = new Headers(headers);
 
@@ -908,8 +957,7 @@ export class Instant<T extends SchemaType> {
 
     try {
       // post to the server
-      const maybeTemporaryId = data['_id'];
-      const response = await fetcher(url, {
+      await fetcher(url, {
         direct: true,
         method,
         body: data,
@@ -918,28 +966,14 @@ export class Instant<T extends SchemaType> {
           ...headers,
         },
       });
-
-      if (
-        response['_id'] &&
-        response['_updated_at'] &&
-        response['_created_at']
-      ) {
-        // mark as synced and update with server timestamp
-        await this.#db.table(collection as string).update(maybeTemporaryId, {
-          _sync: 0,
-          _id: response['_id'],
-          _created_at: response['_created_at'],
-          _updated_at: response['_updated_at'],
-        });
-      } else {
-        if (this.#inspect) {
-          console.log('🔴 mutation failed', response);
-        }
-      }
+      // remove from queue
+      const key = `${method}-${data['_id']}`;
+      this.#queue.delete(key);
     } catch (error) {
       if (this.#inspect) {
         console.error('🔴 mutation failed', error);
       }
+    } finally {
     }
   }
 
@@ -1041,6 +1075,20 @@ export class Instant<T extends SchemaType> {
       (collection: string, value: Document) => Promise<void>
     > = {
       created: async (collection: string, value: Document) => {
+        // account for local id
+        const localId = value['__id'];
+        if (localId) {
+          const localDoc = await this.#db.table(collection).get(localId);
+          if (localDoc) {
+            // update if this doc was created locally
+            delete value['__id'];
+            await this.#db
+              .table(collection)
+              .update(localId, { ...value, _sync: 0 });
+            return;
+          }
+        }
+
         await this.#db
           .table(collection)
           .add({ ...value, _sync: 0 })
@@ -1150,11 +1198,12 @@ export class Instant<T extends SchemaType> {
     return result;
   }
 
-  public mutate(collection: string) {
+  public mutate<C extends keyof T>(collection: C) {
     return {
       add: async (
         value: Partial<z.infer<T[keyof T]>> & {
           _id?: string;
+          _uuid?: string;
           _sync?: number;
           _created_at?: string;
           _updated_at?: string;
@@ -1169,14 +1218,15 @@ export class Instant<T extends SchemaType> {
         value._created_at = now;
         value._updated_at = now;
         value._id = guid();
-        value._created_by = createPointer('users', this.#token);
-        value._updated_by = createPointer('users', this.#token);
+        value._uuid = value._id;
+        value._created_by = createPointer('users', this.#user);
+        value._updated_by = createPointer('users', this.#user);
 
         await this.#db.transaction(
           'rw!',
-          this.#db.table(collection),
+          this.#db.table(collection as string),
           async () => {
-            await this.#db.table(collection).add(value);
+            await this.#db.table(collection as string).add(value);
           }
         );
 
@@ -1185,13 +1235,13 @@ export class Instant<T extends SchemaType> {
       update: async (id: string, value: z.infer<T[keyof T]>) => {
         await this.#db.transaction(
           'rw!',
-          this.#db.table(collection),
+          this.#db.table(collection as string),
           async () => {
-            await this.#db.table(collection).update(id, {
+            await this.#db.table(collection as string).update(id, {
               ...value,
               _sync: 1,
               _updated_at: new Date().toISOString(),
-              _updated_by: createPointer('users', this.#token),
+              _updated_by: createPointer('users', this.#user),
             });
           }
         );
@@ -1199,13 +1249,13 @@ export class Instant<T extends SchemaType> {
       delete: async (id: string) => {
         await this.#db.transaction(
           'rw!',
-          this.#db.table(collection),
+          this.#db.table(collection as string),
           async () => {
-            await this.#db.table(collection).update(id, {
+            await this.#db.table(collection as string).update(id, {
               _sync: 1,
               _updated_at: new Date().toISOString(),
               _expires_at: new Date().toISOString(),
-              _deleted_by: createPointer('users', this.#token),
+              _deleted_by: createPointer('users', this.#user),
             });
           }
         );
@@ -1214,17 +1264,31 @@ export class Instant<T extends SchemaType> {
   }
 
   /**
-   * Starts the sync process. Usually called after user login.
-   * @todo maybe pass the user session in here along custom client-facing params
+   * starts the sync process. usually called after user login because a session and user id are required.
+   * don't forget to handle extra permissions on the server and make your endpoint even more secure.
    *
    * @returns Promise<void>
    */
   public async sync({
+    /**
+     * used to authenticate the requests on the server
+     */
     session,
+    /**
+     * used to create pointers when mutating data
+     */
+    user,
+    /**
+     * custom headers to send to the server
+     */
     headers,
+    /**
+     * custom query params to send to the server
+     */
     params,
   }: {
     session: string;
+    user: string;
     headers?: Record<string, string>;
     params?: Record<string, string>;
   }) {
@@ -1246,6 +1310,7 @@ export class Instant<T extends SchemaType> {
     }
 
     this.#token = session;
+    this.#user = user;
     this.#headers = headers || {};
     this.#params = params || {};
 
@@ -1253,30 +1318,23 @@ export class Instant<T extends SchemaType> {
   }
 
   /**
-   * @todo @experimental
-   * WIP: query syntax based on a graph of collections
-   * so we can easily count nested data, while keeping
-   * the mongodb query syntax which is then translated to dexie
-   *
-   * server should follow the same pattern so we can have
-   * the same query for both client and server
+   * count local data
    *
    * @example
    * const count = await insta.count('users', {
    *     $filter: {
-   *       name: { $exists: true },
+   *       name: { $eq: 'Raul' },
    *     },
    * });
    *
    * // console.log(count)
-   * // 1337
-   *
+   * // 1
    */
-  public async count(
-    collection: string,
+  public async count<C extends keyof T>(
+    collection: C,
     query: Exclude<QueryDirectives<z.infer<T[keyof T]>>, '$by'> & iQL<T>
   ) {
-    let table = this.#db.table(collection);
+    let table = this.#db.table(collection as string);
     const tableQuery = query as QueryDirectives<z.infer<T[keyof T]>> & iQL<T>;
 
     // Apply $filter

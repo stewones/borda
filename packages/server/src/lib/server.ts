@@ -401,7 +401,6 @@ export function createServer({
   return server;
 }
 
-
 // function requestTargetsDatabase({
 //   request,
 //   collections,
@@ -435,6 +434,9 @@ export const addPowered = ({ server, by }: { server: Elysia; by: string }) =>
     set.headers['X-Powered-By'] = by;
   });
 
+/**
+ * @deprecated
+ */
 export const ensureApiKey = ({
   request,
   set,
@@ -556,6 +558,9 @@ export async function ensureApiToken({
   return;
 }
 
+/**
+ * @deprecated
+ */
 export const routeUnlock = ({
   request,
   serverSecret,
