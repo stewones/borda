@@ -17,7 +17,9 @@ import {
   Validators,
 } from '@angular/forms';
 
-import { Org, orgPointer } from '@/common';
+import { ejectPointer } from '@borda/client';
+
+import { Org, orgPointer, User } from '@/common';
 import {
   lucideCheck,
   lucideChevronsUpDown,
@@ -132,6 +134,7 @@ import { OrgSelectComponent } from './OrgSelectComponent';
               <org-select
                 [org]="currentOrg()"
                 (onSelect)="selectOrg($event)"
+                (onOrgsLoad)="setOrgs($event)"
               ></org-select>
             </div>
           </div>
@@ -155,6 +158,7 @@ import { OrgSelectComponent } from './OrgSelectComponent';
 })
 export class UsersDialogComponent {
   dialog = viewChild(BrnDialogComponent);
+  orgs = signal<Org[]>([]);
   open = input.required<boolean>();
   onClose = output<void>();
   onOpen = output<void>();
@@ -165,19 +169,52 @@ export class UsersDialogComponent {
 
   currentOrg = signal<Org | undefined>(undefined);
 
+  entry = input<User>({} as User);
+
   form = new FormGroup({
+    id: new FormControl('', [Validators.required]),
     name: new FormControl('', [Validators.required]),
     email: new FormControl('', [Validators.required, Validators.email]),
     orgId: new FormControl('', [Validators.required]),
   });
 
+  ngOnChanges() {
+    const orgId = this.entry()._p_org ? ejectPointer(this.entry()._p_org) : '';
+    this.form.patchValue({
+      id: this.entry()._id,
+      name: this.entry().name,
+      email: this.entry().email,
+      orgId,
+    });
+  }
+
+  setOrgs(orgs: Org[]) {
+    this.orgs.set(orgs);
+    // set current org to the first org
+    const orgId = this.form.value.orgId;
+    if (orgId) {
+      const org = this.orgs().find((org) => org._id === orgId);
+      if (org) {
+        this.currentOrg.set(org);
+      }
+    }
+  }
+
   async submit() {
     try {
-      await insta.mutate('users').add({
-        name: this.form.value.name as string,
-        email: this.form.value.email as string,
-        _p_org: orgPointer(this.form.value.orgId as string),
-      });
+      if (this.form.value.id) {
+        await insta.mutate('users').update(this.form.value.id as string, {
+          name: this.form.value.name as string,
+          email: this.form.value.email as string,
+          _p_org: orgPointer(this.form.value.orgId as string),
+        });
+      } else {
+        await insta.mutate('users').add({
+          name: this.form.value.name as string,
+          email: this.form.value.email as string,
+          _p_org: orgPointer(this.form.value.orgId as string),
+        });
+      }
       this.form.reset();
       this.dialog()?.close({});
     } catch (err) {

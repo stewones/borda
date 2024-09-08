@@ -4,13 +4,13 @@ import { Component } from '@angular/core';
   standalone: true,
   selector: 'pulsing-dot',
   host: {
-    class: 'relative flex h-3 w-3',
+    class: 'relative flex h-2 w-2',
   },
   template: `
     <span
       class="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"
     ></span>
-    <span class="relative inline-flex rounded-full h-3 w-3 bg-lime-500"></span>
+    <span class="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
   `,
 })
 export class PulsingDot {}

@@ -2,11 +2,19 @@ import { liveQuery } from 'dexie';
 import { DateFnsModule } from 'ngx-date-fns';
 import { toast } from 'ngx-sonner';
 import { derivedAsync } from 'ngxtension/derived-async';
-import { from, map, tap } from 'rxjs';
+import {
+  from,
+  map,
+  tap,
+} from 'rxjs';
 import { z } from 'zod';
 
 import { SelectionModel } from '@angular/cdk/collections';
-import { DecimalPipe, NgClass, TitleCasePipe } from '@angular/common';
+import {
+  DecimalPipe,
+  NgClass,
+  TitleCasePipe,
+} from '@angular/common';
 import {
   Component,
   computed,
@@ -35,7 +43,10 @@ import {
   HlmCheckboxCheckIconComponent,
   HlmCheckboxComponent,
 } from '@spartan-ng/ui-checkbox-helm';
-import { HlmIconComponent, provideIcons } from '@spartan-ng/ui-icon-helm';
+import {
+  HlmIconComponent,
+  provideIcons,
+} from '@spartan-ng/ui-icon-helm';
 import { HlmInputDirective } from '@spartan-ng/ui-input-helm';
 import { BrnMenuTriggerDirective } from '@spartan-ng/ui-menu-brain';
 import { HlmMenuModule } from '@spartan-ng/ui-menu-helm';
@@ -51,6 +62,7 @@ import { HlmTableModule } from '@spartan-ng/ui-table-helm';
 
 import { insta } from '../borda';
 import { DeleteDialog } from './DeleteDialog';
+import { UsersDialogComponent } from './UsersDialogComponent';
 import { UsersMenuBarComponent } from './UsersMenuBarComponent';
 
 type EntryType = z.infer<typeof UserSchema>;
@@ -79,6 +91,7 @@ type EntryType = z.infer<typeof UserSchema>;
     HlmSelectModule,
     DeleteDialog,
     NgClass,
+    UsersDialogComponent,
   ],
   providers: [
     provideIcons({
@@ -151,13 +164,13 @@ type EntryType = z.infer<typeof UserSchema>;
         </hlm-td>
       </brn-column-def>
       <brn-column-def name="status" class="w-40">
-        <hlm-th *brnHeaderDef> Organization </hlm-th>
+        <hlm-th *brnHeaderDef> Organization</hlm-th>
 
         <hlm-td
           truncate
           *brnCellDef="let row"
           [ngClass]="{
-            'text-muted-foreground': row._expires_at,
+            'text-muted-foreground': insta.syncPending(row),
           }"
         >
           {{ row.org?.name || row._p_org }}
@@ -191,7 +204,7 @@ type EntryType = z.infer<typeof UserSchema>;
           truncate
           *brnCellDef="let row"
           [ngClass]="{
-            'text-muted-foreground': row._expires_at,
+            'text-muted-foreground': insta.syncPending(row),
           }"
         >
           {{ row.name }}
@@ -224,7 +237,7 @@ type EntryType = z.infer<typeof UserSchema>;
           truncate
           *brnCellDef="let row"
           [ngClass]="{
-            'text-muted-foreground': row._expires_at,
+            'text-muted-foreground': insta.syncPending(row),
           }"
         >
           {{ row.email }}
@@ -257,7 +270,7 @@ type EntryType = z.infer<typeof UserSchema>;
           class="font-normal whitespace-nowrap"
           *brnCellDef="let row"
           [ngClass]="{
-            'text-muted-foreground': row._expires_at,
+            'text-muted-foreground': insta.syncPending(row),
           }"
         >
           {{ row._updated_at | dfnsParseIso | dfnsFormat : 'MMM d, HH:mm' }}
@@ -285,7 +298,14 @@ type EntryType = z.infer<typeof UserSchema>;
               </hlm-menu-group>
               <hlm-menu-separator />
               <hlm-menu-group>
-                <button hlmMenuItem>View org</button>
+                <button
+                  hlmMenuItem
+                  (click)="
+                   editUser(row)
+                  "
+                >
+                  Edit user
+                </button>
                 <button hlmMenuItem>View posts</button>
                 <button hlmMenuItem>View comments</button>
               </hlm-menu-group>
@@ -367,9 +387,15 @@ type EntryType = z.infer<typeof UserSchema>;
 
     <hlm-toaster [theme]="'dark'" />
     <delete-dialog #deleteDialog></delete-dialog>
+    <users-dialog
+      [open]="showUsersDialog()"
+      (onClose)="showUsersDialog.set(false)"
+      [entry]="showUsersDialogEntry()"
+    ></users-dialog>
   `,
 })
 export class UsersTableComponent {
+  insta = insta;
   pageSizes = [5, 10, 20, 10000];
   pageSize = signal(this.pageSizes[0]);
   search = signal('');
@@ -505,6 +531,9 @@ export class UsersTableComponent {
   /**
    * custom implementation below
    */
+  readonly showUsersDialog = signal(false);
+  readonly showUsersDialogEntry = signal<EntryType>({} as EntryType);
+
   readonly sortEmail = signal<'ASC' | 'DESC' | null>(null);
   readonly sortName = signal<'ASC' | 'DESC' | null>(null);
   readonly sortUpdatedAt = signal<'ASC' | 'DESC' | null>('DESC');
@@ -577,5 +606,10 @@ export class UsersTableComponent {
       this.selectionModel.deselect(entry);
       await insta.mutate('users').delete(entry._id);
     };
+  }
+
+  protected editUser(entry: EntryType) {
+    this.showUsersDialogEntry.set(entry);
+    this.showUsersDialog.set(true);
   }
 }

@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 
 import { lucideChevronLeft } from '@ng-icons/lucide';
+import { tablerWifi, tablerWifiOff } from '@ng-icons/tabler-icons';
 import { HlmButtonDirective } from '@spartan-ng/ui-button-helm';
 import { HlmIconComponent, provideIcons } from '@spartan-ng/ui-icon-helm';
 import { BrnSeparatorComponent } from '@spartan-ng/ui-separator-brain';
@@ -32,7 +33,7 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
     UsersTableComponent,
     PulsingDot,
   ],
-  providers: [provideIcons({ lucideChevronLeft })],
+  providers: [provideIcons({ lucideChevronLeft, tablerWifiOff, tablerWifi })],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: ``,
   template: `
@@ -44,9 +45,9 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
         </a>
       </div>
       <brn-separator decorative hlmSeparator orientation="vertical" />
-      <div class="w-full flex items-center mx-4">
+      <div class="w-full flex items-center mx-4 truncate">
         @if (syncing()) {
-        <div class="mr-3">
+        <div class="mr-3 ml-1">
           <hlm-tooltip>
             <span hlmTooltipTrigger>
               <pulsing-dot></pulsing-dot>
@@ -57,7 +58,35 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
           </hlm-tooltip>
         </div>
         }
-        <span>Manage Users ({{ table.total() }})</span>
+        <span class="truncate">Manage Users ({{ table.total() }})</span>
+      </div>
+      <div class="mx-4">
+        <hlm-tooltip>
+          <span hlmTooltipTrigger>
+            <button
+              hlmBtn
+              size="sm"
+              variant="ghost"
+              class="whitespace-nowrap text-xs text-muted-foreground"
+            >
+              <hlm-icon
+                size="base"
+                [name]="online() ? 'tablerWifi' : 'tablerWifiOff'"
+              />
+              <span class="ml-2">{{ online() ? 'Online' : 'Offline' }}</span>
+            </button>
+          </span>
+          <span
+            *brnTooltipContent
+            class="text-xs text-right text-muted-foreground"
+            [innerHTML]="
+              online()
+                ? 'You are online.<br/> try to set your computer offline<br/> to see what happens 😉'
+                : 'You are offline.<br/> try to set your computer online<br/> to see the magic 😛'
+            "
+          >
+          </span>
+        </hlm-tooltip>
       </div>
     </div>
     <div class="px-4 py-2.5">
@@ -67,4 +96,20 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
 })
 export class UsersPageComponent {
   syncing = toSignal(insta.syncing);
+
+  online = signal(navigator.onLine);
+
+  ngOnInit() {
+    window.addEventListener('online', this.updateOnlineStatus.bind(this));
+    window.addEventListener('offline', this.updateOnlineStatus.bind(this));
+  }
+
+  ngOnDestroy() {
+    window.removeEventListener('online', this.updateOnlineStatus.bind(this));
+    window.removeEventListener('offline', this.updateOnlineStatus.bind(this));
+  }
+
+  updateOnlineStatus() {
+    this.online.set(navigator.onLine);
+  }
 }

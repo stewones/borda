@@ -843,6 +843,11 @@ export class Instant<T extends SchemaType> {
                   });
                 }
               );
+            } else {
+              await this.#db.table(collection as string).add({
+                ...value,
+                _sync: 0, // to make sure response is marked as synced
+              });
             }
           } else {
             // handle all other cases
@@ -1232,7 +1237,7 @@ export class Instant<T extends SchemaType> {
 
         return value;
       },
-      update: async (id: string, value: z.infer<T[keyof T]>) => {
+      update: async (id: string, value: Partial<z.infer<T[keyof T]>>) => {
         await this.#db.transaction(
           'rw!',
           this.#db.table(collection as string),
@@ -1315,6 +1320,10 @@ export class Instant<T extends SchemaType> {
     this.#params = params || {};
 
     await Promise.allSettled([this.#syncLive(), this.#syncBatch()]);
+  }
+
+  public syncPending(row: Document) {
+    return row['_expires_at'] || row['_id'].includes('-');
   }
 
   /**

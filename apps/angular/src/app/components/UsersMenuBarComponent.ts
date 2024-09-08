@@ -6,6 +6,7 @@ import {
   signal,
 } from '@angular/core';
 
+import { User } from '@/common';
 import { HlmButtonDirective } from '@spartan-ng/ui-button-helm';
 import { BrnMenuTriggerDirective } from '@spartan-ng/ui-menu-brain';
 import {
@@ -184,12 +185,13 @@ import { UsersDialogComponent } from './UsersDialogComponent';
     <users-dialog
       [open]="showUsersDialog()"
       (onClose)="showUsersDialog.set(false)"
+      [entry]="showUsersDialogEntry()"
     ></users-dialog>
   `,
 })
 export class UsersMenuBarComponent {
   showUsersDialog = signal(false);
-
+  showUsersDialogEntry = signal<User>({} as User);
   ngOnInit() {
     hotkeys('cmd+u', (event, handler) => {
       // Prevent the default refresh event under WINDOWS system

@@ -156,6 +156,7 @@ import { insta } from '../borda';
 })
 export class OrgSelectComponent {
   onSelect = output<Org>();
+  onOrgsLoad = output<Org[]>();
 
   reload = signal(false);
 
@@ -177,6 +178,7 @@ export class OrgSelectComponent {
       this.reload();
       const { orgs } = await insta.query(this.query());
       this.reload.set(false);
+      this.onOrgsLoad.emit(orgs);
       return orgs;
     },
     {
@@ -201,6 +203,10 @@ export class OrgSelectComponent {
     email: new FormControl('', [Validators.required, Validators.email]),
     orgId: new FormControl('', [Validators.required]),
   });
+
+  ngOnChanges() {
+    this.currentOrg.set(this.org());
+  }
 
   selectedOrgStateChanged(state: 'open' | 'closed') {
     this.selectedOrgState.set(state);
