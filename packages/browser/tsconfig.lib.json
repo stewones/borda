@@ -1,10 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "../../dist/out-tsc",
+    "outDir": "../../dist/packages/browser",
+    "declarationDir": "../../dist/packages/browser",
     "declaration": true,
-    "sourceMap": false,
-    "types": ["node"]
+    "declarationMap": true,
+    "sourceMap": true,
+    "types": []
   },
   "files": [],
   "include": ["**/*.ts", "**/*.d.ts"],

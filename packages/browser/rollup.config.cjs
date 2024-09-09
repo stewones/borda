@@ -1,28 +1,20 @@
-// https://github.com/rollup/plugins/tree/master/packages/typescript
 const typescript = require('@rollup/plugin-typescript').default;
 const generatePackageJson = require('rollup-plugin-generate-package-json');
 const json = require('@rollup/plugin-json').default;
+const path = require('path');
 
 module.exports = (config, context) => {
-  const filteredPlugins = [];
-  for (const plugin of config.plugins) {
-    // console.log(JSON.stringify(plugin, null, 3));
-    if (
-      [
-        'peer-deps-external',
-        'rollup-plugin-nx-analyzer',
-        'commonjs',
-        // 'node-resolve'
-      ].includes(plugin.name)
-    ) {
-      filteredPlugins.push(plugin);
-    }
-  }
-  const updatedConfig = {
-    // ...config,
-    input: config.input,
+  const filteredPlugins = config.plugins.filter((plugin) =>
+    ['peer-deps-external', 'rollup-plugin-nx-analyzer', 'commonjs'].includes(
+      plugin.name
+    )
+  );
+
+  return {
+    ...config,
+    // input: config.input,
     output: {
-      ...config.output,
+      dir: path.resolve('./dist/packages/browser'),
       sourcemap: true,
     },
     plugins: [
@@ -30,10 +22,21 @@ module.exports = (config, context) => {
       json(),
       typescript({
         tsconfig: context.tsConfig,
-        compilerOptions: { outDir: config.output.dir, sourceMap: true },
+        compilerOptions: {
+          outDir: config.output.dir,
+          sourceMap: true,
+          lib: ['es2020', 'dom'],
+        },
       }),
-      generatePackageJson(),
+      generatePackageJson({
+        outputFolder: path.resolve('./dist/packages/browser'),
+        baseContents: (pkg) => ({
+          name: pkg.name,
+          version: pkg.version,
+          main: path.basename('index.esm.js'),
+          types: 'index.d.ts',
+        }),
+      }),
     ],
   };
-  return updatedConfig;
 };

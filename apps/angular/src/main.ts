@@ -1,4 +1,7 @@
-import { provideExperimentalZonelessChangeDetection } from '@angular/core';
+import {
+  isDevMode,
+  provideExperimentalZonelessChangeDetection,
+} from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import {
   PreloadAllModules,
@@ -6,6 +9,7 @@ import {
   withInMemoryScrolling,
   withPreloading,
 } from '@angular/router';
+import { provideServiceWorker } from '@angular/service-worker';
 
 import { BordaClient, isServer, Session } from '@borda/client';
 
@@ -53,6 +57,10 @@ Promise.allSettled(startup)
             anchorScrolling: 'enabled', // Enable anchor scrolling
           })
         ),
+        provideServiceWorker('ngsw-worker.js', {
+          enabled: !isDevMode(),
+          registrationStrategy: 'registerWhenStable:30000',
+        }),
       ],
     });
   })
@@ -68,4 +76,3 @@ if (!isServer()) {
     window['borda'] = borda;
   }
 }
-

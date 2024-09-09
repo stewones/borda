@@ -17,7 +17,6 @@ import {
   interval,
   map,
   merge,
-  Observable,
   startWith,
   Subject,
   Subscription,
@@ -25,14 +24,10 @@ import {
 } from 'rxjs';
 import { z } from 'zod';
 
-import {
-  Document,
-  guid,
-  isServer,
-  WebSocketFactory,
-} from '@borda/client';
-
 import { fetcher } from './fetcher';
+import { Document } from './types';
+import { guid, isServer } from './utils';
+import { WebSocketFactory } from './websocket';
 
 export type InstantSchemaField = z.ZodTypeAny;
 
@@ -201,15 +196,26 @@ export class Instant<T extends SchemaType> {
   public syncing = from(
     liveQuery(() => this.#db.table('_sync').toArray())
   ).pipe(
-    map((activities) =>
-      activities.some(
-        (item) => item.activity === 'oldest' && item.status === 'incomplete'
-      )
+    map(
+      (activities) =>
+        activities.some(
+          (item) => item.activity === 'oldest' && item.status === 'incomplete'
+        ) && navigator.onLine
     ),
     startWith(false)
   );
 
-  public online!: Observable<boolean>;
+  online = merge(
+    fromEvent(!isServer() ? window : new EventTarget(), 'online').pipe(
+      map(() => true)
+    ),
+    fromEvent(!isServer() ? window : new EventTarget(), 'offline').pipe(
+      map(() => false)
+    )
+  ).pipe(
+    startWith(!isServer() ? navigator.onLine : true),
+    distinctUntilChanged()
+  );
 
   constructor({
     // @todo for isolated tests
@@ -437,19 +443,16 @@ export class Instant<T extends SchemaType> {
           /**
            * monitor network activity
            */
+          this.#online = this.online.subscribe(async (isOnline) => {
+            if (isOnline) {
+              this.#syncBatch('recent');
+              this.#syncBatch('oldest');
 
-          // Subscribe to network changes
-          this.online = merge(
-            fromEvent(window, 'online').pipe(map(() => true)),
-            fromEvent(window, 'offline').pipe(map(() => false))
-          ).pipe(startWith(navigator.onLine), distinctUntilChanged());
-
-           this.#online = this.online.subscribe(async (isOnline) => {
-           if (isOnline) {
-             console.log('🔴 online');
-             this.#syncBatch('recent');
-           }
-         });
+              if (this.#inspect) {
+                console.log('🟢 client is online');
+              }
+            }
+          });
         }
 
         Promise.resolve(db);
@@ -1397,7 +1400,7 @@ export class Instant<T extends SchemaType> {
     this.#headers = headers || {};
     this.#params = params || {};
 
-    await Promise.allSettled([this.#syncLive(), this.#syncBatch('oldest')]);
+    await Promise.allSettled([this.#syncLive()]);
   }
 
   public syncPending(row: Document) {

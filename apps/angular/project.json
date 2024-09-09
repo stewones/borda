@@ -7,7 +7,7 @@
   "tags": ["consumer"],
   "targets": {
     "build": {
-      "executor": "@angular-devkit/build-angular:browser-esbuild",
+      "executor": "@nx/angular:browser-esbuild",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/apps/angular",
@@ -18,14 +18,16 @@
         "assets": ["apps/angular/src/favicon.ico", "apps/angular/src/assets"],
         "styles": ["apps/angular/src/styles.css"],
         "scripts": [],
-        "webWorkerTsConfig": "apps/angular/tsconfig.worker.json"
+        "webWorkerTsConfig": "apps/angular/tsconfig.worker.json",
+        "serviceWorker": true,
+        "ngswConfigPath": "apps/angular/ngsw-config.json"
       },
       "configurations": {
         "production": {
           "fileReplacements": [
             {
               "replace": "apps/angular/src/environment/index.ts",
-              "with": "projects/app/src/environment/production.ts"
+              "with": "apps/angular/src/environment/production.ts"
             }
           ],
           "budgets": [
@@ -51,10 +53,10 @@
           "namedChunks": true
         }
       },
-      "defaultConfiguration": "production"
+      "defaultConfiguration": "development"
     },
     "serve": {
-      "executor": "@angular-devkit/build-angular:dev-server",
+      "executor": "@nx/angular:dev-server",
       "configurations": {
         "production": {
           "buildTarget": "angular:build:production"
@@ -66,7 +68,7 @@
       "defaultConfiguration": "development"
     },
     "extract-i18n": {
-      "executor": "@angular-devkit/build-angular:extract-i18n",
+      "executor": "@nx/angular:extract-i18n",
       "options": {
         "buildTarget": "angular:build"
       }
@@ -77,6 +79,12 @@
       "options": {
         "jestConfig": "apps/angular/jest.config.ts",
         "webWorkerTsConfig": "apps/angular/tsconfig.worker.json"
+      }
+    },
+    "preview": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bunx angular-http-server --path dist/apps/angular -p 4220"
       }
     }
   }
