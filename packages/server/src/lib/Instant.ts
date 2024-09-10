@@ -13,8 +13,17 @@ import {
   ChangeStreamUpdateDocument,
 } from 'mongodb';
 import { singular } from 'pluralize';
+import {
+  interval,
+  Subscription,
+  tap,
+} from 'rxjs';
+import { z } from 'zod';
 
 import {
+  createPointer,
+  ejectPointerCollection,
+  ejectPointerId,
   InstantSyncResponse,
   InstantSyncResponseData,
   InstantSyncStatus,
@@ -65,12 +74,15 @@ const SyncLiveQuery = {
 
 const SyncLiveQuerySchema = t.Object(SyncLiveQuery);
 
-export class Instant<T extends string> {
+export class Instant<C extends string> {
   #size = 1_000;
   #borda!: Borda;
   #inspect = false;
   #connection = new Map<string, { clients: ElysiaWS<object, object>[] }>();
   #constraints: SyncConstraint[] = [];
+  #schema: Record<C, z.ZodTypeAny>;
+  #pendingTasks: Subscription | undefined;
+  #pendingPointersBusy = false;
 
   static SyncBatchQuery = SyncBatchQuery;
   static SyncBatchQuerySchema = SyncBatchQuerySchema;
@@ -81,23 +93,31 @@ export class Instant<T extends string> {
   static SyncParamsSchema = SyncParamsSchema;
   static SyncMutationParamsSchema = SyncMutationParamsSchema;
 
-  collections: T[] = [];
+  collections: C[] = [];
 
   constructor({
     size,
     inspect,
     collections,
     constraints,
+    schema,
   }: {
     size?: number | undefined;
     inspect?: boolean | undefined;
-    collections: T[];
+    collections?: C[];
     constraints?: SyncConstraint[];
+    schema: Record<C, z.ZodTypeAny>;
   }) {
+    if (!schema) {
+      throw new Error('a data schema is required');
+    }
+
+    this.#schema = schema;
     this.#size = size || this.#size;
     this.#inspect = inspect || this.#inspect;
     this.#constraints = constraints || [];
-    this.collections = collections;
+
+    this.collections = collections || (Object.keys(schema) as C[]);
   }
 
   /**
@@ -379,6 +399,13 @@ export class Instant<T extends string> {
         );
       }
 
+      /**
+       * task scheduler
+       */
+      this.#pendingTasks = interval(1000)
+        .pipe(tap(async () => Promise.allSettled([this.#runPendingPointers()])))
+        .subscribe();
+
       Promise.resolve();
     } catch (err) {
       console.error('Instant listener error', err);
@@ -418,6 +445,12 @@ export class Instant<T extends string> {
       });
 
     return rest;
+  }
+
+  public destroy() {
+    this.#pendingPointersBusy = false;
+    this.#pendingTasks?.unsubscribe();
+    this.#connection.clear();
   }
 
   /**
@@ -576,6 +609,30 @@ export class Instant<T extends string> {
         }
       },
     };
+  }
+
+  public validate(collection: string, data: unknown) {
+    const schema = this.#schema[collection as C];
+
+    try {
+      // validate the body
+      schema.parse(data);
+    } catch (zodError) {
+      if (zodError instanceof z.ZodError) {
+        return {
+          type: 'validation_error',
+          message: 'Invalid data provided',
+          summary: `The data provided for ${collection} is not valid.`,
+          errors: zodError.errors.map((err) => ({
+            path: err.path.join('.'),
+            message: err.message,
+          })),
+        };
+      }
+      throw zodError; // Re-throw if it's not a ZodError
+    }
+
+    return {};
   }
 
   async #getData({
@@ -785,6 +842,7 @@ export class Instant<T extends string> {
   }) {
     try {
       const { collection } = params;
+
       const data = omit(body, ['_id', '_created_at', '_updated_at']);
 
       if (data['_sync']) {
@@ -905,6 +963,88 @@ export class Instant<T extends string> {
         summary:
           'we were not able to process your request. please try again later.',
       };
+    }
+  }
+
+  async #runPendingPointers() {
+    try {
+      if (this.#pendingPointersBusy) {
+        return;
+      }
+
+      this.#pendingPointersBusy = true;
+
+      const collections = Object.keys(this.#schema);
+      for (const collection of collections) {
+        // Extract pointer fields from the schema
+        const pointerFields = Object.entries(
+          (this.#schema[collection as C] as z.ZodObject<any>).shape
+        )
+          .filter(
+            ([key, value]) =>
+              key.startsWith('_p_') && value instanceof z.ZodString
+          )
+          .map(([key]) => key);
+
+        // Build the query
+        if (pointerFields.length > 0) {
+          const query = this.#borda.db.collection(collection).find({
+            $or: pointerFields.map((field) => ({
+              [field]: {
+                $type: 'string',
+                $regex: /[-]/, // Matches strings containing '-'
+              },
+            })),
+          });
+          const data = await query.toArray();
+
+          // replace any pending pointers with the actual data
+          for (const item of data) {
+            const pointers = Object.entries(item).filter(
+              ([key, value]) =>
+                key.startsWith('_p_') &&
+                typeof value === 'string' &&
+                value.includes('-')
+            );
+
+            for (const [key, value] of pointers) {
+              const pointerCollection = ejectPointerCollection(value as string);
+              const pointerUuid = ejectPointerId(value as string);
+
+              // grab the pointer data
+              const pointerData = await this.#borda.db
+                .collection(pointerCollection)
+                .findOne({
+                  _uuid: pointerUuid,
+                });
+              const pointerId = pointerData?._id.toString() || '';
+
+              if (pointerId && pointerData && !pointerId.includes('-')) {
+                // update the item in the database
+                await this.#borda.db.collection(collection).updateOne(
+                  {
+                    _id: item._id,
+                  },
+                  {
+                    [key]: createPointer(pointerCollection, pointerId),
+                    _updated_at: new Date().toISOString(),
+                  }
+                );
+                if (this.#inspect) {
+                  console.log('✅ pointer updated', pointerData);
+                }
+              }
+            }
+          }
+        } else {
+          // skip
+          continue;
+        }
+      }
+    } catch (err) {
+      console.error('error while running pending pointers', err);
+    } finally {
+      this.#pendingPointersBusy = false;
     }
   }
 }

@@ -6,7 +6,6 @@ import { z } from 'zod';
 import {
   createObjectIdSchema,
   createPointer,
-  createPointerSchema,
   Instant,
   InstantSyncResponse,
 } from '@borda/client';
@@ -19,9 +18,6 @@ global.structuredClone = jest.fn((data) => data);
 const UserId = createObjectIdSchema('users');
 const PostId = createObjectIdSchema('posts');
 const CommentId = createObjectIdSchema('comments');
-
-const UserPointer = createPointerSchema('users');
-const PostPointer = createPointerSchema('posts');
 
 jest.mock('../../../client/src/lib/fetcher');
 
@@ -37,18 +33,28 @@ describe('Instant', () => {
       _id: PostId,
       _created_at: z.string(),
       _updated_at: z.string(),
-      _p_user: UserPointer,
+      _p_user: z.string(),
       title: z.string(),
       content: z.string(),
-      author: UserPointer,
+      author: z.string(),
     }),
     comments: z.object({
       _id: CommentId,
       _created_at: z.string(),
       _updated_at: z.string(),
-      _p_user: UserPointer,
-      author: UserPointer,
-      posts: PostPointer,
+      _p_user: z.string(),
+      author: z.string(),
+      posts: z.array(
+        z.object({
+          _id: PostId,
+          _created_at: z.string(),
+          _updated_at: z.string(),
+          _p_user: z.string(),
+          title: z.string(),
+          content: z.string(),
+          author: z.string(),
+        })
+      ),
       content: z.string(),
     }),
   };
@@ -346,7 +352,6 @@ describe('Instant', () => {
         _updated_at: '2022-07-05T03:08:41.768Z',
         title: 'Post 2',
         content: 'Ei gentiii chegueii',
-        user: createPointer('users', 'objId0507'),
         _p_user: createPointer('users', 'objId0507'),
       },
       {
@@ -355,7 +360,6 @@ describe('Instant', () => {
         _updated_at: '2020-07-28T03:08:41.768Z',
         title: 'Post 1',
         content: 'Hello world',
-        user: createPointer('users', 'objId2807'),
         _p_user: createPointer('users', 'objId2807'),
       },
     ];
@@ -372,6 +376,8 @@ describe('Instant', () => {
       },
     });
 
+    // @ts-ignore
+    expect(result.users[0].posts).toHaveLength(1);
     expect(result).toEqual({
       users: [
         {
@@ -386,7 +392,6 @@ describe('Instant', () => {
               _updated_at: '2022-07-05T03:08:41.768Z',
               title: 'Post 2',
               content: 'Ei gentiii chegueii',
-              user: 'users$objId0507',
               _p_user: 'users$objId0507',
             },
           ],
@@ -417,7 +422,6 @@ describe('Instant', () => {
               _updated_at: '2020-07-28T03:08:41.768Z',
               title: 'Post 1',
               content: 'Hello world',
-              user: 'users$objId2807',
               _p_user: 'users$objId2807',
             },
           ],

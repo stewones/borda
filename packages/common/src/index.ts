@@ -7,7 +7,6 @@ import { z } from 'zod';
 import {
   createObjectIdSchema,
   createPointer,
-  createPointerSchema,
   createSchema,
 } from '@borda/client';
 
@@ -19,17 +18,9 @@ export const UserId = createObjectIdSchema('users');
 export const PostId = createObjectIdSchema('posts');
 export const CommentId = createObjectIdSchema('comments');
 
-export const UserPointer = createPointerSchema('users');
-export const PostPointer = createPointerSchema('posts');
-export const OrgPointer = createPointerSchema('orgs');
-export const CommentPointer = createPointerSchema('comments');
-
-export const orgPointer = (id: string) =>
-  createPointer<typeof OrgPointer>('orgs', id);
-export const userPointer = (id: string) =>
-  createPointer<typeof UserPointer>('users', id);
-export const postPointer = (id: string) =>
-  createPointer<typeof PostPointer>('posts', id);
+export const orgPointer = (id: string) => createPointer('orgs', id);
+export const userPointer = (id: string) => createPointer('users', id);
+export const postPointer = (id: string) => createPointer('posts', id);
 export const commentPointer = (id: string) => createPointer('comments', id);
 
 export type User = z.infer<typeof UserSchema>;
@@ -45,24 +36,24 @@ export const OrgSchema = createSchema('orgs', {
 });
 
 export const UserSchema = createSchema('users', {
-  _p_org: OrgPointer,
+  _p_org: z.string(),
   org: z.optional(OrgSchema), // injected by the client
   name: z.string(),
   email: z.string().email(),
 });
 
 export const PostSchema = createSchema('posts', {
-  _p_user: UserPointer, // default way to reference the user (so nested queries work out of the box)
-  _p_org: OrgPointer,
+  _p_user: z.string(), // default way to reference the user (so nested queries work out of the box)
+  _p_org: z.string(),
   title: z.string(),
   content: z.string(),
-  author: UserPointer, // a custom way to reference the user
+  author: z.string(), // a custom way to reference the user
 });
 
 export const CommentSchema = createSchema('comments', {
-  _p_author: UserPointer,
-  _p_post: PostPointer,
-  _p_org: OrgPointer,
+  _p_author: z.string(),
+  _p_post: z.string(),
+  _p_org: z.string(),
   content: z.string(),
 });
 

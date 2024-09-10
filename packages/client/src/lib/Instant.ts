@@ -26,7 +26,10 @@ import { z } from 'zod';
 
 import { fetcher } from './fetcher';
 import { Document } from './types';
-import { guid, isServer } from './utils';
+import {
+  guid,
+  isServer,
+} from './utils';
 import { WebSocketFactory } from './websocket';
 
 export type InstantSchemaField = z.ZodTypeAny;
@@ -92,33 +95,28 @@ export type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
   [P in K]?: iQL<T, K> & QueryDirectives<z.infer<T[P]>>;
 };
 
-export const ejectPointerId = <T extends z.BRAND<any>>(pointer: T) => {
-  return (pointer as unknown as string).split('$')[1];
+export const ejectPointerId = (pointer: string) => {
+  return pointer.split('$')[1];
 };
 
-export const ejectPointerCollection = <T extends z.BRAND<any>>(pointer: T) => {
-  return (pointer as unknown as string).split('$')[0];
+export const ejectPointerCollection = (pointer: string) => {
+  return pointer.split('$')[0];
 };
 
 export const createObjectIdSchema = <T extends string>(p: T) =>
-  z.string().max(9).brand<T>();
-
-export const createPointerSchema = <T extends string>(p: T) =>
-  z
-    .object({ collection: z.string().max(42), objectId: z.string().max(9) })
-    .brand<T>();
+  z.string().min(9).max(36).brand<T>();
 
 export const createSchema = <T extends SchemaType>(collection: string, p: T) =>
   z.object({
     _id: createObjectIdSchema(collection),
-    _uuid: z.optional(z.string()),
-    _sync: z.optional(z.number()),
-    _created_at: z.string(),
-    _updated_at: z.string(),
+    _uuid: z.string().length(36).optional(),
+    _sync: z.number().optional(),
+    _created_at: z.string().optional(),
+    _updated_at: z.string().optional(),
     _expires_at: z.string().optional(),
-    _created_by: createPointerSchema('users'),
-    _updated_by: createPointerSchema('users'),
-    _deleted_by: createPointerSchema('users'),
+    _created_by: z.string().optional(),
+    _updated_by: z.string().optional(),
+    _deleted_by: z.string().optional(),
     ...p,
   });
 
@@ -134,11 +132,8 @@ export const createSchema = <T extends SchemaType>(collection: string, p: T) =>
  * @param objectId - objectId
  * @returns string
  */
-export const createPointer = <T extends z.ZodType<any, any, any>>(
-  collection: string,
-  id: string
-) => {
-  return `${collection}$${id}` as z.infer<T>;
+export const createPointer = (collection: string, id: string) => {
+  return `${collection}$${id}`;
 };
 
 const SyncSchema = z.object({
@@ -188,10 +183,9 @@ export class Instant<T extends SchemaType> {
   #headers!: Record<string, string>;
   #params!: Record<string, string>;
   #wss: WebSocket | undefined;
-  #pendingMutationsRunner: Subscription | undefined;
-  #pendingMutationsChecker: Subscription | undefined;
-  #pendingPointersRunner: Subscription | undefined;
+  #pendingTasks: Subscription | undefined;
   #pendingPointersBusy = false;
+  #pendingMutationsBusy = false;
 
   #batch = new Subject<{
     collection: string;
@@ -201,19 +195,6 @@ export class Instant<T extends SchemaType> {
     headers: Record<string, string>;
     params: Record<string, string>;
   }>();
-
-  #queue = new Map<
-    string,
-    {
-      url: string;
-      method: 'POST' | 'PUT' | 'DELETE';
-      token: string;
-      data: Document;
-      headers: Record<string, string>;
-      params: Record<string, string>;
-      locked: boolean;
-    }
-  >();
 
   #been_offline = false;
   #online = this.online
@@ -342,21 +323,21 @@ export class Instant<T extends SchemaType> {
       this.#db.on('ready', (db) => {
         if (isServer()) {
           /**
-           * schedule a runner for pending mutations
+           * task scheduler
            */
-          this.#pendingMutationsRunner = interval(500)
-            .pipe(tap(async () => await this.#runPendingMutations()))
+          this.#pendingTasks = interval(1000)
+            .pipe(
+              tap(async () =>
+                Promise.allSettled([
+                  this.#runPendingMutations(),
+                  this.#runPendingPointers(),
+                ])
+              )
+            )
             .subscribe();
 
           /**
-           * schedule a checker for pending mutations
-           */
-          this.#pendingMutationsChecker = interval(2000)
-            .pipe(tap(async () => await this.#runPendingMutationsChecker()))
-            .subscribe();
-
-          /**
-           * subscribe to the batch sync stream
+           * batch sync scheduler
            */
           this.#batch
             .pipe(
@@ -406,13 +387,6 @@ export class Instant<T extends SchemaType> {
                 }
               })
             )
-            .subscribe();
-
-          /**
-           * schedule a runner for pending pointers
-           */
-          this.#pendingPointersRunner = interval(750)
-            .pipe(tap(async () => await this.#runPendingPointers()))
             .subscribe();
         }
 
@@ -474,22 +448,19 @@ export class Instant<T extends SchemaType> {
   public destroy() {
     this.#worker.terminate();
     this.#db.close();
-    this.#queue.clear();
     this.#batch.complete();
     this.#online.unsubscribe();
 
-    if (this.#pendingPointersRunner) {
-      this.#pendingPointersRunner.unsubscribe();
+    if (this.#pendingTasks) {
+      this.#pendingTasks.unsubscribe();
     }
-    if (this.#pendingMutationsRunner) {
-      this.#pendingMutationsRunner.unsubscribe();
-    }
-    if (this.#pendingMutationsChecker) {
-      this.#pendingMutationsChecker.unsubscribe();
-    }
+
     if (this.#wss && this.#wss.readyState === WebSocket.OPEN) {
       this.#wss.close();
     }
+
+    this.#pendingMutationsBusy = false;
+    this.#pendingPointersBusy = false;
 
     if (this.#inspect) {
       console.log('🧹 Instant instance destroyed');
@@ -631,84 +602,89 @@ export class Instant<T extends SchemaType> {
   }
 
   async #runPendingMutations() {
-    const queue = this.#queue.values();
-    for (const { url, data, method, token, headers, params } of queue) {
-      const key = `${method}-${data['_id']}`;
-      const item = this.#queue.get(key);
-
-      if (!navigator.onLine && item?.locked) {
-        continue;
-      }
-
-      this.#queue.set(key, {
-        ...item,
-        locked: true,
-      } as any);
-
-      await this.#runMutationWorker({
-        url,
-        data,
-        method,
-        token,
-        headers,
-        params,
-      });
+    if (this.#pendingMutationsBusy) {
+      return;
     }
-  }
 
-  async #runPendingMutationsChecker() {
-    const collections = Object.keys(this.#schema);
-    for (const collection of collections) {
-      // check for mutations pending
-      const query = {
-        [collection as keyof T]: {
-          $filter: {
-            _sync: {
-              $eq: 1,
+    try {
+      this.#pendingMutationsBusy = true;
+
+      const collections = Object.keys(this.#schema);
+
+      for (const collection of collections) {
+        // check for mutations pending
+        const query = {
+          [collection as keyof T]: {
+            $filter: {
+              _sync: {
+                $eq: 1,
+              },
             },
           },
-        },
-      };
+        };
 
-      // Check for pending mutations
-      const pending = await this.query(query as unknown as iQL<T>);
-      const data = pending[collection as keyof T];
+        // Check for pending mutations
+        const pending = await this.query(query as unknown as iQL<T>);
+        const data = pending[collection as keyof T];
 
-      for (const item of data) {
-        let url = `${this.#serverURL}/sync/${collection}`;
-        const token = this.#token;
-        const headers = this.#headers;
-        const params = this.#params;
-        const method = item['_expires_at']
-          ? 'DELETE'
-          : item['_created_at'] !== item['_updated_at']
-          ? 'PUT'
-          : 'POST';
+        for (const item of data) {
+          // check for validation, if fails, skip
+          const { type, message, summary, errors } = this.validate(
+            collection,
+            item
+          );
 
-        if (['DELETE', 'PUT'].includes(method)) {
-          url += `/${item['_id']}`;
-        }
-        const key = `${method}-${item['_id']}`;
+          if (errors) {
+            if (this.#inspect) {
+              console.error(
+                '❌ validation failed',
+                type,
+                message,
+                summary,
+                errors
+              );
+            }
+            continue;
+          }
 
-        if (!this.#queue.has(key)) {
-          // push to the queue
-          this.#queue.set(key, {
+          let url = `${this.#serverURL}/sync/${collection}`;
+
+          const token = this.#token;
+          const headers = this.#headers;
+          const params = this.#params;
+          const method = item['_expires_at']
+            ? 'DELETE'
+            : item['_created_at'] !== item['_updated_at']
+            ? 'PUT'
+            : 'POST';
+
+          if (['DELETE', 'PUT'].includes(method)) {
+            url += `/${item['_id']}`;
+          }
+
+          await this.#runMutationWorker({
+            collection,
             url,
+            data: item,
             method,
             token,
-            data: item,
             headers,
             params,
-            locked: false,
           });
         }
-      }
 
-      if (data.length > 0) {
-        if (this.#inspect) {
-          console.log('🔵 pending mutations', data);
+        if (data.length > 0) {
+          if (this.#inspect) {
+            console.log('🔵 pending mutations', data);
+          }
         }
       }
+    } catch (error) {
+      if (this.#inspect) {
+        console.error('Error while running pending mutations', error);
+      }
+    } finally {
+      this.#pendingMutationsBusy = false;
     }
   }
 
@@ -749,8 +725,8 @@ export class Instant<T extends SchemaType> {
         );
 
         for (const [key, value] of pointers) {
-          const pointerCollection = ejectPointerCollection(value as any);
-          const pointerUuid = ejectPointerId(value as any);
+          const pointerCollection = ejectPointerCollection(value as string);
+          const pointerUuid = ejectPointerId(value as string);
 
           // grab the pointer data
           const pointerData = await this.query({
@@ -782,6 +758,7 @@ export class Instant<T extends SchemaType> {
 
     this.#pendingPointersBusy = false;
   }
+
   /**
    * Sync paginated data from a given collection outside the main thread
    *
@@ -1072,6 +1049,7 @@ export class Instant<T extends SchemaType> {
    * @returns Promise<void>
    */
   async #runMutationWorker({
+    collection,
     url,
     data,
     token,
@@ -1079,6 +1057,7 @@ export class Instant<T extends SchemaType> {
     params,
     method,
   }: {
+    collection: string;
     url: string;
     method: 'POST' | 'PUT' | 'DELETE';
     data: Document;
@@ -1092,6 +1071,7 @@ export class Instant<T extends SchemaType> {
       }
       return;
     }
+
     const customParams = new URLSearchParams(params);
     const customHeaders = new Headers(headers);
 
@@ -1108,7 +1088,7 @@ export class Instant<T extends SchemaType> {
     if (Object.keys(finalParams).length > 0) {
       url += `?${new URLSearchParams(finalParams).toString()}`;
     }
-
+    
     try {
       // post to the server
       await fetcher(url, {
@@ -1120,14 +1100,13 @@ export class Instant<T extends SchemaType> {
           ...headers,
         },
       });
-      // remove from queue
-      const key = `${method}-${data['_id']}`;
-      this.#queue.delete(key);
-    } catch (error) {
-      if (this.#inspect) {
-        console.error('🔴 mutation failed', error);
-      }
-    } finally {
+
+      // mark record as synced since the network request was successful
+      await this.#db.table(collection).update(data['_id'], {
+        _sync: 0,
+      });
+    } catch (err) {
+      console.error('🔴 Error mutating document', collection, data, err);
     }
   }
 
@@ -1450,6 +1429,30 @@ export class Instant<T extends SchemaType> {
     };
   }
 
+  public validate(collection: string, data: unknown) {
+    const schema = this.#schema[collection];
+
+    try {
+      // validate the body
+      schema.parse(data);
+    } catch (zodError) {
+      if (zodError instanceof z.ZodError) {
+        return {
+          type: 'validation_error',
+          message: 'Invalid data provided',
+          summary: `The data provided for ${collection} is not valid.`,
+          errors: zodError.errors.map((err) => ({
+            path: err.path.join('.'),
+            message: err.message,
+          })),
+        };
+      }
+      throw zodError; // Re-throw if it's not a ZodError
+    }
+
+    return {};
+  }
+
   /**
    * starts the sync process. usually called after user login because a session and user id are required.
    * don't forget to handle extra permissions on the server and make your endpoint even more secure.
@@ -1602,205 +1605,225 @@ export class Instant<T extends SchemaType> {
   ): Promise<{
     [K in keyof Q]: z.infer<T[K & keyof T]>[];
   }> {
-    const getPointerField = (
-      childTable: keyof T,
-      parentTable: keyof T
-    ): string | undefined => {
-      const childSchema = this.#schema[childTable];
-      if (!childSchema || !('shape' in childSchema)) return undefined;
+    return this.#executeQuery(iql);
+  }
 
-      for (const [fieldName, fieldSchema] of Object.entries(
-        (childSchema as unknown as z.ZodObject<any, any, any>).shape
-      )) {
-        if (
-          fieldSchema instanceof z.ZodBranded &&
-          fieldSchema._def.type instanceof z.ZodObject
-        ) {
-          const innerShape = fieldSchema._def.type.shape;
-          if ('collection' in innerShape) {
-            return fieldName;
-          }
+  #getPointerField(
+    childTable: keyof T,
+    parentTable: keyof T
+  ): string | undefined {
+    const childSchema = this.#schema[childTable];
+    if (!childSchema || !('shape' in childSchema)) return undefined;
+
+    // First, check for fields starting with _p_
+    for (const fieldName of Object.keys(
+      (childSchema as unknown as z.ZodObject<any, any, any>).shape
+    )) {
+      if (
+        fieldName.startsWith('_p_') &&
+        fieldName.endsWith(singular(parentTable as string))
+      ) {
+        return fieldName;
+      }
+    }
+
+    // If not found, check for pointer fields
+    for (const [fieldName, fieldSchema] of Object.entries(
+      (childSchema as unknown as z.ZodObject<any, any, any>).shape
+    )) {
+      if (
+        fieldSchema instanceof z.ZodBranded &&
+        fieldSchema._def.type instanceof z.ZodObject
+      ) {
+        const innerShape = fieldSchema._def.type.shape;
+        if ('collection' in innerShape) {
+          return fieldName;
         }
       }
+    }
 
-      return undefined;
+    return undefined;
+  }
+
+  async #executeQuery<Q extends iQL<T>>(
+    queryObject: Q,
+    parentTable?: keyof T,
+    parentId?: string
+  ): Promise<{
+    [K in keyof Q]: z.infer<T[K & keyof T]>[];
+  }> {
+    const result = {} as {
+      [K in keyof Q]: z.infer<T[K & keyof T]>[];
     };
 
-    const executeQuery = async <Q extends iQL<T>>(
-      queryObject: Q,
-      parentTable?: keyof T,
-      parentId?: string
-    ): Promise<{
-      [K in keyof Q]: z.infer<T[K & keyof T]>[];
-    }> => {
-      const result = {} as {
-        [K in keyof Q]: z.infer<T[K & keyof T]>[];
-      };
+    for (const tableName in queryObject) {
+      if (
+        Object.prototype.hasOwnProperty.call(queryObject, tableName) &&
+        !tableName.startsWith('$')
+      ) {
+        const table = this.#db.table(tableName);
+        const tableQuery = queryObject[tableName] as QueryDirectives<
+          z.infer<T[keyof T]>
+        > &
+          iQL<T>;
 
-      for (const tableName in queryObject) {
-        if (
-          Object.prototype.hasOwnProperty.call(queryObject, tableName) &&
-          !tableName.startsWith('$')
-        ) {
-          const table = this.#db.table(tableName);
-          const tableQuery = queryObject[tableName] as QueryDirectives<
-            z.infer<T[keyof T]>
-          > &
-            iQL<T>;
+        let collection: Collection<
+          z.infer<T[keyof T]>,
+          IndexableType
+        > = table as unknown as Collection<z.infer<T[keyof T]>, IndexableType>;
 
-          let collection: Collection<
-            z.infer<T[keyof T]>,
-            IndexableType
-          > = table as unknown as Collection<
-            z.infer<T[keyof T]>,
-            IndexableType
-          >;
+        // Handle parent relationship
+        if (parentTable && parentId) {
+          const pointerField = this.#getPointerField(
+            tableName as keyof T,
+            parentTable
+          );
+          const parentTableAsBy = `_p_${singular(parentTable as string)}`;
 
-          // Handle parent relationship
-          if (parentTable && parentId) {
-            const pointerField = getPointerField(
-              tableName as keyof T,
-              parentTable
+          if (pointerField) {
+            collection = collection.filter(
+              (item) =>
+                item[pointerField] === `${parentTable as string}$${parentId}`
             );
-            const parentTableAsBy = `_p_${singular(parentTable as string)}`;
-
-            if (pointerField) {
-              collection = collection.filter(
-                (item) =>
-                  item[pointerField] === `${parentTable as string}$${parentId}`
-              );
-            } else if (parentTableAsBy in collection) {
-              collection = collection.filter(
-                (item) =>
-                  item[parentTableAsBy] ===
-                  `${parentTable as string}$${parentId}`
-              );
-            }
+          } else if (parentTableAsBy in collection) {
+            collection = collection.filter(
+              (item) =>
+                item[parentTableAsBy] === `${parentTable as string}$${parentId}`
+            );
           }
+        }
 
-          // Apply $sort
-          if (tableQuery.$sort && Object.keys(tableQuery.$sort).length > 0) {
-            const sortFields = Object.entries(tableQuery.$sort);
+        // Apply $sort
+        if (tableQuery.$sort && Object.keys(tableQuery.$sort).length > 0) {
+          const sortFields = Object.entries(tableQuery.$sort);
 
-            // Construct the compound index string with brackets
-            const indexString = `[${sortFields
-              .map(([field, _]) => field)
-              .join('+')}]`;
+          // Construct the compound index string with brackets
+          const indexString = `[${sortFields
+            .map(([field, _]) => field)
+            .join('+')}]`;
 
-            // Apply the sort
-            collection = (
-              collection as unknown as Table<z.infer<T[keyof T]>, IndexableType>
-            ).orderBy(indexString);
+          // Apply the sort
+          collection = (
+            collection as unknown as Table<z.infer<T[keyof T]>, IndexableType>
+          ).orderBy(indexString);
 
-            // Apply reverse for descending order for the first field
-            // cause apparently we can't do multi-sorting with compound indexes yet
-            if (sortFields.length > 0 && sortFields[0][1] === -1) {
-              collection = collection.reverse();
-            }
+          // Apply reverse for descending order for the first field
+          // cause apparently we can't do multi-sorting with compound indexes yet
+          if (sortFields.length > 0 && sortFields[0][1] === -1) {
+            collection = collection.reverse();
           }
+        }
 
-          // Apply $filter
-          if (tableQuery.$filter) {
-            if (typeof tableQuery.$filter === 'function') {
-              // If $filter is a function, use it directly
-              collection = collection.filter(tableQuery.$filter);
-            } else {
-              for (const [field, condition] of Object.entries(
-                tableQuery.$filter
-              )) {
-                if (condition && '$exists' in condition) {
-                  collection = collection.filter((item) => item[field] != null);
-                }
-                if (condition && '$nin' in condition && condition.$nin) {
-                  collection = collection.filter(
-                    (item) => !(condition.$nin ?? []).includes(item[field])
-                  );
-                }
-                if (condition && '$regex' in condition && condition.$regex) {
-                  const regex = new RegExp(
-                    condition.$regex,
-                    condition.$options ?? 'i'
-                  );
-                  collection = collection.filter((item) =>
-                    regex.test(item[field])
-                  );
-                }
-                if (condition && '$eq' in condition) {
-                  collection = collection.filter(
-                    (item) => item[field] === condition.$eq
-                  );
-                }
+        // Apply $filter
+        if (tableQuery.$filter) {
+          if (typeof tableQuery.$filter === 'function') {
+            // If $filter is a function, use it directly
+            collection = collection.filter(tableQuery.$filter);
+          } else {
+            for (const [field, condition] of Object.entries(
+              tableQuery.$filter
+            )) {
+              if (condition && '$exists' in condition) {
+                collection = collection.filter((item) => item[field] != null);
+              }
+              if (condition && '$nin' in condition && condition.$nin) {
+                collection = collection.filter(
+                  (item) => !(condition.$nin ?? []).includes(item[field])
+                );
+              }
+              if (condition && '$regex' in condition && condition.$regex) {
+                const regex = new RegExp(
+                  condition.$regex,
+                  condition.$options ?? 'i'
+                );
+                collection = collection.filter((item) =>
+                  regex.test(item[field])
+                );
+              }
+              if (condition && '$eq' in condition) {
+                collection = collection.filter(
+                  (item) => item[field] === condition.$eq
+                );
               }
             }
           }
+        }
 
-          // Apply $skip
-          if (tableQuery.$skip) {
-            collection = collection.offset(tableQuery.$skip);
-          }
+        // Apply $skip
+        if (tableQuery.$skip) {
+          collection = collection.offset(tableQuery.$skip);
+        }
 
-          // Apply $limit
-          if (tableQuery.$limit) {
-            collection = collection.limit(tableQuery.$limit);
-          }
+        // Apply $limit
+        if (tableQuery.$limit) {
+          collection = collection.limit(tableQuery.$limit);
+        }
 
-          // Apply $or
-          if (tableQuery.$or) {
-            collection = collection.filter((item) => {
-              return tableQuery.$or!.some((condition) => {
-                return Object.entries(condition).every(
-                  ([field, fieldCondition]) => {
-                    if (typeof fieldCondition === 'object') {
-                      if ('$exists' in fieldCondition) {
-                        return fieldCondition.$exists
-                          ? item[field] != null
-                          : item[field] == null;
-                      }
-                      if ('$nin' in fieldCondition) {
-                        return !(fieldCondition.$nin ?? []).includes(
-                          item[field]
-                        );
-                      }
-                      if ('$regex' in fieldCondition) {
-                        const regex = new RegExp(
-                          fieldCondition.$regex ?? '',
-                          fieldCondition.$options ?? 'i'
-                        );
-                        return regex.test(item[field]);
-                      }
-                      if ('$eq' in fieldCondition) {
-                        return item[field] === fieldCondition.$eq;
-                      }
-                    } else {
-                      return item[field] === fieldCondition;
+        // Apply $or
+        if (tableQuery.$or) {
+          collection = collection.filter((item) => {
+            return tableQuery.$or!.some((condition) => {
+              return Object.entries(condition).every(
+                ([field, fieldCondition]) => {
+                  if (typeof fieldCondition === 'object') {
+                    if ('$exists' in fieldCondition) {
+                      return fieldCondition.$exists
+                        ? item[field] != null
+                        : item[field] == null;
                     }
-                    return false;
+                    if ('$nin' in fieldCondition) {
+                      return !(fieldCondition.$nin ?? []).includes(item[field]);
+                    }
+                    if ('$regex' in fieldCondition) {
+                      const regex = new RegExp(
+                        fieldCondition.$regex ?? '',
+                        fieldCondition.$options ?? 'i'
+                      );
+                      return regex.test(item[field]);
+                    }
+                    if ('$eq' in fieldCondition) {
+                      return item[field] === fieldCondition.$eq;
+                    }
+                  } else {
+                    return item[field] === fieldCondition;
                   }
-                );
-              });
+                  return false;
+                }
+              );
             });
-          }
+          });
+        }
 
-          // Execute the query
-          let tableData = await collection.toArray();
+        // Execute the query
+        let tableData = await collection.toArray();
 
-          // Process nested queries
-          result[tableName as keyof Q] = await Promise.all(
-            tableData.map(async (item) => {
-              const nestedResult = await executeQuery(
-                tableQuery as Q,
+        // Process nested queries
+        for (const item of tableData) {
+          for (const nestedTableName in tableQuery) {
+            if (
+              Object.prototype.hasOwnProperty.call(
+                tableQuery,
+                nestedTableName
+              ) &&
+              !nestedTableName.startsWith('$')
+            ) {
+              const nestedQuery = tableQuery[
+                nestedTableName
+              ] as QueryDirectives<z.infer<T[keyof T]>> & iQL<T>;
+              const nestedResult = await this.#executeQuery(
+                { [nestedTableName]: nestedQuery } as Q,
                 tableName as keyof T,
                 item._id
               );
-              return { ...item, ...nestedResult };
-            })
-          );
+              item[nestedTableName] = nestedResult[nestedTableName];
+            }
+          }
         }
+
+        result[tableName as keyof Q] = tableData;
       }
+    }
 
-      return result;
-    };
-
-    return executeQuery(iql);
+    return result;
   }
 }

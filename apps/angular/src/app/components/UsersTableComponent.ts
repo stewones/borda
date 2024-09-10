@@ -314,7 +314,10 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
                   })
                 "
               >
-                Delete user
+                Delete user (synced)
+              </button>
+              <button hlmMenuItem (click)="deleteLocalRow(row)">
+                Delete user (local)
               </button>
             </hlm-menu>
           </ng-template>
@@ -666,5 +669,9 @@ export class UsersTableComponent {
         onClick: () => console.log(`📎 User: ${entry._id}`),
       },
     });
+  }
+
+  async deleteLocalRow(entry: User) {
+    await insta.db.table('users').delete(entry._id);
   }
 }

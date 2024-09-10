@@ -16,6 +16,7 @@ import { Elysia, t } from 'elysia';
 
 import { BordaServer, Instant, memoryUsage } from '@borda/server';
 
+import { schema } from '@/common';
 import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
 
@@ -91,9 +92,11 @@ const { db, name } = await borda.ready();
  * Attach the borda instance to the Instant class
  */
 const insta = new Instant({
+  schema,
   inspect: true,
   size: parseInt(process.env['INSTANT_SIZE'] || '1_000'),
-  collections: ['orgs', 'users', 'posts', 'comments'],
+  // optionally restrict the collections to sync, otherwise all collections are synced based on the schema
+  // collections: ['orgs', 'users', 'posts', 'comments'],
   // set constraints to restrict broadcast and filtered data
   // constraints: [
   //   {
@@ -207,6 +210,7 @@ api
         headers: SyncHeadersCustomSchema,
         // custom logic to validate request before it's handled
         beforeHandle({ headers, params }) {
+          // @todo validate headers
           // console.log('params', params);
           // console.log('headers', headers);
         },
@@ -216,9 +220,25 @@ api
         params: SyncParamsSchema,
         headers: SyncHeadersCustomSchema,
         // custom logic to validate request before it's handled
-        beforeHandle({ headers, params, body }) {
+        beforeHandle({ headers, params, body, set }) {
+          // @todo validate headers
           // console.log('params', params);
           // console.log('headers', headers);
+
+          const collection = params.collection;
+          const { type, message, summary, errors } = insta.validate(
+            collection,
+            body
+          );
+          if (errors) {
+            set.status = 400;
+            return {
+              type,
+              message,
+              summary,
+              errors,
+            };
+          }
         },
       })
       .put(':collection/:id', insta.collection().put(), {
@@ -226,9 +246,24 @@ api
         params: SyncMutationParamsSchema,
         headers: SyncHeadersCustomSchema,
         // custom logic to validate request before it's handled
-        beforeHandle({ headers, params, body }) {
+        beforeHandle({ headers, params, body, set }) {
           // console.log('params', params);
           // console.log('headers', headers);
+
+          const collection = params.collection;
+          const { type, message, summary, errors } = insta.validate(
+            collection,
+            body
+          );
+          if (errors) {
+            set.status = 400;
+            return {
+              type,
+              message,
+              summary,
+              errors,
+            };
+          }
         },
       })
       .delete(':collection/:id', insta.collection().delete(), {
