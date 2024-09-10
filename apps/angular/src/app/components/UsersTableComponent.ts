@@ -2,12 +2,7 @@ import { liveQuery } from 'dexie';
 import { DateFnsModule } from 'ngx-date-fns';
 import { toast } from 'ngx-sonner';
 import { derivedAsync } from 'ngxtension/derived-async';
-import {
-  from,
-  map,
-  tap,
-} from 'rxjs';
-import { z } from 'zod';
+import { from, map, tap } from 'rxjs';
 
 import { SelectionModel } from '@angular/cdk/collections';
 import {
@@ -26,9 +21,9 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
-import { ejectPointer } from '@borda/client';
+import { ejectPointerId } from '@borda/client';
 
-import { UserSchema } from '@/common';
+import { Org, User } from '@/common';
 import {
   lucideArrowDown,
   lucideArrowUp,
@@ -60,17 +55,16 @@ import { HlmTableModule } from '@spartan-ng/ui-table-helm';
 
 import { insta } from '../borda';
 import { DeleteDialog } from './DeleteDialog';
+import { OrgsDialogComponent } from './OrgsDialogComponent';
 import { UsersDialogComponent } from './UsersDialogComponent';
-import { UsersMenuBarComponent } from './UsersMenuBarComponent';
-
-type EntryType = z.infer<typeof UserSchema>;
+import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
 
 @Component({
   standalone: true,
   selector: 'users-table',
   imports: [
     FormsModule,
-    UsersMenuBarComponent,
+    UsersPrimaryActionComponent,
     BrnMenuTriggerDirective,
     HlmMenuModule,
     BrnTableModule,
@@ -90,6 +84,7 @@ type EntryType = z.infer<typeof UserSchema>;
     DeleteDialog,
     NgClass,
     UsersDialogComponent,
+    OrgsDialogComponent,
   ],
   providers: [
     provideIcons({
@@ -115,7 +110,7 @@ type EntryType = z.infer<typeof UserSchema>;
           placeholder="Filter by name and email"
           [(ngModel)]="search"
         />
-        <users-menu-bar></users-menu-bar>
+        <users-primary-action></users-primary-action>
       </div>
 
       <button hlmBtn variant="outline" align="end" [brnMenuTriggerFor]="menu">
@@ -171,7 +166,7 @@ type EntryType = z.infer<typeof UserSchema>;
             'text-muted-foreground': insta.syncPending(row),
           }"
         >
-          {{ row.org?.name || row._p_org }}
+          {{ row.org?.name || '' }}
         </hlm-td>
       </brn-column-def>
       <brn-column-def name="name" class="w-40 sm:w-48">
@@ -290,15 +285,24 @@ type EntryType = z.infer<typeof UserSchema>;
           <ng-template #menu>
             <hlm-menu>
               <hlm-menu-group>
-                <button hlmMenuItem (click)="copyEntryId(row)">
-                  Copy entry ID
+                <button hlmMenuItem (click)="copyOrgId(row)">
+                  Copy org ID
+                </button>
+                <button hlmMenuItem (click)="copyUserId(row)">
+                  Copy user ID
                 </button>
               </hlm-menu-group>
               <hlm-menu-separator />
               <hlm-menu-group>
-                <button hlmMenuItem (click)="editUser(row)">Edit user</button>
                 <button hlmMenuItem>View posts</button>
                 <button hlmMenuItem>View comments</button>
+              </hlm-menu-group>
+              <hlm-menu-separator />
+              <hlm-menu-group>
+                <button hlmMenuItem (click)="editUser(row)">Edit user</button>
+                <button hlmMenuItem (click)="editOrg(row)">
+                  Edit organization
+                </button>
               </hlm-menu-group>
               <hlm-menu-separator />
               <button
@@ -383,6 +387,11 @@ type EntryType = z.infer<typeof UserSchema>;
       (onClose)="showUsersDialog.set(false)"
       [entry]="showUsersDialogEntry()"
     ></users-dialog>
+    <orgs-dialog
+      [open]="showOrgsDialog()"
+      (onClose)="showOrgsDialog.set(false)"
+      [entry]="showOrgsDialogEntry()"
+    ></orgs-dialog>
   `,
 })
 export class UsersTableComponent {
@@ -408,9 +417,12 @@ export class UsersTableComponent {
   });
 
   entryDialog = viewChild(UsersDialogComponent);
-  lastEntries = signal<EntryType[]>([]);
+  lastEntries = signal<User[]>([]);
 
   entries$ = from(liveQuery(() => insta.query(this.query())))
+    .pipe(tap(() => this.reload.set(true))) // to trigger angular change detection
+    .subscribe();
+  orgs$ = from(liveQuery(() => insta.query({ orgs: {} })))
     .pipe(tap(() => this.reload.set(true))) // to trigger angular change detection
     .subscribe();
 
@@ -426,7 +438,7 @@ export class UsersTableComponent {
             orgs: {
               $limit: 1,
               $filter: {
-                _id: { $eq: ejectPointer(user._p_org) },
+                _id: { $eq: ejectPointerId(user._p_org) },
               },
             },
           })
@@ -462,7 +474,7 @@ export class UsersTableComponent {
             ...updatedFields,
           };
 
-          this.showUsersDialogEntry.set(mergedUser as EntryType);
+          this.showUsersDialogEntry.set(mergedUser as User);
         }
       }
 
@@ -495,7 +507,7 @@ export class UsersTableComponent {
 
   lastSortedFields = signal(['_updated_at']);
 
-  selectionModel = new SelectionModel<EntryType>(true);
+  selectionModel = new SelectionModel<User>(true);
 
   selectedEntries = toSignal(
     this.selectionModel.changed.pipe(map((change) => change.source.selected)),
@@ -527,7 +539,7 @@ export class UsersTableComponent {
     this.selectionModel.clear();
   };
 
-  toggleEntrySelection(entry: EntryType) {
+  toggleEntrySelection(entry: User) {
     this.selectionModel.toggle(entry);
   }
 
@@ -540,25 +552,16 @@ export class UsersTableComponent {
     }
   }
 
-  trackByEntry: TrackByFunction<EntryType> = (_: number, p: EntryType) => p._id;
-  isEntrySelected = (entry: EntryType) => this.selectionModel.isSelected(entry);
-
-  copyEntryId(entry: EntryType) {
-    navigator.clipboard.writeText(entry._id);
-    toast('Entry ID copied to clipboard', {
-      description: `ID: ${entry._id}`,
-      action: {
-        label: 'Gotcha',
-        onClick: () => console.log('📎'),
-      },
-    });
-  }
+  trackByEntry: TrackByFunction<User> = (_: number, p: User) => p._id;
+  isEntrySelected = (entry: User) => this.selectionModel.isSelected(entry);
 
   /**
    * custom implementation below
    */
   readonly showUsersDialog = signal(false);
-  readonly showUsersDialogEntry = signal<EntryType>({} as EntryType);
+  readonly showUsersDialogEntry = signal<User>({} as User);
+  readonly showOrgsDialog = signal(false);
+  readonly showOrgsDialogEntry = signal<Org>({} as Org);
 
   readonly sortEmail = signal<'ASC' | 'DESC' | null>(null);
   readonly sortName = signal<'ASC' | 'DESC' | null>(null);
@@ -626,15 +629,42 @@ export class UsersTableComponent {
     }
   }
 
-  protected onEntryDelete(entry: EntryType) {
+  protected onEntryDelete(entry: User) {
     return async () => {
       this.selectionModel.deselect(entry);
       await insta.mutate('users').delete(entry._id);
     };
   }
 
-  protected editUser(entry: EntryType) {
+  protected editUser(entry: User) {
     this.showUsersDialogEntry.set(entry);
     this.showUsersDialog.set(true);
+  }
+
+  protected editOrg(entry: User) {
+    this.showOrgsDialogEntry.set(entry.org as Org);
+    this.showOrgsDialog.set(true);
+  }
+
+  protected copyOrgId(entry: User) {
+    navigator.clipboard.writeText(entry.org?._id || '');
+    toast('Org ID copied to clipboard', {
+      description: `ID: ${entry.org?._id || ''}`,
+      action: {
+        label: 'Nice',
+        onClick: () => console.log(`📎 Org: ${entry.org?._id || ''}`),
+      },
+    });
+  }
+
+  protected copyUserId(entry: User) {
+    navigator.clipboard.writeText(entry._id);
+    toast('User ID copied to clipboard', {
+      description: `ID: ${entry._id}`,
+      action: {
+        label: 'Gotcha',
+        onClick: () => console.log(`📎 User: ${entry._id}`),
+      },
+    });
   }
 }

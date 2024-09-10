@@ -113,6 +113,7 @@ const insta = new Instant({
   inspect: true,
   index: {
     users: ['_updated_at', '_expires_at', 'name', 'email'],
+    orgs: ['_updated_at', 'name'],
   },
   size: environment.instantSize,
   buffer: environment.instantBuffer,

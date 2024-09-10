@@ -164,6 +164,9 @@ export class OrgSelectComponent {
     return {
       orgs: {
         $limit: 10000,
+        $sort: {
+          name: 1,
+        },
         $filter: {
           name: {
             $regex: this.search(),

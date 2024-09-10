@@ -65,21 +65,25 @@ export interface InstantSyncResponse {
 
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
 
-type FilterCondition<T> = {
-  $exists?: boolean;
-  $nin?: any[];
-  $regex?: string;
-  $options?: string;
-  $eq?: any;
-};
+type FilterCondition<T> =
+  | {
+      $exists?: boolean;
+      $nin?: any[];
+      $regex?: string;
+      $options?: string;
+      $eq?: any;
+    }
+  | ((item: T) => boolean);
 
 type QueryDirectives<T> = {
   $limit?: number;
   $skip?: number;
-  $sort?: { [K in keyof T]?: 1 | -1 };
-  $filter?: {
-    [K in keyof T]?: FilterCondition<T>;
-  };
+  $sort?: { [K in keyof T]?: number };
+  $filter?:
+    | {
+        [K in keyof T]?: FilterCondition<T>;
+      }
+    | ((item: T) => boolean);
   $or?: Array<{ [K in keyof T]?: FilterCondition<T> | T }>;
   $by?: string;
 };
@@ -88,8 +92,12 @@ export type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
   [P in K]?: iQL<T, K> & QueryDirectives<z.infer<T[P]>>;
 };
 
-export const ejectPointer = <T extends z.BRAND<any>>(pointer: T) => {
+export const ejectPointerId = <T extends z.BRAND<any>>(pointer: T) => {
   return (pointer as unknown as string).split('$')[1];
+};
+
+export const ejectPointerCollection = <T extends z.BRAND<any>>(pointer: T) => {
+  return (pointer as unknown as string).split('$')[0];
 };
 
 export const createObjectIdSchema = <T extends string>(p: T) =>
@@ -142,6 +150,30 @@ const SyncSchema = z.object({
 });
 
 export class Instant<T extends SchemaType> {
+  public online = merge(
+    fromEvent(!isServer() ? window : new EventTarget(), 'online').pipe(
+      map(() => true)
+    ),
+    fromEvent(!isServer() ? window : new EventTarget(), 'offline').pipe(
+      map(() => false)
+    )
+  ).pipe(
+    startWith(!isServer() ? navigator.onLine : true),
+    distinctUntilChanged()
+  );
+
+  public syncing = from(
+    liveQuery(() => this.#db.table('_sync').toArray())
+  ).pipe(
+    map(
+      (activities) =>
+        activities.some(
+          (item) => item.activity === 'oldest' && item.status === 'incomplete'
+        ) && navigator.onLine
+    ),
+    startWith(false)
+  );
+
   #size = 1_000;
   #buffer = 10_000;
   #name: string;
@@ -156,7 +188,10 @@ export class Instant<T extends SchemaType> {
   #headers!: Record<string, string>;
   #params!: Record<string, string>;
   #wss: WebSocket | undefined;
-  #online!: Subscription;
+  #pendingMutationsRunner: Subscription | undefined;
+  #pendingMutationsChecker: Subscription | undefined;
+  #pendingPointersRunner: Subscription | undefined;
+  #pendingPointersBusy = false;
 
   #batch = new Subject<{
     collection: string;
@@ -180,6 +215,23 @@ export class Instant<T extends SchemaType> {
     }
   >();
 
+  #been_offline = false;
+  #online = this.online
+    .pipe(
+      tap((isOnline) => {
+        if (isOnline && this.#been_offline && this.#token) {
+          this.#syncBatch('recent');
+          this.#syncBatch('oldest');
+
+          if (this.#inspect) {
+            console.log('🟢 client is online');
+          }
+        }
+      }),
+      tap((isOnline) => (this.#been_offline = !isOnline))
+    )
+    .subscribe();
+
   get inspect() {
     return this.#inspect;
   }
@@ -192,30 +244,6 @@ export class Instant<T extends SchemaType> {
     }
     return this.#db;
   }
-
-  public syncing = from(
-    liveQuery(() => this.#db.table('_sync').toArray())
-  ).pipe(
-    map(
-      (activities) =>
-        activities.some(
-          (item) => item.activity === 'oldest' && item.status === 'incomplete'
-        ) && navigator.onLine
-    ),
-    startWith(false)
-  );
-
-  online = merge(
-    fromEvent(!isServer() ? window : new EventTarget(), 'online').pipe(
-      map(() => true)
-    ),
-    fromEvent(!isServer() ? window : new EventTarget(), 'offline').pipe(
-      map(() => false)
-    )
-  ).pipe(
-    startWith(!isServer() ? navigator.onLine : true),
-    distinctUntilChanged()
-  );
 
   constructor({
     // @todo for isolated tests
@@ -312,83 +340,23 @@ export class Instant<T extends SchemaType> {
       this.#db = db;
 
       this.#db.on('ready', (db) => {
-        /**
-         * initialize the mutation scheduler
-         */
-
         if (isServer()) {
           /**
            * schedule a runner for pending mutations
            */
-          interval(100)
-            .pipe(tap(async () => await this.#runQueue()))
+          this.#pendingMutationsRunner = interval(500)
+            .pipe(tap(async () => await this.#runPendingMutations()))
             .subscribe();
 
           /**
-           * schedule a check for pending mutations
+           * schedule a checker for pending mutations
            */
-          interval(1_000)
-            .pipe(
-              tap(async () => {
-                const collections = Object.keys(this.#schema);
-                for (const collection of collections) {
-                  // check for mutations pending
-                  const query = {
-                    [collection as keyof T]: {
-                      $filter: {
-                        _sync: {
-                          $eq: 1,
-                        },
-                      },
-                    },
-                  };
-
-                  // Check for pending mutations
-                  const pending = await this.query(query as unknown as iQL<T>);
-                  const data = pending[collection as keyof T];
-
-                  for (const item of data) {
-                    let url = `${this.#serverURL}/sync/${collection}`;
-                    const token = this.#token;
-                    const headers = this.#headers;
-                    const params = this.#params;
-                    const method = item['_expires_at']
-                      ? 'DELETE'
-                      : item['_created_at'] !== item['_updated_at']
-                      ? 'PUT'
-                      : 'POST';
-
-                    if (['DELETE', 'PUT'].includes(method)) {
-                      url += `/${item['_id']}`;
-                    }
-                    const key = `${method}-${item['_id']}`;
-
-                    if (!this.#queue.has(key)) {
-                      // push to the queue
-                      this.#queue.set(key, {
-                        url,
-                        method,
-                        token,
-                        data: item,
-                        headers,
-                        params,
-                        locked: false,
-                      });
-                    }
-                  }
-
-                  if (data.length > 0) {
-                    if (this.#inspect) {
-                      console.log('🔵 pending mutations', data);
-                    }
-                  }
-                }
-              })
-            )
+          this.#pendingMutationsChecker = interval(2000)
+            .pipe(tap(async () => await this.#runPendingMutationsChecker()))
             .subscribe();
 
           /**
-           * schedule a stream for the batch sync
+           * subscribe to the batch sync stream
            */
           this.#batch
             .pipe(
@@ -439,30 +407,26 @@ export class Instant<T extends SchemaType> {
               })
             )
             .subscribe();
-        } else {
-          /**
-           * monitor network activity
-           */
-          this.#online = this.online.subscribe(async (isOnline) => {
-            if (isOnline) {
-              this.#syncBatch('recent');
-              this.#syncBatch('oldest');
 
-              if (this.#inspect) {
-                console.log('🟢 client is online');
-              }
-            }
-          });
+          /**
+           * schedule a runner for pending pointers
+           */
+          this.#pendingPointersRunner = interval(750)
+            .pipe(tap(async () => await this.#runPendingPointers()))
+            .subscribe();
         }
 
-        Promise.resolve(db);
         if (this.#inspect && !isServer()) {
           // @ts-ignore
           window['insta'] = this;
         }
+
+        Promise.resolve(db);
       });
     } catch (error) {
-      console.error('Error initializing database', error);
+      if (this.#inspect) {
+        console.error('❌ Error while initializing database', error);
+      }
       Promise.reject(error);
     }
   }
@@ -512,12 +476,21 @@ export class Instant<T extends SchemaType> {
     this.#db.close();
     this.#queue.clear();
     this.#batch.complete();
-    if (this.#online) {
-      this.#online.unsubscribe();
+    this.#online.unsubscribe();
+
+    if (this.#pendingPointersRunner) {
+      this.#pendingPointersRunner.unsubscribe();
+    }
+    if (this.#pendingMutationsRunner) {
+      this.#pendingMutationsRunner.unsubscribe();
+    }
+    if (this.#pendingMutationsChecker) {
+      this.#pendingMutationsChecker.unsubscribe();
     }
     if (this.#wss && this.#wss.readyState === WebSocket.OPEN) {
       this.#wss.close();
     }
+
     if (this.#inspect) {
       console.log('🧹 Instant instance destroyed');
     }
@@ -657,7 +630,7 @@ export class Instant<T extends SchemaType> {
     return this.#db.table('_sync').put({ ...payload, activity });
   }
 
-  async #runQueue() {
+  async #runPendingMutations() {
     const queue = this.#queue.values();
     for (const { url, data, method, token, headers, params } of queue) {
       const key = `${method}-${data['_id']}`;
@@ -683,6 +656,132 @@ export class Instant<T extends SchemaType> {
     }
   }
 
+  async #runPendingMutationsChecker() {
+    const collections = Object.keys(this.#schema);
+    for (const collection of collections) {
+      // check for mutations pending
+      const query = {
+        [collection as keyof T]: {
+          $filter: {
+            _sync: {
+              $eq: 1,
+            },
+          },
+        },
+      };
+
+      // Check for pending mutations
+      const pending = await this.query(query as unknown as iQL<T>);
+      const data = pending[collection as keyof T];
+
+      for (const item of data) {
+        let url = `${this.#serverURL}/sync/${collection}`;
+        const token = this.#token;
+        const headers = this.#headers;
+        const params = this.#params;
+        const method = item['_expires_at']
+          ? 'DELETE'
+          : item['_created_at'] !== item['_updated_at']
+          ? 'PUT'
+          : 'POST';
+
+        if (['DELETE', 'PUT'].includes(method)) {
+          url += `/${item['_id']}`;
+        }
+        const key = `${method}-${item['_id']}`;
+
+        if (!this.#queue.has(key)) {
+          // push to the queue
+          this.#queue.set(key, {
+            url,
+            method,
+            token,
+            data: item,
+            headers,
+            params,
+            locked: false,
+          });
+        }
+      }
+
+      if (data.length > 0) {
+        if (this.#inspect) {
+          console.log('🔵 pending mutations', data);
+        }
+      }
+    }
+  }
+
+  async #runPendingPointers() {
+    if (this.#pendingPointersBusy) {
+      return;
+    }
+
+    this.#pendingPointersBusy = true;
+
+    const collections = Object.keys(this.#schema);
+    for (const collection of collections) {
+      // check for pointers using uuid
+      const query = {
+        [collection as keyof T]: {
+          $filter: (item: Document) => {
+            // Check for fields starting with _p_ and containing a dash in their value
+            return Object.entries(item).some(
+              ([key, value]) =>
+                key.startsWith('_p_') &&
+                typeof value === 'string' &&
+                value.includes('-')
+            );
+          },
+        },
+      };
+
+      // replace any pending pointers with the actual data
+      const pending = await this.query(query as unknown as iQL<T>);
+      const data = pending[collection as keyof T];
+
+      for (const item of data) {
+        const pointers = Object.entries(item).filter(
+          ([key, value]) =>
+            key.startsWith('_p_') &&
+            typeof value === 'string' &&
+            value.includes('-')
+        );
+
+        for (const [key, value] of pointers) {
+          const pointerCollection = ejectPointerCollection(value as any);
+          const pointerUuid = ejectPointerId(value as any);
+
+          // grab the pointer data
+          const pointerData = await this.query({
+            [pointerCollection]: {
+              $filter: {
+                _uuid: {
+                  $eq: pointerUuid,
+                },
+              },
+            },
+          } as unknown as iQL<T>);
+
+          const pointer = pointerData[pointerCollection][0];
+
+          if (pointer && !pointer._id.includes('-')) {
+            // update the item with the pointer data
+            item[key] = createPointer(pointerCollection, pointer._id);
+
+            // update the item in the database
+            await this.#db.table(collection).update(item._id, item);
+
+            if (this.#inspect) {
+              console.log('✅ pointer updated', pointerData);
+            }
+          }
+        }
+      }
+    }
+
+    this.#pendingPointersBusy = false;
+  }
   /**
    * Sync paginated data from a given collection outside the main thread
    *
@@ -873,28 +972,30 @@ export class Instant<T extends SchemaType> {
           if (status === 'created') {
             // make sure to mark as synced and update with server timestamp
             const uuid = value['_uuid'];
-            const localDocByUuid = await this.#db
-              .table(collection as string)
-              .get(uuid);
+            if (uuid) {
+              const localDocByUuid = await this.#db
+                .table(collection as string)
+                .get(uuid);
 
-            if (localDocByUuid) {
-              await this.#db.transaction(
-                'rw!',
-                this.#db.table(collection as string),
-                async () => {
-                  // gotta delete the old doc and create new one with server timestamp
-                  await this.#db.table(collection as string).delete(uuid);
-                  await this.#db.table(collection as string).add({
-                    ...value,
-                    _sync: 0, // to make sure response is marked as synced
-                  });
-                }
-              );
-            } else {
-              await this.#db.table(collection as string).add({
-                ...value,
-                _sync: 0, // to make sure response is marked as synced
-              });
+              if (localDocByUuid) {
+                await this.#db.transaction(
+                  'rw!',
+                  this.#db.table(collection as string),
+                  async () => {
+                    // gotta delete the old doc and create new one with server timestamp
+                    await this.#db.table(collection as string).delete(uuid);
+                    await this.#db.table(collection as string).add({
+                      ...value,
+                      _sync: 0, // to make sure response is marked as synced
+                    });
+                  }
+                );
+              } else {
+                await this.#db.table(collection as string).add({
+                  ...value,
+                  _sync: 0, // to make sure response is marked as synced
+                });
+              }
             }
           } else {
             // handle all other cases
@@ -916,7 +1017,7 @@ export class Instant<T extends SchemaType> {
           });
         } catch (err) {
           if (this.#inspect) {
-            console.log('🔴 mutation failed', collection, value);
+            console.log('🔴 live mutation failed', collection, value, err);
           }
         }
       },
@@ -1399,8 +1500,11 @@ export class Instant<T extends SchemaType> {
     this.#user = user;
     this.#headers = headers || {};
     this.#params = params || {};
-
-    await Promise.allSettled([this.#syncLive()]);
+    await Promise.allSettled([
+      this.#syncLive(),
+      this.#syncBatch('oldest'),
+      this.#syncBatch('recent'),
+    ]);
   }
 
   public syncPending(row: Document) {
@@ -1429,16 +1533,32 @@ export class Instant<T extends SchemaType> {
 
     // Apply $filter
     if (tableQuery.$filter) {
-      for (const [field, condition] of Object.entries(tableQuery.$filter)) {
-        if (condition?.$exists) {
-          table = table.filter(
-            (item) => item[field] != null
-          ) as unknown as Table<any, IndexableType>;
-        }
-        if (condition?.$nin) {
-          table = table.filter(
-            (item) => !(condition.$nin ?? []).includes(item[field])
-          ) as unknown as Table<any, IndexableType>;
+      if (typeof tableQuery.$filter === 'function') {
+        // If $filter is a function, use it directly
+        table = table.filter(tableQuery.$filter) as unknown as Table<
+          any,
+          IndexableType
+        >;
+      } else {
+        for (const [field, condition] of Object.entries(tableQuery.$filter)) {
+          if (
+            typeof condition === 'object' &&
+            condition &&
+            '$exists' in condition
+          ) {
+            table = table.filter(
+              (item) => item[field] != null
+            ) as unknown as Table<any, IndexableType>;
+          }
+          if (
+            typeof condition === 'object' &&
+            condition &&
+            '$nin' in condition
+          ) {
+            table = table.filter(
+              (item) => !(condition.$nin ?? []).includes(item[field])
+            ) as unknown as Table<any, IndexableType>;
+          }
         }
       }
     }
@@ -1558,36 +1678,6 @@ export class Instant<T extends SchemaType> {
             }
           }
 
-          // Apply $filter
-          if (tableQuery.$filter) {
-            for (const [field, condition] of Object.entries(
-              tableQuery.$filter
-            )) {
-              if (condition && '$exists' in condition) {
-                collection = collection.filter((item) => item[field] != null);
-              }
-              if (condition && '$nin' in condition && condition.$nin) {
-                collection = collection.filter(
-                  (item) => !(condition.$nin ?? []).includes(item[field])
-                );
-              }
-              if (condition && '$regex' in condition && condition.$regex) {
-                const regex = new RegExp(
-                  condition.$regex,
-                  condition.$options ?? 'i'
-                );
-                collection = collection.filter((item) =>
-                  regex.test(item[field])
-                );
-              }
-              if (condition && '$eq' in condition) {
-                collection = collection.filter(
-                  (item) => item[field] === condition.$eq
-                );
-              }
-            }
-          }
-
           // Apply $sort
           if (tableQuery.$sort && Object.keys(tableQuery.$sort).length > 0) {
             const sortFields = Object.entries(tableQuery.$sort);
@@ -1596,8 +1686,6 @@ export class Instant<T extends SchemaType> {
             const indexString = `[${sortFields
               .map(([field, _]) => field)
               .join('+')}]`;
-
-            // console.log(indexString);
 
             // Apply the sort
             collection = (
@@ -1608,6 +1696,41 @@ export class Instant<T extends SchemaType> {
             // cause apparently we can't do multi-sorting with compound indexes yet
             if (sortFields.length > 0 && sortFields[0][1] === -1) {
               collection = collection.reverse();
+            }
+          }
+
+          // Apply $filter
+          if (tableQuery.$filter) {
+            if (typeof tableQuery.$filter === 'function') {
+              // If $filter is a function, use it directly
+              collection = collection.filter(tableQuery.$filter);
+            } else {
+              for (const [field, condition] of Object.entries(
+                tableQuery.$filter
+              )) {
+                if (condition && '$exists' in condition) {
+                  collection = collection.filter((item) => item[field] != null);
+                }
+                if (condition && '$nin' in condition && condition.$nin) {
+                  collection = collection.filter(
+                    (item) => !(condition.$nin ?? []).includes(item[field])
+                  );
+                }
+                if (condition && '$regex' in condition && condition.$regex) {
+                  const regex = new RegExp(
+                    condition.$regex,
+                    condition.$options ?? 'i'
+                  );
+                  collection = collection.filter((item) =>
+                    regex.test(item[field])
+                  );
+                }
+                if (condition && '$eq' in condition) {
+                  collection = collection.filter(
+                    (item) => item[field] === condition.$eq
+                  );
+                }
+              }
             }
           }
 

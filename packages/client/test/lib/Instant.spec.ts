@@ -110,6 +110,9 @@ describe('Instant', () => {
       name: 'InstantTest',
       inspect: true,
       serverURL: 'https://some.api.com',
+      index: {
+        users: ['name'],
+      },
     });
 
     await insta.ready();
@@ -177,7 +180,7 @@ describe('Instant', () => {
     expect(result).toEqual([...posts].reverse());
   });
 
-  test('simple iQL query', async () => {
+  test('simple query', async () => {
     const iql = {
       users: {},
     };
@@ -214,7 +217,7 @@ describe('Instant', () => {
     });
   });
 
-  test('iQL query with two sided tables', async () => {
+  test('query with two sided tables', async () => {
     const iql = {
       users: {},
       posts: {},
@@ -272,7 +275,7 @@ describe('Instant', () => {
     });
   });
 
-  test('nested iQL query with $by directive', async () => {
+  test('nested query with $by directive', async () => {
     const result = await insta.query({
       users: {
         posts: {
@@ -335,7 +338,7 @@ describe('Instant', () => {
     });
   });
 
-  test('nested iQL query without $by directive', async () => {
+  test('nested query without $by directive', async () => {
     const posts2 = [
       {
         _id: 'post11112',
@@ -423,7 +426,7 @@ describe('Instant', () => {
     });
   });
 
-  test('create records via batch sync', async () => {
+  test('sync batch create records', async () => {
     const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
       // @ts-ignore
       (url, options) => {
@@ -461,7 +464,7 @@ describe('Instant', () => {
     fetcherSpy.mockRestore();
   });
 
-  test('update records via batch sync', async () => {
+  test('sync batch update records', async () => {
     const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
       // @ts-ignore
       (url, options) => {
@@ -498,7 +501,7 @@ describe('Instant', () => {
     fetcherSpy.mockRestore();
   });
 
-  test('delete records via batch sync', async () => {
+  test('sync batch delete records', async () => {
     const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
       // @ts-ignore
       (url, options) => {
@@ -535,7 +538,7 @@ describe('Instant', () => {
     fetcherSpy.mockRestore();
   });
 
-  test('should filter users using $regex', async () => {
+  test('query filter users using $regex', async () => {
     const { users } = await insta.query({
       users: {
         $filter: {
@@ -549,7 +552,7 @@ describe('Instant', () => {
     expect(users[1].name).toBe('Teobaldo José');
   });
 
-  test('should filter users using $regex with $options i by default', async () => {
+  test('query filter users using $regex with $options i by default', async () => {
     const { users } = await insta.query({
       users: {
         $filter: {
@@ -562,7 +565,7 @@ describe('Instant', () => {
     expect(users[0].name).toBe('Teobaldo José');
   });
 
-  test('should filter users using $or', async () => {
+  test('query filter users using $or', async () => {
     const { users } = await insta.query({
       users: {
         $or: [
@@ -578,7 +581,7 @@ describe('Instant', () => {
     expect(users[2].name).toBe('Teobaldo José');
   });
 
-  test('should filter users using $eq', async () => {
+  test('query filter users using $eq', async () => {
     const { users } = await insta.query({
       users: {
         $filter: {
@@ -619,7 +622,7 @@ describe('Instant', () => {
     expect(users[0].name).toBe('Elon Musk');
   });
 
-  test('filter with nullish $eq', async () => {
+  test('query filter with nullish $eq', async () => {
     const { users } = await insta.query({
       users: {
         $filter: {
@@ -631,7 +634,7 @@ describe('Instant', () => {
     expect(users).toHaveLength(0);
   });
 
-  test('filter with $eq zero', async () => {
+  test('query filter with $eq zero', async () => {
     const { users } = await insta.query({
       users: {
         $filter: {
@@ -643,7 +646,7 @@ describe('Instant', () => {
     expect(users).toHaveLength(0);
   });
 
-  test('should filter and sort using _update_at by default', async () => {
+  test('query filter and sort using _update_at by default', async () => {
     const { users } = await insta.query({
       users: {},
     });
@@ -662,12 +665,49 @@ describe('Instant', () => {
     expect(usersUpdated[0].name).toBe('Tunico');
   });
 
-  test('should filter $regex with $options `i` by default', async () => {
+  test('query filter $regex with $options `i` by default', async () => {
     const { users } = await insta.query({
       users: {
         $filter: {
           name: { $regex: 't' },
         },
+      },
+    });
+
+    expect(users).toHaveLength(2);
+    expect(users[0].name).toBe('Tobias Afonso');
+    expect(users[1].name).toBe('Teobaldo José');
+  });
+
+  test('query filter using $sort', async () => {
+    const { users } = await insta.query({
+      users: {
+        $sort: {
+          name: 1,
+        },
+      },
+    });
+    expect(users[0].name).toBe('Elis');
+  });
+
+  test('query filter using $sort + $filter', async () => {
+    const { users } = await insta.query({
+      users: {
+        $sort: {
+          name: -1,
+        },
+        $filter: {
+          name: { $regex: 't' },
+        },
+      },
+    });
+    expect(users[0].name).toBe('Tobias Afonso');
+  });
+
+  test('query filter can also be a function', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: (user) => user.name.startsWith('T'),
       },
     });
 
