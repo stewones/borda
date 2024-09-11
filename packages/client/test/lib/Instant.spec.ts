@@ -1,27 +1,44 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import 'fake-indexeddb/auto';
 
+import * as rxjs from 'rxjs';
+import {
+  firstValueFrom,
+  Subject,
+  take,
+  toArray,
+} from 'rxjs';
 import { z } from 'zod';
 
 import {
   createObjectIdSchema,
   createPointer,
+  delay,
   Instant,
   InstantSyncResponse,
 } from '@borda/client';
 
 import * as lib from '../../../client/src/lib';
+import * as utils from '../../src/lib/utils';
 
 // global mocks
 global.structuredClone = jest.fn((data) => data);
+
+const tick = (ms = 0) => {
+  jest.advanceTimersByTime(ms);
+};
 
 const UserId = createObjectIdSchema('users');
 const PostId = createObjectIdSchema('posts');
 const CommentId = createObjectIdSchema('comments');
 
 jest.mock('../../../client/src/lib/fetcher');
+jest.mock('../../src/lib/utils', () => ({
+  ...jest.requireActual('../../src/lib/utils'),
+  isServer: jest.fn().mockReturnValue(false),
+}));
 
-describe('Instant', () => {
+describe('Instant Client', () => {
   const schema = {
     users: z.object({
       _id: UserId,
@@ -718,5 +735,301 @@ describe('Instant', () => {
     expect(users).toHaveLength(2);
     expect(users[0].name).toBe('Tobias Afonso');
     expect(users[1].name).toBe('Teobaldo José');
+  });
+
+  test('syncing stream should emit false when no sync activities are present', async () => {
+    const syncingValue = await firstValueFrom(insta.syncing);
+    expect(syncingValue).toBe(false);
+  });
+
+  test('syncing stream should emit true when there is an incomplete oldest sync activity', async () => {
+    const syncHistory: boolean[] = [];
+    insta.syncing.subscribe((syncing) => {
+      syncHistory.push(syncing);
+    });
+    await insta.db.table('_sync').add({
+      collection: 'users',
+      activity: 'oldest',
+      status: 'incomplete',
+      synced: new Date().toISOString(),
+      count: 50000,
+    });
+    // Add a delay to allow time for the observable to emit
+    await delay(100);
+    expect(syncHistory).toEqual([false, true]);
+  });
+
+  test('syncing stream should emit false when all sync activities are complete', async () => {
+    const syncHistory: boolean[] = [];
+    insta.syncing.subscribe((syncing) => {
+      syncHistory.push(syncing);
+    });
+    await insta.db.table('_sync').add({
+      collection: 'users',
+      activity: 'oldest',
+      status: 'complete',
+      synced: new Date().toISOString(),
+      count: 0,
+    });
+    // Add a delay to allow time for the observable to emit
+    await delay(100);
+    expect(syncHistory).toEqual([false, false]);
+  });
+
+  describe('online stream', () => {
+    let originalAddEventListener: typeof window.addEventListener;
+    let originalRemoveEventListener: typeof window.removeEventListener;
+    let originalNavigatorOnLine: boolean;
+    let eventListeners: { [key: string]: Function[] };
+
+    beforeEach(() => {
+      originalAddEventListener = window.addEventListener;
+      originalRemoveEventListener = window.removeEventListener;
+      originalNavigatorOnLine = navigator.onLine;
+
+      eventListeners = {};
+
+      // Mock addEventListener
+      window.addEventListener = jest.fn((event, callback) => {
+        if (!eventListeners[event]) {
+          eventListeners[event] = [];
+        }
+        eventListeners[event].push(callback as Function);
+      });
+
+      // Mock removeEventListener
+      window.removeEventListener = jest.fn((event, callback) => {
+        if (eventListeners[event]) {
+          eventListeners[event] = eventListeners[event].filter(
+            (cb) => cb !== callback
+          );
+        }
+      });
+
+      // Mock navigator.onLine
+      Object.defineProperty(navigator, 'onLine', {
+        get: jest.fn(() => true),
+        configurable: true,
+      });
+    });
+
+    afterEach(() => {
+      window.addEventListener = originalAddEventListener;
+      window.removeEventListener = originalRemoveEventListener;
+      Object.defineProperty(navigator, 'onLine', {
+        get: () => originalNavigatorOnLine,
+        configurable: true,
+      });
+    });
+
+    function dispatchEvent(eventName: string) {
+      if (eventListeners[eventName]) {
+        eventListeners[eventName].forEach((callback) =>
+          callback(new Event(eventName))
+        );
+      }
+    }
+
+    test('should emit initial online status', (done) => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest',
+        serverURL: 'https://some.api.com',
+      });
+
+      insta.online.pipe(take(1)).subscribe((isOnline) => {
+        expect(isOnline).toBe(true);
+        done();
+      });
+    });
+
+    test('should emit online status changes', (done) => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest',
+        serverURL: 'https://some.api.com',
+      });
+
+      insta.online.pipe(take(3), toArray()).subscribe((statuses) => {
+        expect(statuses).toEqual([true, false, true]);
+        done();
+      });
+
+      // Simulate offline event
+      dispatchEvent('offline');
+
+      // Simulate online event
+      dispatchEvent('online');
+    });
+
+    test('should not emit duplicate statuses', (done) => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest',
+        serverURL: 'https://some.api.com',
+      });
+
+      insta.online.pipe(take(3), toArray()).subscribe((statuses) => {
+        expect(statuses).toEqual([true, false, true]);
+        done();
+      });
+
+      // Simulate multiple offline events
+      dispatchEvent('offline');
+      dispatchEvent('offline');
+
+      // Simulate multiple online events
+      dispatchEvent('online');
+      dispatchEvent('online');
+    });
+  });
+
+  describe('online stream (web worker)', () => {
+    let isServerSpy: jest.SpyInstance;
+    let eventTarget: EventTarget;
+
+    beforeEach(() => {
+      isServerSpy = jest.spyOn(utils, 'isServer').mockReturnValue(true);
+
+      eventTarget = new EventTarget();
+      jest.spyOn(global, 'EventTarget').mockImplementation(() => eventTarget);
+    });
+
+    afterEach(() => {
+      isServerSpy.mockRestore();
+      jest.restoreAllMocks();
+    });
+
+    test('should use EventTarget from within the webworker', (done) => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest',
+        serverURL: 'https://some.api.com',
+      });
+
+      insta.online.pipe(take(3), toArray()).subscribe((statuses) => {
+        expect(statuses).toEqual([true, false, true]);
+        done();
+      });
+
+      // Simulate offline event
+      eventTarget.dispatchEvent(new Event('offline'));
+
+      // Simulate online event
+      eventTarget.dispatchEvent(new Event('online'));
+    });
+
+    test('should not emit duplicate statuses on server-side', (done) => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest',
+        serverURL: 'https://some.api.com',
+      });
+
+      insta.online.pipe(take(3), toArray()).subscribe((statuses) => {
+        expect(statuses).toEqual([true, false, true]);
+        done();
+      });
+
+      // Simulate multiple offline events
+      eventTarget.dispatchEvent(new Event('offline'));
+      eventTarget.dispatchEvent(new Event('offline'));
+
+      // Simulate multiple online events
+      eventTarget.dispatchEvent(new Event('online'));
+      eventTarget.dispatchEvent(new Event('online'));
+    });
+  });
+
+  describe('Task Scheduler', () => {
+    let isServerSpy: jest.SpyInstance;
+    let intervalSpy: jest.SpyInstance;
+    let allSettledSpy: jest.SpyInstance;
+    let intervalSubject: Subject<number>;
+
+    beforeEach(() => {
+      isServerSpy = jest.spyOn(utils, 'isServer').mockReturnValue(true);
+
+      intervalSubject = new Subject<number>();
+      intervalSpy = jest
+        .spyOn(rxjs, 'interval')
+        .mockReturnValue(intervalSubject);
+
+      allSettledSpy = jest.spyOn(Promise, 'allSettled').mockResolvedValue([]);
+    });
+
+    afterEach(() => {
+      isServerSpy.mockRestore();
+      intervalSpy.mockRestore();
+      allSettledSpy.mockRestore();
+      jest.restoreAllMocks();
+    });
+
+    test('should schedule tasks when isServer is true', async () => {
+      const insta2 = new Instant({
+        schema,
+        name: 'InstantTest2',
+        serverURL: 'https://some.api.com',
+      });
+
+      await insta2.ready();
+
+      expect(isServerSpy).toHaveBeenCalled();
+      expect(intervalSpy).toHaveBeenCalledWith(1000);
+
+      intervalSubject.next(0);
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(allSettledSpy).toHaveBeenCalled();
+      expect(allSettledSpy).toHaveBeenCalledWith([
+        expect.any(Promise),
+        expect.any(Promise),
+      ]);
+    });
+  });
+
+  describe('Batch Sync Scheduler', () => {
+    let isServerSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      isServerSpy = jest.spyOn(utils, 'isServer').mockReturnValue(true);
+    });
+
+    afterEach(() => {
+      isServerSpy.mockRestore();
+      jest.restoreAllMocks();
+    });
+
+    test('run batch worker through sync scheduler', async () => {
+      jest.useFakeTimers();
+      const insta2 = new Instant({
+        schema,
+        name: 'InstantTest2',
+        serverURL: 'https://some.api.com',
+        buffer: 100,
+      });
+
+      const runBatchWorkerSpy = jest
+        .spyOn(insta2, 'runBatchWorker')
+        .mockResolvedValue({} as any);
+
+      await insta2.ready();
+
+      insta2.addBatch({
+        collection: 'users',
+        synced: new Date().toISOString(),
+        activity: 'recent',
+        token: 'some-token',
+        headers: {},
+        params: {},
+      });
+
+      tick(1000);
+
+      expect(runBatchWorkerSpy).toHaveBeenCalled();
+
+      runBatchWorkerSpy.mockClear();
+    });
   });
 });

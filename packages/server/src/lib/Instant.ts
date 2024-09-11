@@ -1026,8 +1026,10 @@ export class Instant<C extends string> {
                     _id: item._id,
                   },
                   {
-                    [key]: createPointer(pointerCollection, pointerId),
-                    _updated_at: new Date().toISOString(),
+                    $set: {
+                      [key]: createPointer(pointerCollection, pointerId),
+                      _updated_at: new Date(),
+                    },
                   }
                 );
                 if (this.#inspect) {

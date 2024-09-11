@@ -152,10 +152,7 @@ export class Instant<T extends SchemaType> {
     fromEvent(!isServer() ? window : new EventTarget(), 'offline').pipe(
       map(() => false)
     )
-  ).pipe(
-    startWith(!isServer() ? navigator.onLine : true),
-    distinctUntilChanged()
-  );
+  ).pipe(startWith(navigator.onLine), distinctUntilChanged());
 
   public syncing = from(
     liveQuery(() => this.#db.table('_sync').toArray())
@@ -172,6 +169,7 @@ export class Instant<T extends SchemaType> {
   #size = 1_000;
   #buffer = 10_000;
   #name: string;
+  #version: number;
   #db!: Dexie;
   #worker!: Worker;
   #serverURL: string;
@@ -186,7 +184,6 @@ export class Instant<T extends SchemaType> {
   #pendingTasks: Subscription | undefined;
   #pendingPointersBusy = false;
   #pendingMutationsBusy = false;
-
   #batch = new Subject<{
     collection: string;
     synced: string;
@@ -203,7 +200,7 @@ export class Instant<T extends SchemaType> {
         if (isOnline && this.#been_offline && this.#token) {
           this.#syncBatch('recent');
           this.#syncBatch('oldest');
-
+          /* istanbul ignore next */
           if (this.#inspect) {
             console.log('🟢 client is online');
           }
@@ -227,12 +224,9 @@ export class Instant<T extends SchemaType> {
   }
 
   constructor({
-    // @todo for isolated tests
-    // db,
-    // idb,
-    // idbKeyRange,
     schema,
     name,
+    version = 1,
     serverURL,
     inspect,
     buffer,
@@ -241,14 +235,11 @@ export class Instant<T extends SchemaType> {
     params,
     index,
   }: {
-    // @todo for isolated tests
-    // db?: Dexie;
-    // idb?: typeof indexedDB;
-    // idbKeyRange?: typeof IDBKeyRange;
     name: Capitalize<string>;
+    version?: number;
     schema: T;
     index?: Partial<Record<keyof T, string[]>>;
-    serverURL?: string | undefined;
+    serverURL: string;
     inspect?: boolean | undefined;
     buffer?: number | undefined;
     size?: number | undefined;
@@ -258,7 +249,8 @@ export class Instant<T extends SchemaType> {
   }) {
     this.#name = name;
     this.#schema = schema;
-    this.#serverURL = serverURL || '';
+    this.#version = version;
+    this.#serverURL = serverURL;
     this.#inspect = inspect || false;
     this.#buffer = buffer || this.#buffer;
     this.#size = size || this.#size;
@@ -311,93 +303,90 @@ export class Instant<T extends SchemaType> {
         SyncSchema.shape
       ).join(', ')}`;
 
-      const db = new Dexie(this.#name, {
-        // @todo for isolated tests
-        // indexedDB: idb,
-        // IDBKeyRange: idbKeyRange,
-      });
+      const db = new Dexie(this.#name);
 
-      db.version(1).stores(dexieSchema);
+      db.version(this.#version).stores(dexieSchema);
+
       this.#db = db;
-
       this.#db.on('ready', (db) => {
-        if (isServer()) {
-          /**
-           * task scheduler
-           */
-          this.#pendingTasks = interval(1000)
-            .pipe(
-              tap(async () =>
-                Promise.allSettled([
-                  this.#runPendingMutations(),
-                  this.#runPendingPointers(),
-                ])
-              )
-            )
-            .subscribe();
-
-          /**
-           * batch sync scheduler
-           */
-          this.#batch
-            .pipe(
-              bufferTime(this.#buffer),
-              tap(async (collections) => {
-                for (const {
-                  collection,
-                  activity,
-                  synced,
-                  token,
-                  headers,
-                  params,
-                } of collections) {
-                  try {
-                    // this.#worker.postMessage(JSON.stringify({ syncing: true }));
-                    const perf = performance.now();
-                    const url = `${
-                      this.#serverURL
-                    }/sync/${collection}?activity=${activity}&synced=${synced}`;
-
-                    await this.#runBatchWorker({
-                      url,
-                      token,
-                      headers,
-                      params,
-                    });
-
-                    /* istanbul ignore next */
-                    if (this.inspect) {
-                      const syncDuration = performance.now() - perf;
-                      const usage = await this.usage(collection);
-                      console.log(
-                        `💨 sync ${syncDuration.toFixed(2)}ms`,
-                        collection,
-                        activity,
-                        synced
-                      );
-                      console.log('💾 estimated usage for', collection, usage);
-                    }
-                    // this.#worker.postMessage(JSON.stringify({ syncing: false }));
-                  } catch (err) {
-                    /* istanbul ignore next */
-                    if (this.#inspect) {
-                      console.error('Error scheduling sync', err);
-                    }
-                  }
-                }
-              })
-            )
-            .subscribe();
-        }
-
+        /* istanbul ignore next */
         if (this.#inspect && !isServer()) {
           // @ts-ignore
           window['insta'] = this;
         }
-
         Promise.resolve(db);
       });
+
+      if (isServer()) {
+        /**
+         * task scheduler
+         */
+        this.#pendingTasks = interval(1000)
+          .pipe(
+            tap(
+              async () =>
+                await Promise.allSettled([
+                  this.#runPendingMutations(),
+                  this.#runPendingPointers(),
+                ])
+            )
+          )
+          .subscribe();
+
+        /**
+         * batch sync scheduler
+         */
+        this.#batch
+          .pipe(
+            bufferTime(this.#buffer),
+            tap(async (collections) => {
+              for (const {
+                collection,
+                activity,
+                synced,
+                token,
+                headers,
+                params,
+              } of collections) {
+                try {
+                  /* istanbul ignore next */
+                  const perf = performance.now();
+                  const url = `${
+                    this.#serverURL
+                  }/sync/${collection}?activity=${activity}&synced=${synced}`;
+
+                  await this.runBatchWorker({
+                    url,
+                    token,
+                    headers,
+                    params,
+                  });
+
+                  /* istanbul ignore next */
+                  if (this.inspect) {
+                    const syncDuration = performance.now() - perf;
+                    const usage = await this.usage(collection);
+                    console.log(
+                      `💨 sync ${syncDuration.toFixed(2)}ms`,
+                      collection,
+                      activity,
+                      synced
+                    );
+                    console.log('💾 estimated usage for', collection, usage);
+                  }
+                } catch (err) {
+                  /* istanbul ignore next */
+                  if (this.#inspect) {
+                    console.error('Error scheduling sync', err);
+                  }
+                }
+              }
+            })
+          )
+          .subscribe();
+      }
     } catch (error) {
+      /* istanbul ignore next */
       if (this.#inspect) {
         console.error('❌ Error while initializing database', error);
       }
@@ -462,6 +451,7 @@ export class Instant<T extends SchemaType> {
     this.#pendingMutationsBusy = false;
     this.#pendingPointersBusy = false;
 
+    /* istanbul ignore next */
     if (this.#inspect) {
       console.log('🧹 Instant instance destroyed');
     }
@@ -469,12 +459,6 @@ export class Instant<T extends SchemaType> {
 
   public setWorker({ worker }: { worker: Worker }) {
     this.#worker = worker;
-    // didn't play well
-    // this.#worker.onmessage = (ev) => {
-    //   console.log('ev', ev);
-    //   const { syncing } = JSON.parse(ev.data || '{}');
-    //   this.syncing.next(!!syncing);
-    // };
   }
 
   /**
@@ -520,7 +504,7 @@ export class Instant<T extends SchemaType> {
          */
         if (sync === 'batch') {
           // postMessage(JSON.stringify({ syncing: true }));
-          const { collection, activity, synced } = await this.#runBatchWorker({
+          const { collection, activity, synced } = await this.runBatchWorker({
             url,
             token,
             headers,
@@ -635,6 +619,7 @@ export class Instant<T extends SchemaType> {
           );
 
           if (errors) {
+            /* istanbul ignore next */
             if (this.#inspect) {
               console.error(
                 '❌ validation failed',
@@ -674,12 +659,14 @@ export class Instant<T extends SchemaType> {
         }
 
         if (data.length > 0) {
+          /* istanbul ignore next */
           if (this.#inspect) {
             console.log('🔵 pending mutations', data);
           }
         }
       }
     } catch (error) {
+      /* istanbul ignore next */
       if (this.#inspect) {
         console.error('Error while running pending mutations', error);
       }
@@ -748,6 +735,7 @@ export class Instant<T extends SchemaType> {
             // update the item in the database
             await this.#db.table(collection).update(item._id, item);
 
+            /* istanbul ignore next */
             if (this.#inspect) {
               console.log('✅ pointer updated', pointerData);
             }
@@ -764,7 +752,7 @@ export class Instant<T extends SchemaType> {
    *
    * @returns Promise<void>
    */
-  async #runBatchWorker({
+  async runBatchWorker({
     url,
     token,
     headers,
@@ -848,6 +836,7 @@ export class Instant<T extends SchemaType> {
     // we skip this on mobile devices to avoid unecessary data consumption
     // !isMobile && (needs a more robust implementation, like set a max storage setting)
     if (localCount < remoteCount) {
+      /* istanbul ignore next */
       if (this.#inspect) {
         console.log(
           '⏰ scheduling next sync in',
@@ -858,7 +847,7 @@ export class Instant<T extends SchemaType> {
           synced
         );
       }
-      this.#batch.next({
+      this.addBatch({
         collection,
         synced,
         activity,
@@ -916,12 +905,14 @@ export class Instant<T extends SchemaType> {
       onOpen: (ws) => {
         this.#wss = ws;
         wssConnected = true;
+        /* istanbul ignore next */
         if (this.#inspect) {
           console.log('🟡 sync live worker open');
         }
       },
 
       onError: (ws, err) => {
+        /* istanbul ignore next */
         if (this.#inspect) {
           console.log('🔴 sync live worker error', err);
         }
@@ -929,6 +920,7 @@ export class Instant<T extends SchemaType> {
 
       onConnect: (ws) => {
         hasConnected = true;
+        /* istanbul ignore next */
         if (this.#inspect) {
           console.log('🟢 sync live worker connected');
         }
@@ -993,6 +985,7 @@ export class Instant<T extends SchemaType> {
             count: 0,
           });
         } catch (err) {
+          /* istanbul ignore next */
           if (this.#inspect) {
             console.log('🔴 live mutation failed', collection, value, err);
           }
@@ -1007,6 +1000,7 @@ export class Instant<T extends SchemaType> {
 
         // 1000 is a normal close, so we can safely close on it
         if (wssFinished || ev?.code === 1000 || !hasConnected) {
+          /* istanbul ignore next */
           if (this.#inspect) {
             console.log('🔴 closing websocket', ev.code);
           }
@@ -1042,12 +1036,6 @@ export class Instant<T extends SchemaType> {
     this.#buildWebSocket(url)(webSocket);
   }
 
-  /**
-   * A batch that requests mutation from the server
-   * and update the local db with the new timestamp and id
-   *
-   * @returns Promise<void>
-   */
   async #runMutationWorker({
     collection,
     url,
@@ -1066,6 +1054,7 @@ export class Instant<T extends SchemaType> {
     params?: Record<string, string>;
   }) {
     if (!navigator.onLine) {
+      /* istanbul ignore next */
       if (this.#inspect) {
         console.log('🔴 mutation skipped', 'no internet');
       }
@@ -1088,7 +1077,7 @@ export class Instant<T extends SchemaType> {
     if (Object.keys(finalParams).length > 0) {
       url += `?${new URLSearchParams(finalParams).toString()}`;
     }
-    
+
     try {
       // post to the server
       await fetcher(url, {
@@ -1230,6 +1219,7 @@ export class Instant<T extends SchemaType> {
           .table(collection)
           .add({ ...value, _sync: 0 })
           .catch((err) => {
+            /* istanbul ignore next */
             if (this.#inspect) {
               console.error('Error adding document', collection, value, err);
             }
@@ -1252,6 +1242,7 @@ export class Instant<T extends SchemaType> {
               _sync: 0,
             })
             .catch((err) => {
+              /* istanbul ignore next */
               if (this.#inspect) {
                 console.error(
                   'Error updating document',
@@ -1268,6 +1259,7 @@ export class Instant<T extends SchemaType> {
           .table(collection)
           .delete(value['_id'])
           .catch((err) => {
+            /* istanbul ignore next */
             if (this.#inspect) {
               console.error('Error deleting document', collection, value, err);
             }
@@ -1340,6 +1332,31 @@ export class Instant<T extends SchemaType> {
 
     combine(0, []);
     return result;
+  }
+
+  public addBatch({
+    collection,
+    synced,
+    activity,
+    token,
+    headers,
+    params,
+  }: {
+    collection: string;
+    synced: string;
+    activity: InstantSyncActivity;
+    token: string;
+    headers: Record<string, string>;
+    params: Record<string, string>;
+  }) {
+    this.#batch.next({
+      collection,
+      synced,
+      activity,
+      token,
+      headers,
+      params,
+    });
   }
 
   public mutate<C extends keyof T>(collection: C) {
@@ -1461,11 +1478,11 @@ export class Instant<T extends SchemaType> {
    */
   public async sync({
     /**
-     * used to authenticate the requests on the server
+     * session token used to authenticate the requests on the server
      */
     session,
     /**
-     * used to create pointers when mutating data
+     * user id used to create pointers when mutating data
      */
     user,
     /**
@@ -1503,6 +1520,7 @@ export class Instant<T extends SchemaType> {
     this.#user = user;
     this.#headers = headers || {};
     this.#params = params || {};
+
     await Promise.allSettled([
       this.#syncLive(),
       this.#syncBatch('oldest'),
@@ -1570,13 +1588,12 @@ export class Instant<T extends SchemaType> {
   }
 
   /**
-   * @todo @experimental
-   * WIP: query syntax based on a graph of collections
-   * so we can have easy access to nested data, while keeping
-   * the mongodb query syntax which is then translated to dexie
+   * query syntax based on a graph of collections
+   * so we can have easy access to nested data, while reusing
+   * mongodb query style which is then translated to dexie
    *
    * server should follow the same pattern so we can have
-   * the same query for both client and server
+   * the same query format for both client and server
    *
    * @example
    * const query = {
