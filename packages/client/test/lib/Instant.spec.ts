@@ -381,7 +381,7 @@ describe('Instant Client', () => {
     });
   });
 
-  fit('nested query without $by directive', async () => {
+  test('nested query without $by directive', async () => {
     const posts2 = [
       {
         _id: 'post11112',
@@ -412,10 +412,6 @@ describe('Instant Client', () => {
         posts: {},
       },
     });
-
-    const data = await insta.db.table('users').toArray();
-
-    console.log('data', data);
 
     // @ts-ignore
     expect(result.users[0].posts).toHaveLength(1);
@@ -1169,6 +1165,29 @@ describe('Instant Client', () => {
     });
   });
 
+  test('run pending deleted mutations', async () => {
+    const runMutationWorkerSpy = jest
+      .spyOn(insta, 'runMutationWorker')
+      .mockResolvedValue();
+
+    await insta.mutate('users').delete('objId2222');
+    await insta.runPendingMutations();
+
+    const data = await insta.db.table('users').get('objId2222');
+
+    expect(runMutationWorkerSpy).toHaveBeenCalledTimes(1);
+    expect(runMutationWorkerSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'DELETE',
+        url: expect.stringContaining('sync/users/objId2222'),
+      })
+    );
+
+    expect(data._expires_at).toBeDefined();
+
+    await insta.destroy();
+  });
+
   describe('online stream (web worker)', () => {
     let isServerSpy: jest.SpyInstance;
     let eventTarget: EventTarget;
@@ -1320,59 +1339,6 @@ describe('Instant Client', () => {
 
       runBatchWorkerSpy.mockClear();
       await insta3.destroy();
-    });
-  });
-
-  describe('Mutation Scheduler', () => {
-    let isServerSpy: jest.SpyInstance;
-
-    beforeEach(() => {
-      isServerSpy = jest.spyOn(utils, 'isServer').mockReturnValue(true);
-      // jest.useFakeTimers();
-    });
-
-    afterEach(() => {
-      isServerSpy?.mockRestore();
-      jest.useRealTimers();
-      // jest.restoreAllMocks();
-    });
-
-    test('run pending deleted mutations', async () => {
-      // const insta22 = new Instant({
-      //   schema,
-      //   inspect: true,
-      //   name: 'InstantTest22',
-      //   serverURL: 'https://some.api.com',
-      //   session: '1337',
-      //   user: '420',
-      // });
-
-      //  await insta22.ready();
-
-      const runMutationWorkerSpy = jest
-        .spyOn(insta, 'runMutationWorker')
-        .mockResolvedValue();
-
-      // for (const user of users) {
-      //   await insta22.db.table('users').add(user);
-      // }
-
-      await insta.mutate('users').delete('objId2222');
-      await insta.runPendingMutations();
-
-      const data = await insta.db.table('users').get('objId2222');
-      console.log(123, data);
-      expect(runMutationWorkerSpy).toHaveBeenCalledTimes(1);
-      //   expect(runMutationWorkerSpy).toHaveBeenCalledWith(
-      //     expect.objectContaining({
-      //       method: 'DELETE',
-      //       url: expect.stringContaining('sync/users/objId2222'),
-      //     })
-      //   );
-
-      //   expect(data._expires_at).toBeDefined();
-
-      // await insta.destroy(); // this breaks this test
     });
   });
 });

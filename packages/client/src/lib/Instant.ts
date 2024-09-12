@@ -26,10 +26,7 @@ import { z } from 'zod';
 
 import { fetcher } from './fetcher';
 import { Document } from './types';
-import {
-  guid,
-  isServer,
-} from './utils';
+import { cloneDeep, guid, isServer } from './utils';
 import { WebSocketFactory } from './websocket';
 
 export type InstantSchemaField = z.ZodTypeAny;
@@ -1824,7 +1821,7 @@ export class Instant<T extends SchemaType> {
         }
 
         // Execute the query
-        let tableData = await collection.toArray();
+        let tableData = cloneDeep(await collection.toArray());
 
         // Process nested queries
         for (const item of tableData) {
