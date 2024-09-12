@@ -49,9 +49,7 @@ export interface InstantSyncResponseData {
   updatedFields?: Record<string, any>;
   removedFields?: string[];
   truncatedArrays?: Array<{
-    /** The name of the truncated field. */
     field: string;
-    /** The number of elements in the truncated array. */
     newSize: number;
   }>;
 }
@@ -154,9 +152,7 @@ export class Instant<T extends SchemaType> {
     )
   ).pipe(startWith(navigator.onLine), distinctUntilChanged());
 
-  public syncing = from(
-    liveQuery(() => this.#db.table('_sync').toArray())
-  ).pipe(
+  public syncing = from(liveQuery(() => this.db.table('_sync').toArray())).pipe(
     map(
       (activities) =>
         activities.some(
@@ -198,8 +194,8 @@ export class Instant<T extends SchemaType> {
     .pipe(
       tap((isOnline) => {
         if (isOnline && this.#been_offline && this.#token) {
-          this.#syncBatch('recent');
-          this.#syncBatch('oldest');
+          this.syncBatch('recent');
+          this.syncBatch('oldest');
           /* istanbul ignore next */
           if (this.#inspect) {
             console.log('🟢 client is online');
@@ -234,6 +230,8 @@ export class Instant<T extends SchemaType> {
     headers,
     params,
     index,
+    session,
+    user,
   }: {
     name: Capitalize<string>;
     version?: number;
@@ -246,6 +244,8 @@ export class Instant<T extends SchemaType> {
     token?: string;
     headers?: Record<string, string>;
     params?: Record<string, string>;
+    session?: string;
+    user?: string;
   }) {
     this.#name = name;
     this.#schema = schema;
@@ -257,6 +257,8 @@ export class Instant<T extends SchemaType> {
     this.#headers = headers || {};
     this.#params = params || {};
     this.#index = index || {};
+    this.#token = session || '';
+    this.#user = user || '';
   }
 
   /**
@@ -284,18 +286,14 @@ export class Instant<T extends SchemaType> {
         if (fields.length === 0) {
           continue;
         }
-        // Add custom indices
-        const customFields = this.#index[tableName] || [];
 
         // Generate all possible index combinations
-        const indexCombinations = this.#buildIndexCombinations(customFields);
+        const indexCombinations = this.#buildIndexCombinations(fields);
 
         // Join all index combinations
         const customIndices = indexCombinations.join(', ');
 
         dexieSchema[tableName] += `, ${customIndices}`;
-
-        // console.log(dexieSchema[tableName]);
       }
 
       // add internal schema
@@ -326,8 +324,8 @@ export class Instant<T extends SchemaType> {
             tap(
               async () =>
                 await Promise.allSettled([
-                  this.#runPendingMutations(),
-                  this.#runPendingPointers(),
+                  this.runPendingMutations(),
+                  this.runPendingPointers(),
                 ])
             )
           )
@@ -390,7 +388,7 @@ export class Instant<T extends SchemaType> {
       if (this.#inspect) {
         console.error('❌ Error while initializing database', error);
       }
-      Promise.reject(error);
+      return Promise.reject(error);
     }
   }
 
@@ -413,7 +411,7 @@ export class Instant<T extends SchemaType> {
       const estimatedTotalSize = averageSize * count;
       const estimatedTotalMB = estimatedTotalSize / (1024 * 1024);
 
-      return `${estimatedTotalMB ? (estimatedTotalMB * 1.8).toFixed(2) : 0} MB`;
+      return `${(estimatedTotalMB * 1.8).toFixed(2)} MB`;
     }
 
     // Original overall usage estimation
@@ -427,18 +425,43 @@ export class Instant<T extends SchemaType> {
       };
     };
 
-    const { usageDetails } = estimate || {};
+    const { usageDetails } = estimate;
     const { indexedDB } = usageDetails || { indexedDB: 0 };
     const total = indexedDB / (1024 * 1024);
 
     return `${total.toFixed(2)} MB`;
   }
 
-  public destroy() {
-    this.#worker.terminate();
-    this.#db.close();
+  /**
+   * Destroy the Instant instance
+   *
+   * @returns void
+   */
+  /* istanbul ignore next */
+  async destroy({ db = true }: { db?: boolean } = {}) {
     this.#batch.complete();
     this.#online.unsubscribe();
+
+    if (this.#worker && 'terminate' in this.#worker) {
+      this.#worker.terminate();
+    }
+
+    if (db) {
+      await this.#db.close({
+        disableAutoOpen: true,
+      });
+      await this.#db
+        .delete({
+          disableAutoOpen: true,
+        })
+        .catch((err) => {
+          // that's fine
+        });
+    } else if (this.#db && this.#db.isOpen()) {
+      await this.#db.close({
+        disableAutoOpen: true,
+      });
+    }
 
     if (this.#pendingTasks) {
       this.#pendingTasks.unsubscribe();
@@ -455,6 +478,8 @@ export class Instant<T extends SchemaType> {
     if (this.#inspect) {
       console.log('🧹 Instant instance destroyed');
     }
+
+    return Promise.resolve();
   }
 
   public setWorker({ worker }: { worker: Worker }) {
@@ -472,7 +497,6 @@ export class Instant<T extends SchemaType> {
       try {
         const {
           url,
-          syncing,
           sync = 'batch',
           token = '',
           headers = {},
@@ -480,16 +504,12 @@ export class Instant<T extends SchemaType> {
         } = JSON.parse(data);
 
         if (!token) {
-          throw new Error('Token is required');
-        }
-
-        if (syncing) {
-          return;
+          return Promise.reject('No token provided');
         }
 
         this.#token = token;
-        this.#headers = headers || {};
-        this.#params = params || {};
+        this.#headers = headers;
+        this.#params = params;
 
         const perf = performance.now();
 
@@ -499,11 +519,10 @@ export class Instant<T extends SchemaType> {
          * 2. update the local indexedDB
          * 3. keep syncing older and new data in background
          *
-         * 🎉 the ui can just query against the local db instead
-         * including realtime updates via dexie livequery
+         * now the ui can just query against the local db instead
+         * including realtime updates via dexie livequery 🎉
          */
         if (sync === 'batch') {
-          // postMessage(JSON.stringify({ syncing: true }));
           const { collection, activity, synced } = await this.runBatchWorker({
             url,
             token,
@@ -523,11 +542,10 @@ export class Instant<T extends SchemaType> {
             );
             console.log('💾 estimated usage for', collection, usage);
           }
-          // this.#worker.postMessage(JSON.stringify({ syncing: false }));
         }
 
         if (sync === 'live') {
-          this.#runLiveWorker({ url, token, headers, params });
+          this.runLiveWorker({ url, token, headers, params });
         }
       } catch (err) {
         /* istanbul ignore next */
@@ -545,7 +563,7 @@ export class Instant<T extends SchemaType> {
     collection: string;
     activity: InstantSyncActivity;
   }) {
-    return ((await this.#db
+    return ((await this.db
       .table('_sync')
       .where({ collection, activity })
       .first()) || {
@@ -568,7 +586,7 @@ export class Instant<T extends SchemaType> {
     count: number;
     status?: 'complete' | 'incomplete';
   }) {
-    const sync = await this.#db
+    const sync = await this.db
       .table('_sync')
       .where({ collection, activity })
       .first();
@@ -576,27 +594,27 @@ export class Instant<T extends SchemaType> {
     const payload = { collection, synced, count, status };
 
     if (sync) {
-      return this.#db
+      return this.db
         .table('_sync')
         .where({ collection, activity })
         .modify(payload);
     }
 
-    return this.#db.table('_sync').put({ ...payload, activity });
+    return this.db.table('_sync').put({ ...payload, activity });
   }
 
-  async #runPendingMutations() {
+  async runPendingMutations() {
+    console.log('oie 1');
     if (this.#pendingMutationsBusy) {
       return;
     }
-
+    console.log('oie 2');
     try {
       this.#pendingMutationsBusy = true;
 
       const collections = Object.keys(this.#schema);
 
       for (const collection of collections) {
-        // check for mutations pending
         const query = {
           [collection as keyof T]: {
             $filter: {
@@ -607,7 +625,6 @@ export class Instant<T extends SchemaType> {
           },
         };
 
-        // Check for pending mutations
         const pending = await this.query(query as unknown as iQL<T>);
         const data = pending[collection as keyof T];
 
@@ -647,7 +664,7 @@ export class Instant<T extends SchemaType> {
             url += `/${item['_id']}`;
           }
 
-          await this.#runMutationWorker({
+          await this.runMutationWorker({
             collection,
             url,
             data: item,
@@ -675,7 +692,7 @@ export class Instant<T extends SchemaType> {
     }
   }
 
-  async #runPendingPointers() {
+  async runPendingPointers() {
     if (this.#pendingPointersBusy) {
       return;
     }
@@ -733,7 +750,7 @@ export class Instant<T extends SchemaType> {
             item[key] = createPointer(pointerCollection, pointer._id);
 
             // update the item in the database
-            await this.#db.table(collection).update(item._id, item);
+            await this.db.table(collection).update(item._id, item);
 
             /* istanbul ignore next */
             if (this.#inspect) {
@@ -763,7 +780,7 @@ export class Instant<T extends SchemaType> {
     headers: Record<string, string>;
     params: Record<string, string>;
   }) {
-    if (!this.#db) {
+    if (!this.db) {
       await this.ready();
     }
 
@@ -787,7 +804,7 @@ export class Instant<T extends SchemaType> {
     //     navigator.userAgent
     //   );
 
-    await this.#db.transaction('rw!', this.#db.table(collection), async () => {
+    await this.db.transaction('rw!', this.db.table(collection), async () => {
       for (const { status, value } of data) {
         await this.#syncProcess({
           collection,
@@ -803,13 +820,13 @@ export class Instant<T extends SchemaType> {
 
     let localCount = 0;
     if (activity === 'oldest') {
-      localCount = await this.#db
+      localCount = await this.db
         .table(collection)
         .where('_updated_at')
         .belowOrEqual(synced)
         .count();
     } else {
-      localCount = await this.#db
+      localCount = await this.db
         .table(collection)
         .where('_created_at')
         .aboveOrEqual(synced)
@@ -870,7 +887,7 @@ export class Instant<T extends SchemaType> {
    *
    * @returns void
    */
-  async #runLiveWorker({
+  async runLiveWorker({
     url,
     headers,
     params,
@@ -942,25 +959,25 @@ export class Instant<T extends SchemaType> {
             // make sure to mark as synced and update with server timestamp
             const uuid = value['_uuid'];
             if (uuid) {
-              const localDocByUuid = await this.#db
+              const localDocByUuid = await this.db
                 .table(collection as string)
                 .get(uuid);
 
               if (localDocByUuid) {
-                await this.#db.transaction(
+                await this.db.transaction(
                   'rw!',
-                  this.#db.table(collection as string),
+                  this.db.table(collection as string),
                   async () => {
                     // gotta delete the old doc and create new one with server timestamp
-                    await this.#db.table(collection as string).delete(uuid);
-                    await this.#db.table(collection as string).add({
+                    await this.db.table(collection as string).delete(uuid);
+                    await this.db.table(collection as string).add({
                       ...value,
                       _sync: 0, // to make sure response is marked as synced
                     });
                   }
                 );
               } else {
-                await this.#db.table(collection as string).add({
+                await this.db.table(collection as string).add({
                   ...value,
                   _sync: 0, // to make sure response is marked as synced
                 });
@@ -1036,7 +1053,7 @@ export class Instant<T extends SchemaType> {
     this.#buildWebSocket(url)(webSocket);
   }
 
-  async #runMutationWorker({
+  async runMutationWorker({
     collection,
     url,
     data,
@@ -1091,7 +1108,7 @@ export class Instant<T extends SchemaType> {
       });
 
       // mark record as synced since the network request was successful
-      await this.#db.table(collection).update(data['_id'], {
+      await this.db.table(collection).update(data['_id'], {
         _sync: 0,
       });
     } catch (err) {
@@ -1114,7 +1131,7 @@ export class Instant<T extends SchemaType> {
     );
   }
 
-  async #syncBatch(activity: InstantSyncActivity) {
+  async syncBatch(activity: InstantSyncActivity) {
     try {
       const collections = Object.keys(this.#schema);
 
@@ -1126,7 +1143,7 @@ export class Instant<T extends SchemaType> {
 
         if (activity === 'recent' && !sync.synced) {
           // try to get the most recent _updated_at from the local db
-          const mostRecentUpdatedAt = await this.#db
+          const mostRecentUpdatedAt = await this.db
             .table(collection)
             .orderBy('_updated_at')
             .reverse()
@@ -1201,21 +1218,7 @@ export class Instant<T extends SchemaType> {
       ) => Promise<void>
     > = {
       created: async (collection: string, value: Document) => {
-        // account for local id
-        const localId = value['__id'];
-        if (localId) {
-          const localDoc = await this.#db.table(collection).get(localId);
-          if (localDoc) {
-            // update if this doc was created locally
-            delete value['__id'];
-            await this.#db
-              .table(collection)
-              .update(localId, { ...value, _sync: 0 });
-            return;
-          }
-        }
-
-        await this.#db
+        await this.db
           .table(collection)
           .add({ ...value, _sync: 0 })
           .catch((err) => {
@@ -1231,11 +1234,11 @@ export class Instant<T extends SchemaType> {
         updatedFields?: Record<string, any>
       ) => {
         // check if doc exits, if not, create it
-        const doc = await this.#db.table(collection).get(value['_id']);
+        const doc = await this.db.table(collection).get(value['_id']);
         if (!doc) {
           await persist.created(collection, value);
         } else {
-          await this.#db
+          await this.db
             .table(collection)
             .update(value['_id'], {
               ...(updatedFields ? updatedFields : value),
@@ -1255,7 +1258,7 @@ export class Instant<T extends SchemaType> {
         }
       },
       deleted: async (collection: string, value: Document) => {
-        await this.#db
+        await this.db
           .table(collection)
           .delete(value['_id'])
           .catch((err) => {
@@ -1360,6 +1363,16 @@ export class Instant<T extends SchemaType> {
   }
 
   public mutate<C extends keyof T>(collection: C) {
+    if (!this.#user) {
+      throw new Error(
+        'User id not set. Try to pass the user id as `user` to the Instant constructor or `sync` method.'
+      );
+    }
+    if (!this.#token) {
+      throw new Error(
+        'Token not set. Try to pass the session token as `session` to the Instant constructor or `sync` method.'
+      );
+    }
     return {
       add: async (
         value: Partial<z.infer<T[keyof T]>> & {
@@ -1383,18 +1396,18 @@ export class Instant<T extends SchemaType> {
         value._created_by = createPointer('users', this.#user);
         value._updated_by = createPointer('users', this.#user);
 
-        await this.#db.transaction(
+        await this.db.transaction(
           'rw!',
-          this.#db.table(collection as string),
+          this.db.table(collection as string),
           async () => {
-            await this.#db.table(collection as string).add(value);
+            await this.db.table(collection as string).add(value);
           }
         );
 
         return value;
       },
       update: async (id: string, value: Partial<z.infer<T[keyof T]>>) => {
-        const currentDoc = await this.#db.table(collection as string).get(id);
+        const currentDoc = await this.db.table(collection as string).get(id);
         if (!currentDoc) {
           throw new Error('Document not found');
         }
@@ -1415,11 +1428,11 @@ export class Instant<T extends SchemaType> {
           return;
         }
 
-        await this.#db.transaction(
+        await this.db.transaction(
           'rw!',
-          this.#db.table(collection as string),
+          this.db.table(collection as string),
           async () => {
-            await this.#db.table(collection as string).update(id, {
+            await this.db.table(collection as string).update(id, {
               ...value,
               _sync: 1,
               _updated_at: new Date().toISOString(),
@@ -1430,11 +1443,11 @@ export class Instant<T extends SchemaType> {
         );
       },
       delete: async (id: string) => {
-        await this.#db.transaction(
+        await this.db.transaction(
           'rw!',
-          this.#db.table(collection as string),
+          this.db.table(collection as string),
           async () => {
-            await this.#db.table(collection as string).update(id, {
+            await this.db.table(collection as string).update(id, {
               _sync: 1,
               _updated_at: new Date().toISOString(),
               _expires_at: new Date().toISOString(),
@@ -1450,8 +1463,7 @@ export class Instant<T extends SchemaType> {
     const schema = this.#schema[collection];
 
     try {
-      // validate the body
-      schema.parse(data);
+      (schema as z.ZodObject<any>).strict().parse(data);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
         return {
@@ -1499,7 +1511,7 @@ export class Instant<T extends SchemaType> {
     headers?: Record<string, string>;
     params?: Record<string, string>;
   }) {
-    if (!this.#db) {
+    if (!this.db) {
       throw new Error(
         'Database not initialized. Try awaiting `ready()` first.'
       );
@@ -1523,8 +1535,8 @@ export class Instant<T extends SchemaType> {
 
     await Promise.allSettled([
       this.#syncLive(),
-      this.#syncBatch('oldest'),
-      this.#syncBatch('recent'),
+      this.syncBatch('oldest'),
+      this.syncBatch('recent'),
     ]);
   }
 
@@ -1549,7 +1561,7 @@ export class Instant<T extends SchemaType> {
     collection: C,
     query: Exclude<QueryDirectives<z.infer<T[keyof T]>>, '$by'> & iQL<T>
   ) {
-    let table = this.#db.table(collection as string);
+    let table = this.db.table(collection as string);
     const tableQuery = query as QueryDirectives<z.infer<T[keyof T]>> & iQL<T>;
 
     // Apply $filter
@@ -1678,7 +1690,7 @@ export class Instant<T extends SchemaType> {
         Object.prototype.hasOwnProperty.call(queryObject, tableName) &&
         !tableName.startsWith('$')
       ) {
-        const table = this.#db.table(tableName);
+        const table = this.db.table(tableName);
         const tableQuery = queryObject[tableName] as QueryDirectives<
           z.infer<T[keyof T]>
         > &

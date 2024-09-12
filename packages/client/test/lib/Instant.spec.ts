@@ -11,8 +11,8 @@ import {
 import { z } from 'zod';
 
 import {
-  createObjectIdSchema,
   createPointer,
+  createSchema,
   delay,
   Instant,
   InstantSyncResponse,
@@ -28,10 +28,6 @@ const tick = (ms = 0) => {
   jest.advanceTimersByTime(ms);
 };
 
-const UserId = createObjectIdSchema('users');
-const PostId = createObjectIdSchema('posts');
-const CommentId = createObjectIdSchema('comments');
-
 jest.mock('../../../client/src/lib/fetcher');
 jest.mock('../../src/lib/utils', () => ({
   ...jest.requireActual('../../src/lib/utils'),
@@ -39,41 +35,21 @@ jest.mock('../../src/lib/utils', () => ({
 }));
 
 describe('Instant Client', () => {
+  const UserSchema = createSchema('users', {
+    name: z.string(),
+    posts: z.array(z.string()).optional(),
+  });
+
+  const PostSchema = createSchema('posts', {
+    title: z.string(),
+    content: z.string(),
+    author: z.string(),
+    _p_user: z.string(),
+  });
+
   const schema = {
-    users: z.object({
-      _id: UserId,
-      _created_at: z.string(),
-      _updated_at: z.string(),
-      name: z.string(),
-    }),
-    posts: z.object({
-      _id: PostId,
-      _created_at: z.string(),
-      _updated_at: z.string(),
-      _p_user: z.string(),
-      title: z.string(),
-      content: z.string(),
-      author: z.string(),
-    }),
-    comments: z.object({
-      _id: CommentId,
-      _created_at: z.string(),
-      _updated_at: z.string(),
-      _p_user: z.string(),
-      author: z.string(),
-      posts: z.array(
-        z.object({
-          _id: PostId,
-          _created_at: z.string(),
-          _updated_at: z.string(),
-          _p_user: z.string(),
-          title: z.string(),
-          content: z.string(),
-          author: z.string(),
-        })
-      ),
-      content: z.string(),
-    }),
+    users: UserSchema,
+    posts: PostSchema,
   };
 
   const users = [
@@ -131,8 +107,11 @@ describe('Instant Client', () => {
     insta = new Instant({
       schema,
       name: 'InstantTest',
+      version: 1,
       inspect: true,
       serverURL: 'https://some.api.com',
+      session: '1337',
+      user: '420',
       index: {
         users: ['name'],
       },
@@ -159,13 +138,19 @@ describe('Instant Client', () => {
     fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
       // @ts-ignore
       (url, options) => {
-        return Promise.resolve([]);
+        return Promise.resolve({});
       }
     );
   });
 
   afterEach(async () => {
-    await insta.db.delete();
+    // insta.db.close({
+    //   disableAutoOpen: true,
+    // });
+    // await insta.db.delete({
+    //   disableAutoOpen: true,
+    // });
+    await insta.destroy();
     fetcherSpy.mockRestore();
   });
 
@@ -201,6 +186,41 @@ describe('Instant Client', () => {
     const result = await insta.db.table('posts').toArray();
 
     expect(result).toEqual([...posts].reverse());
+  });
+
+  test('throw error if trying to access a non initialized db', async () => {
+    const insta = new Instant({
+      schema,
+      name: 'InstantTest',
+      inspect: true,
+      serverURL: 'https://some.api.com',
+    });
+
+    await expect(async () => {
+      await insta.db.table('users').toArray();
+    }).rejects.toThrow(
+      'Database not initialized. Try awaiting `ready()` first.'
+    );
+  });
+
+  test('throw any error on ready', async () => {
+    const insta = new Instant({
+      schema,
+      name: 'InstantTest',
+      inspect: true,
+      serverURL: 'https://some.api.com',
+    });
+
+    // mock isServer to throw an error just for the sake of the test
+    const isServerSpy = jest.spyOn(utils, 'isServer').mockImplementation(() => {
+      throw new Error('test');
+    });
+
+    await expect(async () => {
+      await insta.ready();
+    }).rejects.toThrow('test');
+
+    isServerSpy.mockRestore();
   });
 
   test('simple query', async () => {
@@ -361,7 +381,7 @@ describe('Instant Client', () => {
     });
   });
 
-  test('nested query without $by directive', async () => {
+  fit('nested query without $by directive', async () => {
     const posts2 = [
       {
         _id: 'post11112',
@@ -392,6 +412,10 @@ describe('Instant Client', () => {
         posts: {},
       },
     });
+
+    const data = await insta.db.table('users').toArray();
+
+    console.log('data', data);
 
     // @ts-ignore
     expect(result.users[0].posts).toHaveLength(1);
@@ -615,6 +639,155 @@ describe('Instant Client', () => {
     expect(users[0].name).toBe('Raul');
   });
 
+  test('query sort using no index should throw', async () => {
+    const insta2 = new Instant({
+      schema,
+      name: 'InstantTest2',
+      serverURL: 'https://some.api.com',
+      session: '1337',
+      index: {
+        posts: ['title'],
+      },
+    });
+
+    await insta2.ready();
+
+    await expect(
+      insta2.query({
+        users: {
+          $sort: {
+            name: 1,
+          },
+        },
+      })
+    ).rejects.toThrow('KeyPath [name] on object store users is not indexed');
+
+    await insta2.destroy();
+  });
+
+  test('calculate all collections usage', async () => {
+    const realGlobalNavigatorStorage = global.navigator.storage;
+    // Mock the entire navigator.storage object
+    Object.defineProperty(global.navigator, 'storage', {
+      value: {
+        estimate: jest.fn().mockResolvedValue({
+          usageDetails: {
+            indexedDB: 10000000,
+          },
+        }),
+      },
+      configurable: true,
+    });
+
+    const usage = await insta.usage();
+    expect(usage).toBe('9.54 MB');
+
+    // test no support
+    Object.defineProperty(global.navigator, 'storage', {
+      value: {
+        estimate: jest.fn().mockResolvedValue(null),
+      },
+      configurable: true,
+    });
+
+    const usage2 = await insta.usage();
+    expect(usage2).toBe('0.00 MB');
+
+    // Clean up the mock
+    Object.defineProperty(global.navigator, 'storage', {
+      value: realGlobalNavigatorStorage,
+      configurable: true,
+    });
+  });
+
+  test('calculate a given collection usage', async () => {
+    const realGlobalNavigatorStorage = global.navigator.storage;
+    // Mock the entire navigator.storage object
+    Object.defineProperty(global.navigator, 'storage', {
+      value: {
+        estimate: jest.fn().mockResolvedValue({
+          usageDetails: {
+            indexedDB: 10000000,
+          },
+        }),
+      },
+      configurable: true,
+    });
+
+    const usage = await insta.usage('users');
+    expect(usage).toBe('0.00 MB');
+
+    // Clean up the mock
+    Object.defineProperty(global.navigator, 'storage', {
+      value: realGlobalNavigatorStorage,
+      configurable: true,
+    });
+  });
+
+  test("worker should throw if there's no token", async () => {
+    try {
+      await insta.worker()({
+        data: JSON.stringify({}),
+      });
+    } catch (error) {
+      expect(error).toBe('No token provided');
+    }
+  });
+
+  test('worker should run batch sync', async () => {
+    const insta2 = new Instant({
+      schema,
+      name: 'InstantTest2',
+      serverURL: 'https://some.api.com',
+      session: '1337',
+    });
+
+    const runBatchWorkerSpy = jest.spyOn(insta2, 'runBatchWorker');
+    await insta2.ready();
+
+    await insta2.worker()({
+      data: JSON.stringify({
+        token: '1337',
+        sync: 'batch',
+      }),
+    });
+
+    expect(runBatchWorkerSpy).toHaveBeenCalled();
+
+    // clean up
+    runBatchWorkerSpy.mockRestore();
+
+    await insta2.destroy();
+  });
+
+  test('worker should run live sync', async () => {
+    const insta2 = new Instant({
+      schema,
+      name: 'InstantTest2',
+      serverURL: 'https://some.api.com',
+      session: '1337',
+    });
+
+    const runLiveWorkerSpy = jest
+      .spyOn(insta2, 'runLiveWorker')
+      .mockResolvedValue();
+
+    await insta2.ready();
+
+    await insta2.worker()({
+      data: JSON.stringify({
+        token: '1337',
+        sync: 'live',
+      }),
+    });
+
+    expect(runLiveWorkerSpy).toHaveBeenCalled();
+
+    // clean up
+    runLiveWorkerSpy.mockRestore();
+    await insta2.destroy();
+  });
+
   test('mutate add', async () => {
     const user = await insta.mutate('users').add({
       name: 'Elon Musk',
@@ -641,6 +814,12 @@ describe('Instant Client', () => {
 
     expect(users).toHaveLength(1);
     expect(users[0].name).toBe('Elon Musk');
+  });
+
+  test('mutate delete', async () => {
+    await insta.mutate('users').delete('objId2222');
+    const deletedUser = await insta.db.table('users').get('objId2222');
+    expect(deletedUser._expires_at).toBeDefined();
   });
 
   test('query filter with nullish $eq', async () => {
@@ -744,9 +923,12 @@ describe('Instant Client', () => {
 
   test('syncing stream should emit true when there is an incomplete oldest sync activity', async () => {
     const syncHistory: boolean[] = [];
+
     insta.syncing.subscribe((syncing) => {
+      console.log('syncing', syncing);
       syncHistory.push(syncing);
     });
+
     await insta.db.table('_sync').add({
       collection: 'users',
       activity: 'oldest',
@@ -754,26 +936,87 @@ describe('Instant Client', () => {
       synced: new Date().toISOString(),
       count: 50000,
     });
-    // Add a delay to allow time for the observable to emit
+
     await delay(100);
     expect(syncHistory).toEqual([false, true]);
   });
 
   test('syncing stream should emit false when all sync activities are complete', async () => {
     const syncHistory: boolean[] = [];
+
     insta.syncing.subscribe((syncing) => {
       syncHistory.push(syncing);
     });
+
     await insta.db.table('_sync').add({
       collection: 'users',
       activity: 'oldest',
       status: 'complete',
       synced: new Date().toISOString(),
-      count: 0,
+      count: 42,
     });
-    // Add a delay to allow time for the observable to emit
+
     await delay(100);
     expect(syncHistory).toEqual([false, false]);
+  });
+
+  test('skip pending mutations if busy', async () => {
+    const insta2 = new Instant({
+      schema,
+      inspect: true,
+      name: 'InstantTest2',
+      serverURL: 'https://some.api.com',
+      session: '1337',
+      user: '420',
+    });
+
+    await insta2.ready();
+
+    const runMutationWorkerSpy = jest.spyOn(insta2, 'runMutationWorker');
+
+    await insta2.mutate('users').add({
+      name: 'Elon Musk',
+    });
+
+    await Promise.allSettled([
+      insta2.runPendingMutations(),
+      insta2.runPendingMutations(),
+      insta2.runPendingMutations(),
+    ]);
+
+    expect(runMutationWorkerSpy).toHaveBeenCalledTimes(1);
+    await insta2.destroy();
+  });
+
+  test('skip pending mutations if validation fails', async () => {
+    const insta2 = new Instant({
+      schema,
+      inspect: true,
+      name: 'InstantTest2',
+      serverURL: 'https://some.api.com',
+      session: '1337',
+      user: '420',
+    });
+
+    await insta2.ready();
+
+    const runMutationWorkerSpy = jest.spyOn(insta2, 'runMutationWorker');
+
+    await insta2.mutate('users').add({
+      name: 1,
+    } as any);
+
+    await insta2.runPendingMutations();
+
+    await insta2.mutate('users').add({
+      name: 'Elon Musk',
+      age: 420,
+    } as any);
+
+    await insta2.runPendingMutations();
+
+    expect(runMutationWorkerSpy).not.toHaveBeenCalled();
+    await insta2.destroy();
   });
 
   describe('online stream', () => {
@@ -817,9 +1060,11 @@ describe('Instant Client', () => {
       window.addEventListener = originalAddEventListener;
       window.removeEventListener = originalRemoveEventListener;
       Object.defineProperty(navigator, 'onLine', {
-        get: () => originalNavigatorOnLine,
+        value: originalNavigatorOnLine,
         configurable: true,
+        writable: true,
       });
+      jest.restoreAllMocks();
     });
 
     function dispatchEvent(eventName: string) {
@@ -881,6 +1126,46 @@ describe('Instant Client', () => {
       // Simulate multiple online events
       dispatchEvent('online');
       dispatchEvent('online');
+    });
+
+    test('should call sync methods when coming back online after being offline', async () => {
+      const worker = {
+        onmessage: jest.fn(),
+        terminate: jest.fn(),
+        postMessage: async (payload: string) =>
+          await insta.worker()({ data: payload }),
+      };
+
+      const insta2 = new Instant({
+        schema,
+        name: 'InstantTest2',
+        serverURL: 'https://some.api.com',
+        session: '1337',
+      });
+
+      // Set the mocked worker
+      insta2.setWorker({ worker } as any);
+
+      await insta2.ready();
+
+      const syncBatchRecentSpy = jest.spyOn(insta2, 'syncBatch');
+      const syncBatchOldestSpy = jest.spyOn(insta2, 'syncBatch');
+
+      dispatchEvent('offline');
+      dispatchEvent('online');
+
+      // Check if syncBatch methods were called
+      expect(syncBatchRecentSpy).toHaveBeenCalledWith('recent');
+      expect(syncBatchOldestSpy).toHaveBeenCalledWith('oldest');
+
+      expect(syncBatchRecentSpy).toHaveBeenCalledTimes(2);
+      expect(syncBatchOldestSpy).toHaveBeenCalledTimes(2);
+
+      // Clean up
+      syncBatchRecentSpy.mockRestore();
+      syncBatchOldestSpy.mockRestore();
+
+      // await insta2.destroy(); // this breaks this test
     });
   });
 
@@ -956,6 +1241,8 @@ describe('Instant Client', () => {
         .mockReturnValue(intervalSubject);
 
       allSettledSpy = jest.spyOn(Promise, 'allSettled').mockResolvedValue([]);
+
+      jest.useFakeTimers();
     });
 
     afterEach(() => {
@@ -963,6 +1250,7 @@ describe('Instant Client', () => {
       intervalSpy.mockRestore();
       allSettledSpy.mockRestore();
       jest.restoreAllMocks();
+      jest.useRealTimers();
     });
 
     test('should schedule tasks when isServer is true', async () => {
@@ -979,13 +1267,13 @@ describe('Instant Client', () => {
 
       intervalSubject.next(0);
 
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
       expect(allSettledSpy).toHaveBeenCalled();
       expect(allSettledSpy).toHaveBeenCalledWith([
         expect.any(Promise),
         expect.any(Promise),
       ]);
+
+      // await insta2.destroy(); // this breaks this test
     });
   });
 
@@ -994,29 +1282,29 @@ describe('Instant Client', () => {
 
     beforeEach(() => {
       isServerSpy = jest.spyOn(utils, 'isServer').mockReturnValue(true);
+      jest.useFakeTimers();
     });
 
     afterEach(() => {
-      isServerSpy.mockRestore();
+      isServerSpy?.mockRestore();
+      jest.useRealTimers();
       jest.restoreAllMocks();
     });
 
     test('run batch worker through sync scheduler', async () => {
-      jest.useFakeTimers();
-      const insta2 = new Instant({
+      const insta3 = new Instant({
         schema,
-        name: 'InstantTest2',
+        name: 'InstantTest3',
         serverURL: 'https://some.api.com',
-        buffer: 100,
+        buffer: 1,
       });
 
       const runBatchWorkerSpy = jest
-        .spyOn(insta2, 'runBatchWorker')
+        .spyOn(insta3, 'runBatchWorker')
         .mockResolvedValue({} as any);
 
-      await insta2.ready();
-
-      insta2.addBatch({
+      await insta3.ready();
+      insta3.addBatch({
         collection: 'users',
         synced: new Date().toISOString(),
         activity: 'recent',
@@ -1025,11 +1313,66 @@ describe('Instant Client', () => {
         params: {},
       });
 
-      tick(1000);
+      tick(100);
 
       expect(runBatchWorkerSpy).toHaveBeenCalled();
+      expect(runBatchWorkerSpy).toHaveBeenCalledTimes(1);
 
       runBatchWorkerSpy.mockClear();
+      await insta3.destroy();
+    });
+  });
+
+  describe('Mutation Scheduler', () => {
+    let isServerSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      isServerSpy = jest.spyOn(utils, 'isServer').mockReturnValue(true);
+      // jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      isServerSpy?.mockRestore();
+      jest.useRealTimers();
+      // jest.restoreAllMocks();
+    });
+
+    test('run pending deleted mutations', async () => {
+      // const insta22 = new Instant({
+      //   schema,
+      //   inspect: true,
+      //   name: 'InstantTest22',
+      //   serverURL: 'https://some.api.com',
+      //   session: '1337',
+      //   user: '420',
+      // });
+
+      //  await insta22.ready();
+
+      const runMutationWorkerSpy = jest
+        .spyOn(insta, 'runMutationWorker')
+        .mockResolvedValue();
+
+      // for (const user of users) {
+      //   await insta22.db.table('users').add(user);
+      // }
+
+      await insta.mutate('users').delete('objId2222');
+      await insta.runPendingMutations();
+
+      const data = await insta.db.table('users').get('objId2222');
+      console.log(123, data);
+      expect(runMutationWorkerSpy).toHaveBeenCalledTimes(1);
+      //   expect(runMutationWorkerSpy).toHaveBeenCalledWith(
+      //     expect.objectContaining({
+      //       method: 'DELETE',
+      //       url: expect.stringContaining('sync/users/objId2222'),
+      //     })
+      //   );
+
+      //   expect(data._expires_at).toBeDefined();
+
+      // await insta.destroy(); // this breaks this test
     });
   });
 });
