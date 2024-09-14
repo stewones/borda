@@ -26,40 +26,16 @@ import { z } from 'zod';
 
 import { fetcher } from './fetcher';
 import { Document } from './types';
-import { cloneDeep, guid, isServer } from './utils';
+import {
+  cloneDeep,
+  guid,
+  isServer,
+} from './utils';
 import { WebSocketFactory } from './websocket';
 
-export type InstantSchemaField = z.ZodTypeAny;
-
-export type InstantSyncStatus = 'created' | 'updated' | 'deleted';
-export interface iQLByDirective {
-  $by: string;
-}
-export interface iQLLimitDirective {
-  $limit: number;
-}
-
-export interface InstantSyncResponseData {
-  status: InstantSyncStatus;
-  value: Document;
-  collection?: string;
-  updatedFields?: Record<string, any>;
-  removedFields?: string[];
-  truncatedArrays?: Array<{
-    field: string;
-    newSize: number;
-  }>;
-}
-
-export type InstantSyncActivity = 'recent' | 'oldest';
-
-export interface InstantSyncResponse {
-  synced: string;
-  collection: string;
-  count: number;
-  data: InstantSyncResponseData[];
-  activity: InstantSyncActivity;
-}
+type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
+  [P in K]?: iQL<T, K> & QueryDirectives<z.infer<T[P]>>;
+};
 
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
 
@@ -86,9 +62,28 @@ type QueryDirectives<T> = {
   $by?: string;
 };
 
-export type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
-  [P in K]?: iQL<T, K> & QueryDirectives<z.infer<T[P]>>;
-};
+export type SyncStatus = 'created' | 'updated' | 'deleted';
+export type SyncActivity = 'recent' | 'oldest';
+
+export interface SyncResponseData {
+  status: SyncStatus;
+  value: Document;
+  collection?: string;
+  updatedFields?: Record<string, any>;
+  removedFields?: string[];
+  truncatedArrays?: Array<{
+    field: string;
+    newSize: number;
+  }>;
+}
+
+export interface SyncResponse {
+  synced: string;
+  collection: string;
+  count: number;
+  data: SyncResponseData[];
+  activity: SyncActivity;
+}
 
 export const ejectPointerId = (pointer: string) => {
   return pointer.split('$')[1];
@@ -101,7 +96,10 @@ export const ejectPointerCollection = (pointer: string) => {
 export const createObjectIdSchema = <T extends string>(p: T) =>
   z.string().min(9).max(36).brand<T>();
 
-export const createSchema = <T extends SchemaType>(collection: string, p: T) =>
+export const createSchema = <S extends SchemaType>(
+  collection: string,
+  schema: S
+) =>
   z.object({
     _id: createObjectIdSchema(collection),
     _uuid: z.string().length(36).optional(),
@@ -112,7 +110,7 @@ export const createSchema = <T extends SchemaType>(collection: string, p: T) =>
     _created_by: z.string().optional(),
     _updated_by: z.string().optional(),
     _deleted_by: z.string().optional(),
-    ...p,
+    ...schema,
   });
 
 /**
@@ -159,6 +157,8 @@ export class Instant<T extends SchemaType> {
     startWith(false)
   );
 
+  protected wss: WebSocket | undefined;
+
   #size = 1_000;
   #buffer = 10_000;
   #name: string;
@@ -173,14 +173,13 @@ export class Instant<T extends SchemaType> {
   #user!: string;
   #headers!: Record<string, string>;
   #params!: Record<string, string>;
-  #wss: WebSocket | undefined;
   #pendingTasks: Subscription | undefined;
   #pendingPointersBusy = false;
   #pendingMutationsBusy = false;
   #batch = new Subject<{
     collection: string;
     synced: string;
-    activity: InstantSyncActivity;
+    activity: SyncActivity;
     token: string;
     headers: Record<string, string>;
     params: Record<string, string>;
@@ -256,6 +255,865 @@ export class Instant<T extends SchemaType> {
     this.#index = index || {};
     this.#token = session || '';
     this.#user = user || '';
+  }
+
+  async #useSync({
+    collection,
+    activity,
+  }: {
+    collection: string;
+    activity: SyncActivity;
+  }) {
+    return ((await this.db
+      .table('_sync')
+      .where({ collection, activity })
+      .first()) || {
+      activity,
+      synced: null,
+      status: 'incomplete',
+    }) as z.infer<typeof SyncSchema>;
+  }
+
+  async #setSync({
+    collection,
+    synced,
+    activity,
+    count,
+    status = 'incomplete',
+  }: {
+    collection: string;
+    synced?: string;
+    activity: SyncActivity;
+    count: number;
+    status?: 'complete' | 'incomplete';
+  }) {
+    const sync = await this.db
+      .table('_sync')
+      .where({ collection, activity })
+      .first();
+
+    const payload = { collection, synced, count, status };
+
+    if (sync) {
+      return this.db
+        .table('_sync')
+        .where({ collection, activity })
+        .modify(payload);
+    }
+
+    return this.db.table('_sync').put({ ...payload, activity });
+  }
+
+  async #syncWorker({
+    collection,
+    synced,
+    activity,
+  }: {
+    collection: string;
+    synced: string;
+    activity: SyncActivity;
+  }) {
+    let url = `${this.#serverURL}/sync/${collection}?activity=${activity}`;
+
+    if (synced) {
+      url += `&synced=${synced}`;
+    }
+
+    await this.#worker.postMessage(
+      JSON.stringify({
+        url,
+        sync: 'batch',
+        token: this.#token,
+        headers: this.#headers,
+        params: this.#params,
+      })
+    );
+  }
+
+  async #syncProcess({
+    collection,
+    status,
+    value,
+    updatedFields,
+  }: {
+    collection: string;
+    status: SyncStatus;
+    value: Document;
+    updatedFields?: Record<string, any>;
+  }) {
+    const persist: Record<
+      SyncStatus,
+      (
+        collection: string,
+        value: Document,
+        updatedFields?: Record<string, any>
+      ) => Promise<void>
+    > = {
+      created: async (collection: string, value: Document) => {
+        await this.db
+          .table(collection)
+          .add({ ...value, _sync: 0 })
+          .catch((err) => {
+            /* istanbul ignore next */
+            if (this.#inspect) {
+              console.error('Error adding document', collection, value, err);
+            }
+          });
+      },
+      updated: async (
+        collection: string,
+        value: Document,
+        updatedFields?: Record<string, any>
+      ) => {
+        // check if doc exits, if not, create it
+        const doc = await this.db.table(collection).get(value['_id']);
+        if (!doc) {
+          await persist.created(collection, value);
+        } else {
+          await this.db
+            .table(collection)
+            .update(value['_id'], {
+              ...(updatedFields ? updatedFields : value),
+              _sync: 0,
+            })
+            .catch(
+              /* istanbul ignore next */
+              (err) => {
+                if (this.#inspect) {
+                  console.error(
+                    'Error updating document',
+                    collection,
+                    value,
+                    err
+                  );
+                }
+              }
+            );
+        }
+      },
+      deleted: async (collection: string, value: Document) => {
+        await this.db
+          .table(collection)
+          .delete(value['_id'])
+          .catch(
+            /* istanbul ignore next */
+            (err) => {
+              if (this.#inspect) {
+                console.error(
+                  'Error deleting document',
+                  collection,
+                  value,
+                  err
+                );
+              }
+            }
+          );
+      },
+    };
+    await persist[status](collection, value, updatedFields);
+  }
+
+  /**
+   * worker entry point
+   * should be called with postMessage from the main thread
+   *
+   * @returns void
+   */
+  protected worker() {
+    return async ({ data }: { data: string }) => {
+      try {
+        const {
+          url,
+          sync = 'batch',
+          token = '',
+          headers = {},
+          params = {},
+        } = JSON.parse(data);
+
+        if (!token) {
+          return Promise.reject('No token provided');
+        }
+
+        this.#token = token;
+        this.#headers = headers;
+        this.#params = params;
+
+        const perf = performance.now();
+
+        /**
+         * run the worker, it should:
+         * 1. fetch filtered and paginated data from the server
+         * 2. update the local indexedDB
+         * 3. keep syncing older and new data in background
+         *
+         * now the ui can just query against the local db instead
+         * including realtime updates via dexie livequery 🎉
+         */
+        if (sync === 'batch') {
+          const { collection, activity, synced } = await this.runBatchWorker({
+            url,
+            token,
+            headers,
+            params,
+          });
+
+          /* istanbul ignore next */
+          if (this.inspect) {
+            const syncDuration = performance.now() - perf;
+            const usage = await this.usage(collection);
+            console.log(
+              `💨 sync ${syncDuration.toFixed(2)}ms`,
+              collection,
+              activity,
+              synced
+            );
+            console.log('💾 estimated usage for', collection, usage);
+          }
+        }
+
+        if (sync === 'live') {
+          this.runLiveWorker({ url, token, headers, params });
+        }
+      } catch (err) {
+        /* istanbul ignore next */
+        if (this.inspect) {
+          console.error('Error running worker', err);
+        }
+      }
+    };
+  }
+
+  protected buildWebSocket(url: string) {
+    return (factory: WebSocketFactory) => {
+      const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+      const ws = new WebSocket(url);
+
+      ws.onopen = (ev: Event) => onOpen(ws, ev);
+      ws.onerror = (err: Event) => onError(ws, err);
+      ws.onclose = (ev: CloseEvent) => onClose(ws, ev);
+      ws.onmessage = (ev: MessageEvent) => onMessage(ws, ev);
+
+      const timer = setInterval(() => {
+        if (ws.readyState === 1) {
+          clearInterval(timer);
+          onConnect(ws);
+        }
+      }, 1);
+    };
+  }
+
+  protected addBatch({
+    collection,
+    synced,
+    activity,
+    token,
+    headers,
+    params,
+  }: {
+    collection: string;
+    synced: string;
+    activity: SyncActivity;
+    token: string;
+    headers: Record<string, string>;
+    params: Record<string, string>;
+  }) {
+    this.#batch.next({
+      collection,
+      synced,
+      activity,
+      token,
+      headers,
+      params,
+    });
+  }
+
+  protected async runPendingMutations() {
+    if (this.#pendingMutationsBusy) {
+      return;
+    }
+
+    try {
+      this.#pendingMutationsBusy = true;
+
+      const collections = Object.keys(this.#schema);
+
+      for (const collection of collections) {
+        const query = {
+          [collection as keyof T]: {
+            $filter: {
+              _sync: {
+                $eq: 1,
+              },
+            },
+          },
+        };
+
+        const pending = await this.query(query as unknown as iQL<T>);
+        const data = pending[collection as keyof T];
+
+        for (const item of data) {
+          // check for validation, if fails, skip
+          const { type, message, summary, errors } = this.validate(
+            collection,
+            item
+          );
+
+          if (errors) {
+            /* istanbul ignore next */
+            if (this.#inspect) {
+              console.error(
+                '❌ validation failed',
+                type,
+                message,
+                summary,
+                errors
+              );
+            }
+            continue;
+          }
+
+          let url = `${this.#serverURL}/sync/${collection}`;
+
+          const token = this.#token;
+          const headers = this.#headers;
+          const params = this.#params;
+          const method = item['_expires_at']
+            ? 'DELETE'
+            : item['_created_at'] !== item['_updated_at']
+            ? 'PUT'
+            : 'POST';
+
+          if (['DELETE', 'PUT'].includes(method)) {
+            url += `/${item['_id']}`;
+          }
+
+          await this.runMutationWorker({
+            collection,
+            url,
+            data: item,
+            method,
+            token,
+            headers,
+            params,
+          });
+        }
+
+        if (data.length > 0) {
+          /* istanbul ignore next */
+          if (this.#inspect) {
+            console.log('🔵 pending mutations', data);
+          }
+        }
+      }
+    } catch (error) {
+      /* istanbul ignore next */
+      if (this.#inspect) {
+        console.error('Error while running pending mutations', error);
+      }
+    } finally {
+      this.#pendingMutationsBusy = false;
+    }
+  }
+
+  protected async runPendingPointers() {
+    if (this.#pendingPointersBusy) {
+      return;
+    }
+
+    this.#pendingPointersBusy = true;
+
+    const collections = Object.keys(this.#schema);
+
+    for (const collection of collections) {
+      // check for pointers using uuid
+      const query = {
+        [collection as keyof T]: {
+          $filter: (item: Document) => {
+            // Check for fields starting with _p_ and containing a dash in their value
+            return Object.entries(item).some(
+              ([key, value]) =>
+                key.startsWith('_p_') &&
+                typeof value === 'string' &&
+                value.includes('-')
+            );
+          },
+        },
+      };
+
+      // replace any pending pointers with the actual data
+      const pending = await this.query(query as unknown as iQL<T>);
+      const data = pending[collection as keyof T];
+
+      for (const item of data) {
+        const pointers = Object.entries(item).filter(
+          ([key, value]) =>
+            key.startsWith('_p_') &&
+            typeof value === 'string' &&
+            value.includes('-')
+        );
+
+        // loop through all pointers containing uuid and update the item with the pointer data
+        for (const [key, value] of pointers) {
+          const pointerCollection = ejectPointerCollection(value as string);
+          const pointerUuid = ejectPointerId(value as string);
+
+          // grab the pointer data
+          const pointerData = await this.query({
+            [pointerCollection]: {
+              $filter: {
+                _uuid: {
+                  $eq: pointerUuid,
+                },
+              },
+            },
+          } as unknown as iQL<T>);
+
+          const pointer = pointerData[pointerCollection][0];
+
+          if (pointer && !pointer._id.includes('-')) {
+            // update the item with the pointer data
+            item[key] = createPointer(pointerCollection, pointer._id);
+
+            // update the item in the database
+            await this.db.table(collection).update(item._id, item);
+
+            /* istanbul ignore next */
+            if (this.#inspect) {
+              console.log('✅ pointer updated', pointerData);
+            }
+          }
+        }
+      }
+    }
+
+    this.#pendingPointersBusy = false;
+  }
+
+  /**
+   * Sync paginated data from a given collection outside the main thread
+   *
+   * @returns Promise<void>
+   */
+  protected async runBatchWorker({
+    url,
+    token,
+    headers,
+    params,
+  }: {
+    url: string;
+    token: string;
+    headers: Record<string, string>;
+    params: Record<string, string>;
+  }) {
+    if (!this.#db) {
+      await this.ready();
+    }
+
+    const customParams = new URLSearchParams(params).toString();
+    if (customParams) {
+      url += `&${customParams}`;
+    }
+
+    const { synced, collection, data, count, activity } =
+      await fetcher<SyncResponse>(url, {
+        direct: true,
+        method: 'GET',
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...headers,
+        },
+      });
+
+    // const isMobile =
+    //   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    //     navigator.userAgent
+    //   );
+
+    await this.db.transaction('rw!', this.db.table(collection), async () => {
+      for (const { status, value } of data) {
+        await this.#syncProcess({
+          collection,
+          status,
+          value,
+        });
+      }
+    });
+
+    // check if we need to schedule a new local sync
+    // based on the number of local documents
+    const remoteCount = count;
+
+    let localCount = 0;
+    if (activity === 'oldest') {
+      localCount = await this.db
+        .table(collection)
+        .where('_updated_at')
+        .belowOrEqual(synced)
+        .count();
+    } else {
+      localCount = await this.db
+        .table(collection)
+        .where('_created_at')
+        .aboveOrEqual(synced)
+        .count();
+    }
+
+    // persist sync details
+    // in case of oldest order, we need to finalize the sync
+    // so it then only fetch new data via recent order
+    // recent never ends so the client can always try to catch up
+    if (localCount >= remoteCount && activity === 'oldest') {
+      await this.#setSync({
+        collection,
+        activity,
+        count,
+        synced,
+        status: 'complete',
+      });
+    } else {
+      await this.#setSync({ collection, activity, count, synced });
+    }
+
+    // schedule next sync
+    // we skip this on mobile devices to avoid unecessary data consumption
+    // !isMobile && (needs a more robust implementation, like set a max storage setting)
+    if (localCount < remoteCount) {
+      /* istanbul ignore next */
+      if (this.#inspect) {
+        console.log(
+          '⏰ scheduling next sync in',
+          this.#buffer,
+          'for',
+          collection,
+          activity,
+          synced
+        );
+      }
+      this.addBatch({
+        collection,
+        synced,
+        activity,
+        token,
+        headers,
+        params,
+      });
+    }
+
+    return {
+      collection,
+      activity,
+      synced,
+    };
+  }
+
+  /**
+   * Open a websocket connection to the server
+   * and keep live data in sync with local db
+   *
+   * @returns void
+   */
+  protected async runLiveWorker({
+    url,
+    headers,
+    params,
+  }: {
+    url: string;
+    token?: string;
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
+  }) {
+    let wssFinished = false;
+    let wssConnected = false;
+    let hasConnected = false;
+
+    const customParams = new URLSearchParams(params);
+    const customHeaders = new Headers(headers);
+
+    const finalParams: Record<string, string> = {};
+
+    customParams.forEach((value, key) => {
+      finalParams[key] = value;
+    });
+
+    customHeaders.forEach((value, key) => {
+      finalParams[key] = value;
+    });
+
+    if (Object.keys(finalParams).length > 0) {
+      url += `&${new URLSearchParams(finalParams).toString()}`;
+    }
+
+    const webSocket: WebSocketFactory = {
+      onOpen: (ws) => {
+        this.wss = ws;
+        wssConnected = true;
+        /* istanbul ignore next */
+        if (this.#inspect) {
+          console.log('🟡 sync live worker open');
+        }
+      },
+
+      /* istanbul ignore next */
+      onError: (_, err) => {
+        /* istanbul ignore next */
+        if (this.#inspect) {
+          console.log('🔴 sync live worker error', err);
+        }
+      },
+
+      onConnect: (_) => {
+        hasConnected = true;
+        /* istanbul ignore next */
+        if (this.#inspect) {
+          console.log('🟢 sync live worker connected');
+        }
+      },
+
+      onMessage: async (_, message: MessageEvent) => {
+        const { collection, status, value, updatedFields } = JSON.parse(
+          message.data
+        ) as {
+          collection: string;
+          status: SyncStatus;
+          value: Document;
+          updatedFields?: Record<string, any>;
+        };
+
+        try {
+          // needs to handle data owner scenario with uuid
+          if (status === 'created') {
+            // make sure to mark as synced and update with server timestamp
+            const uuid = value['_uuid'];
+            if (uuid) {
+              const localDocByUuid = await this.db
+                .table(collection as string)
+                .get(uuid);
+
+              if (localDocByUuid) {
+                await this.db.transaction(
+                  'rw!',
+                  this.db.table(collection as string),
+                  async () =>
+                    await Promise.allSettled([
+                      // gotta delete the old doc and create new one with server timestamp
+                      this.db.table(collection as string).delete(uuid),
+                      // create new one with updated stuff
+                      this.db.table(collection as string).add({
+                        ...value,
+                        _sync: 0, // to make sure response is marked as synced
+                      }),
+                    ])
+                );
+              } else {
+                await this.db.table(collection as string).add({
+                  ...value,
+                  _sync: 0, // to make sure response is marked as synced
+                });
+              }
+            } else {
+              await this.db.table(collection as string).add({
+                ...value,
+                _sync: 0, // to make sure response is marked as synced
+              });
+            }
+          } else {
+            // handle all other cases
+            await this.#syncProcess({
+              collection,
+              status,
+              value,
+              updatedFields,
+            });
+          }
+
+          // update last sync
+          const synced = value['_updated_at'];
+          await this.#setSync({
+            collection,
+            activity: 'recent',
+            synced,
+            count: 0,
+          });
+        } catch (err) {
+          /* istanbul ignore next */
+          if (this.#inspect) {
+            console.log('🔴 live mutation failed', collection, value, err);
+          }
+        }
+      },
+
+      onClose: (_, ev) => {
+        /* istanbul ignore next */
+        if (this.inspect) {
+          console.log('🟣 sync live worker closed', ev.code);
+        }
+
+        // 1000 is a normal close, so we can safely close on it
+        if (wssFinished || ev.code === 1000 || !hasConnected) {
+          /* istanbul ignore next */
+          if (this.#inspect) {
+            console.log('🔴 closing websocket', ev.code);
+          }
+
+          this.wss?.close();
+          return;
+        }
+
+        if (wssConnected) {
+          wssConnected = false;
+          /* istanbul ignore next */
+          this.wss?.close();
+          /* istanbul ignore next */
+          if (this.inspect) {
+            // code 1006 means the connection was closed abnormally (eg Cloudflare timeout)
+            // locally it also happens on server hot reloads
+            console.log('🔴 sync live worker disconnected', ev.code);
+          }
+        }
+
+        // retry
+        setTimeout(() => {
+          /* istanbul ignore next */
+          if (this.inspect) {
+            console.log('🟡 sync live worker on retry');
+          }
+          this.buildWebSocket(url)(webSocket);
+        }, 1_000);
+      },
+    };
+
+    /**
+     * connect to the server
+     */
+    this.buildWebSocket(url)(webSocket);
+  }
+
+  protected async runMutationWorker({
+    collection,
+    url,
+    data,
+    token,
+    headers,
+    params,
+    method,
+  }: {
+    collection: string;
+    url: string;
+    method: 'POST' | 'PUT' | 'DELETE';
+    data: Document;
+    token?: string;
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
+  }) {
+    if (!navigator.onLine) {
+      /* istanbul ignore next */
+      if (this.#inspect) {
+        console.log('🔴 mutation skipped', 'no internet');
+      }
+      return;
+    }
+
+    const customParams = new URLSearchParams(params);
+    const customHeaders = new Headers(headers);
+
+    const finalParams: Record<string, string> = {};
+
+    customParams.forEach((value, key) => {
+      finalParams[key] = value;
+    });
+
+    customHeaders.forEach((value, key) => {
+      finalParams[key] = value;
+    });
+
+    if (Object.keys(finalParams).length > 0) {
+      url += `?${new URLSearchParams(finalParams).toString()}`;
+    }
+
+    try {
+      // post to the server
+      await fetcher(url, {
+        direct: true,
+        method,
+        body: data,
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...headers,
+        },
+      });
+
+      // mark record as synced since the network request was successful
+      await this.db.table(collection).update(data['_id'], {
+        _sync: 0,
+      });
+    } catch (err) {
+      /* istanbul ignore next */
+      if (this.#inspect) {
+        console.error('🔴 Error mutating document', collection, data, err);
+      }
+    }
+  }
+
+  protected async syncLive() {
+    const url = `${this.#serverURL.replace('http', 'ws')}/sync/live?session=${
+      this.#token
+    }`;
+    this.#worker.postMessage(
+      JSON.stringify({
+        url,
+        sync: 'live',
+        token: this.#token,
+        headers: this.#headers,
+        params: this.#params,
+      })
+    );
+  }
+
+  protected async syncBatch(activity: SyncActivity) {
+    try {
+      const collections = Object.keys(this.#schema);
+
+      for (const collection of collections) {
+        const sync = await this.#useSync({
+          collection,
+          activity,
+        });
+
+        if (activity === 'recent' && !sync.synced) {
+          // try to get the most recent _updated_at from the local db
+          const mostRecentUpdatedAt = await this.db
+            .table(collection)
+            .orderBy('_updated_at')
+            .reverse()
+            .first()
+            .then((doc) => doc?._updated_at);
+
+          if (mostRecentUpdatedAt) {
+            sync.synced = mostRecentUpdatedAt;
+          } else {
+            // otherwise we default to current date
+            sync.synced = new Date().toISOString();
+          }
+        }
+
+        if (sync.status === 'incomplete') {
+          await this.#syncWorker({
+            collection,
+            synced: sync.synced,
+            activity,
+          });
+        }
+      }
+    } catch (err) {
+      /* istanbul ignore next */
+      if (this.#inspect) {
+        console.error('Error syncing', err);
+      }
+    }
+  }
+
+  public setWorker({ worker }: { worker: Worker }) {
+    this.#worker = worker;
   }
 
   /**
@@ -430,12 +1288,70 @@ export class Instant<T extends SchemaType> {
   }
 
   /**
+   * starts the sync process
+   * don't forget to handle extra permissions on the server and make your endpoint even more secure.
+   *
+   * @returns Promise<void>
+   */
+  public async sync({
+    /**
+     * session token used to authenticate the requests on the server
+     */
+    session,
+    /**
+     * user id used to create pointers when mutating data
+     */
+    user,
+    /**
+     * custom headers to send to the server
+     */
+    headers,
+    /**
+     * custom query params to send to the server
+     */
+    params,
+  }: {
+    session?: string;
+    user?: string;
+    headers?: Record<string, string>;
+    params?: Record<string, string>;
+  } = {}) {
+    if (!this.db) {
+      throw new Error(
+        'Database not initialized. Try awaiting `ready()` first.'
+      );
+    }
+
+    if (!this.#worker) {
+      throw new Error(
+        // @todo add documentation and links
+        'Worker not initialized. Try instantiating a worker and adding it to Instant.setWorker({ worker })'
+      );
+    }
+
+    if (!this.#serverURL) {
+      throw new Error('Server URL is required to sync');
+    }
+
+    this.#token = session || this.#token;
+    this.#user = user || this.#user;
+    this.#headers = headers || {};
+    this.#params = params || {};
+
+    await Promise.allSettled([
+      this.syncLive(),
+      this.syncBatch('oldest'),
+      this.syncBatch('recent'),
+    ]);
+  }
+
+  /**
    * Destroy the Instant instance
    *
    * @returns void
    */
   /* istanbul ignore next */
-  async destroy({ db = true }: { db?: boolean } = {}) {
+  public async destroy({ db = true }: { db?: boolean } = {}) {
     this.#batch.complete();
     this.#online.unsubscribe();
 
@@ -464,8 +1380,8 @@ export class Instant<T extends SchemaType> {
       this.#pendingTasks.unsubscribe();
     }
 
-    if (this.#wss && this.#wss.readyState === WebSocket.OPEN) {
-      this.#wss.close();
+    if (this.wss && this.wss.readyState === WebSocket.OPEN) {
+      this.wss.close();
     }
 
     this.#pendingMutationsBusy = false;
@@ -477,886 +1393,6 @@ export class Instant<T extends SchemaType> {
     }
 
     return Promise.resolve();
-  }
-
-  public setWorker({ worker }: { worker: Worker }) {
-    this.#worker = worker;
-  }
-
-  /**
-   * worker entry point
-   * should be called with postMessage from the main thread
-   *
-   * @returns void
-   */
-  public worker() {
-    return async ({ data }: { data: string }) => {
-      try {
-        const {
-          url,
-          sync = 'batch',
-          token = '',
-          headers = {},
-          params = {},
-        } = JSON.parse(data);
-
-        if (!token) {
-          return Promise.reject('No token provided');
-        }
-
-        this.#token = token;
-        this.#headers = headers;
-        this.#params = params;
-
-        const perf = performance.now();
-
-        /**
-         * run the worker, it should:
-         * 1. fetch filtered and paginated data from the server
-         * 2. update the local indexedDB
-         * 3. keep syncing older and new data in background
-         *
-         * now the ui can just query against the local db instead
-         * including realtime updates via dexie livequery 🎉
-         */
-        if (sync === 'batch') {
-          const { collection, activity, synced } = await this.runBatchWorker({
-            url,
-            token,
-            headers,
-            params,
-          });
-
-          /* istanbul ignore next */
-          if (this.inspect) {
-            const syncDuration = performance.now() - perf;
-            const usage = await this.usage(collection);
-            console.log(
-              `💨 sync ${syncDuration.toFixed(2)}ms`,
-              collection,
-              activity,
-              synced
-            );
-            console.log('💾 estimated usage for', collection, usage);
-          }
-        }
-
-        if (sync === 'live') {
-          this.runLiveWorker({ url, token, headers, params });
-        }
-      } catch (err) {
-        /* istanbul ignore next */
-        if (this.inspect) {
-          console.error('Error running worker', err);
-        }
-      }
-    };
-  }
-
-  async #useSync({
-    collection,
-    activity,
-  }: {
-    collection: string;
-    activity: InstantSyncActivity;
-  }) {
-    return ((await this.db
-      .table('_sync')
-      .where({ collection, activity })
-      .first()) || {
-      activity,
-      synced: null,
-      status: 'incomplete',
-    }) as z.infer<typeof SyncSchema>;
-  }
-
-  async #setSync({
-    collection,
-    synced,
-    activity,
-    count,
-    status = 'incomplete',
-  }: {
-    collection: string;
-    synced?: string;
-    activity: InstantSyncActivity;
-    count: number;
-    status?: 'complete' | 'incomplete';
-  }) {
-    const sync = await this.db
-      .table('_sync')
-      .where({ collection, activity })
-      .first();
-
-    const payload = { collection, synced, count, status };
-
-    if (sync) {
-      return this.db
-        .table('_sync')
-        .where({ collection, activity })
-        .modify(payload);
-    }
-
-    return this.db.table('_sync').put({ ...payload, activity });
-  }
-
-  async runPendingMutations() {
-    console.log('oie 1');
-    if (this.#pendingMutationsBusy) {
-      return;
-    }
-    console.log('oie 2');
-    try {
-      this.#pendingMutationsBusy = true;
-
-      const collections = Object.keys(this.#schema);
-
-      for (const collection of collections) {
-        const query = {
-          [collection as keyof T]: {
-            $filter: {
-              _sync: {
-                $eq: 1,
-              },
-            },
-          },
-        };
-
-        const pending = await this.query(query as unknown as iQL<T>);
-        const data = pending[collection as keyof T];
-
-        for (const item of data) {
-          // check for validation, if fails, skip
-          const { type, message, summary, errors } = this.validate(
-            collection,
-            item
-          );
-
-          if (errors) {
-            /* istanbul ignore next */
-            if (this.#inspect) {
-              console.error(
-                '❌ validation failed',
-                type,
-                message,
-                summary,
-                errors
-              );
-            }
-            continue;
-          }
-
-          let url = `${this.#serverURL}/sync/${collection}`;
-
-          const token = this.#token;
-          const headers = this.#headers;
-          const params = this.#params;
-          const method = item['_expires_at']
-            ? 'DELETE'
-            : item['_created_at'] !== item['_updated_at']
-            ? 'PUT'
-            : 'POST';
-
-          if (['DELETE', 'PUT'].includes(method)) {
-            url += `/${item['_id']}`;
-          }
-
-          await this.runMutationWorker({
-            collection,
-            url,
-            data: item,
-            method,
-            token,
-            headers,
-            params,
-          });
-        }
-
-        if (data.length > 0) {
-          /* istanbul ignore next */
-          if (this.#inspect) {
-            console.log('🔵 pending mutations', data);
-          }
-        }
-      }
-    } catch (error) {
-      /* istanbul ignore next */
-      if (this.#inspect) {
-        console.error('Error while running pending mutations', error);
-      }
-    } finally {
-      this.#pendingMutationsBusy = false;
-    }
-  }
-
-  async runPendingPointers() {
-    if (this.#pendingPointersBusy) {
-      return;
-    }
-
-    this.#pendingPointersBusy = true;
-
-    const collections = Object.keys(this.#schema);
-    for (const collection of collections) {
-      // check for pointers using uuid
-      const query = {
-        [collection as keyof T]: {
-          $filter: (item: Document) => {
-            // Check for fields starting with _p_ and containing a dash in their value
-            return Object.entries(item).some(
-              ([key, value]) =>
-                key.startsWith('_p_') &&
-                typeof value === 'string' &&
-                value.includes('-')
-            );
-          },
-        },
-      };
-
-      // replace any pending pointers with the actual data
-      const pending = await this.query(query as unknown as iQL<T>);
-      const data = pending[collection as keyof T];
-
-      for (const item of data) {
-        const pointers = Object.entries(item).filter(
-          ([key, value]) =>
-            key.startsWith('_p_') &&
-            typeof value === 'string' &&
-            value.includes('-')
-        );
-
-        for (const [key, value] of pointers) {
-          const pointerCollection = ejectPointerCollection(value as string);
-          const pointerUuid = ejectPointerId(value as string);
-
-          // grab the pointer data
-          const pointerData = await this.query({
-            [pointerCollection]: {
-              $filter: {
-                _uuid: {
-                  $eq: pointerUuid,
-                },
-              },
-            },
-          } as unknown as iQL<T>);
-
-          const pointer = pointerData[pointerCollection][0];
-
-          if (pointer && !pointer._id.includes('-')) {
-            // update the item with the pointer data
-            item[key] = createPointer(pointerCollection, pointer._id);
-
-            // update the item in the database
-            await this.db.table(collection).update(item._id, item);
-
-            /* istanbul ignore next */
-            if (this.#inspect) {
-              console.log('✅ pointer updated', pointerData);
-            }
-          }
-        }
-      }
-    }
-
-    this.#pendingPointersBusy = false;
-  }
-
-  /**
-   * Sync paginated data from a given collection outside the main thread
-   *
-   * @returns Promise<void>
-   */
-  async runBatchWorker({
-    url,
-    token,
-    headers,
-    params,
-  }: {
-    url: string;
-    token: string;
-    headers: Record<string, string>;
-    params: Record<string, string>;
-  }) {
-    if (!this.db) {
-      await this.ready();
-    }
-
-    const customParams = new URLSearchParams(params).toString();
-    if (customParams) {
-      url += `&${customParams}`;
-    }
-
-    const { synced, collection, data, count, activity } =
-      await fetcher<InstantSyncResponse>(url, {
-        direct: true,
-        method: 'GET',
-        headers: {
-          authorization: `Bearer ${token}`,
-          ...headers,
-        },
-      });
-
-    // const isMobile =
-    //   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    //     navigator.userAgent
-    //   );
-
-    await this.db.transaction('rw!', this.db.table(collection), async () => {
-      for (const { status, value } of data) {
-        await this.#syncProcess({
-          collection,
-          status,
-          value,
-        });
-      }
-    });
-
-    // check if we need to schedule a new local sync
-    // based on the number of local documents
-    const remoteCount = count;
-
-    let localCount = 0;
-    if (activity === 'oldest') {
-      localCount = await this.db
-        .table(collection)
-        .where('_updated_at')
-        .belowOrEqual(synced)
-        .count();
-    } else {
-      localCount = await this.db
-        .table(collection)
-        .where('_created_at')
-        .aboveOrEqual(synced)
-        .count();
-    }
-
-    // persist sync details
-    // in case of oldest order, we need to finalize the sync
-    // so it then only fetch new data via recent order
-    // recent never ends so the client can always try to catch up
-    if (localCount >= remoteCount && activity === 'oldest') {
-      await this.#setSync({
-        collection,
-        activity,
-        count,
-        synced,
-        status: 'complete',
-      });
-    } else {
-      await this.#setSync({ collection, activity, count, synced });
-    }
-
-    // schedule next sync
-    // we skip this on mobile devices to avoid unecessary data consumption
-    // !isMobile && (needs a more robust implementation, like set a max storage setting)
-    if (localCount < remoteCount) {
-      /* istanbul ignore next */
-      if (this.#inspect) {
-        console.log(
-          '⏰ scheduling next sync in',
-          this.#buffer,
-          'for',
-          collection,
-          activity,
-          synced
-        );
-      }
-      this.addBatch({
-        collection,
-        synced,
-        activity,
-        token,
-        headers,
-        params,
-      });
-    }
-
-    return {
-      collection,
-      activity,
-      synced,
-    };
-  }
-
-  /**
-   * Open a websocket connection to the server
-   * and keep live data in sync with local db
-   *
-   * @returns void
-   */
-  async runLiveWorker({
-    url,
-    headers,
-    params,
-  }: {
-    url: string;
-    token?: string;
-    headers?: Record<string, string>;
-    params?: Record<string, string>;
-  }) {
-    let wssFinished = false;
-    let wssConnected = false;
-    let hasConnected = false;
-
-    const customParams = new URLSearchParams(params);
-    const customHeaders = new Headers(headers);
-
-    const finalParams: Record<string, string> = {};
-
-    customParams.forEach((value, key) => {
-      finalParams[key] = value;
-    });
-
-    customHeaders.forEach((value, key) => {
-      finalParams[key] = value;
-    });
-
-    if (Object.keys(finalParams).length > 0) {
-      url += `&${new URLSearchParams(finalParams).toString()}`;
-    }
-
-    const webSocket: WebSocketFactory = {
-      onOpen: (ws) => {
-        this.#wss = ws;
-        wssConnected = true;
-        /* istanbul ignore next */
-        if (this.#inspect) {
-          console.log('🟡 sync live worker open');
-        }
-      },
-
-      onError: (ws, err) => {
-        /* istanbul ignore next */
-        if (this.#inspect) {
-          console.log('🔴 sync live worker error', err);
-        }
-      },
-
-      onConnect: (ws) => {
-        hasConnected = true;
-        /* istanbul ignore next */
-        if (this.#inspect) {
-          console.log('🟢 sync live worker connected');
-        }
-      },
-
-      onMessage: async (ws: WebSocket, message: MessageEvent) => {
-        const { collection, status, value, updatedFields } = JSON.parse(
-          message.data || '{}'
-        ) as {
-          collection: string;
-          status: InstantSyncStatus;
-          value: Document;
-          updatedFields?: Record<string, any>;
-        };
-
-        try {
-          // needs to handle data owner scenario with uuid
-          if (status === 'created') {
-            // make sure to mark as synced and update with server timestamp
-            const uuid = value['_uuid'];
-            if (uuid) {
-              const localDocByUuid = await this.db
-                .table(collection as string)
-                .get(uuid);
-
-              if (localDocByUuid) {
-                await this.db.transaction(
-                  'rw!',
-                  this.db.table(collection as string),
-                  async () => {
-                    // gotta delete the old doc and create new one with server timestamp
-                    await this.db.table(collection as string).delete(uuid);
-                    await this.db.table(collection as string).add({
-                      ...value,
-                      _sync: 0, // to make sure response is marked as synced
-                    });
-                  }
-                );
-              } else {
-                await this.db.table(collection as string).add({
-                  ...value,
-                  _sync: 0, // to make sure response is marked as synced
-                });
-              }
-            }
-          } else {
-            // handle all other cases
-            await this.#syncProcess({
-              collection,
-              status,
-              value,
-              updatedFields,
-            });
-          }
-
-          // update last sync
-          const synced = value['_updated_at'];
-          await this.#setSync({
-            collection,
-            activity: 'recent',
-            synced,
-            count: 0,
-          });
-        } catch (err) {
-          /* istanbul ignore next */
-          if (this.#inspect) {
-            console.log('🔴 live mutation failed', collection, value, err);
-          }
-        }
-      },
-
-      onClose: (ws, ev) => {
-        /* istanbul ignore next */
-        if (this.inspect) {
-          console.log('🟣 sync live worker closed', ev.code);
-        }
-
-        // 1000 is a normal close, so we can safely close on it
-        if (wssFinished || ev?.code === 1000 || !hasConnected) {
-          /* istanbul ignore next */
-          if (this.#inspect) {
-            console.log('🔴 closing websocket', ev.code);
-          }
-          this.#wss?.close();
-          return;
-        }
-
-        if (wssConnected) {
-          wssConnected = false;
-          this.#wss?.close();
-          /* istanbul ignore next */
-          if (this.inspect) {
-            // code 1006 means the connection was closed abnormally (eg Cloudflare timeout)
-            // locally it also happens on server hot reloads
-            console.log('🔴 sync live worker disconnected', ev.code);
-          }
-        }
-
-        // retry
-        setTimeout(() => {
-          /* istanbul ignore next */
-          if (this.inspect) {
-            console.log('🟡 sync live worker on retry');
-          }
-          this.#buildWebSocket(url)(webSocket);
-        }, 1_000);
-      },
-    };
-
-    /**
-     * connect to the server
-     */
-    this.#buildWebSocket(url)(webSocket);
-  }
-
-  async runMutationWorker({
-    collection,
-    url,
-    data,
-    token,
-    headers,
-    params,
-    method,
-  }: {
-    collection: string;
-    url: string;
-    method: 'POST' | 'PUT' | 'DELETE';
-    data: Document;
-    token?: string;
-    headers?: Record<string, string>;
-    params?: Record<string, string>;
-  }) {
-    if (!navigator.onLine) {
-      /* istanbul ignore next */
-      if (this.#inspect) {
-        console.log('🔴 mutation skipped', 'no internet');
-      }
-      return;
-    }
-
-    const customParams = new URLSearchParams(params);
-    const customHeaders = new Headers(headers);
-
-    const finalParams: Record<string, string> = {};
-
-    customParams.forEach((value, key) => {
-      finalParams[key] = value;
-    });
-
-    customHeaders.forEach((value, key) => {
-      finalParams[key] = value;
-    });
-
-    if (Object.keys(finalParams).length > 0) {
-      url += `?${new URLSearchParams(finalParams).toString()}`;
-    }
-
-    try {
-      // post to the server
-      await fetcher(url, {
-        direct: true,
-        method,
-        body: data,
-        headers: {
-          authorization: `Bearer ${token}`,
-          ...headers,
-        },
-      });
-
-      // mark record as synced since the network request was successful
-      await this.db.table(collection).update(data['_id'], {
-        _sync: 0,
-      });
-    } catch (err) {
-      console.error('🔴 Error mutating document', collection, data, err);
-    }
-  }
-
-  async #syncLive() {
-    const url = `${this.#serverURL.replace('http', 'ws')}/sync/live?session=${
-      this.#token
-    }`;
-    this.#worker.postMessage(
-      JSON.stringify({
-        url,
-        sync: 'live',
-        token: this.#token,
-        headers: this.#headers,
-        params: this.#params,
-      })
-    );
-  }
-
-  async syncBatch(activity: InstantSyncActivity) {
-    try {
-      const collections = Object.keys(this.#schema);
-
-      for (const collection of collections) {
-        const sync = await this.#useSync({
-          collection,
-          activity,
-        });
-
-        if (activity === 'recent' && !sync.synced) {
-          // try to get the most recent _updated_at from the local db
-          const mostRecentUpdatedAt = await this.db
-            .table(collection)
-            .orderBy('_updated_at')
-            .reverse()
-            .first()
-            .then((doc) => doc?._updated_at);
-
-          if (mostRecentUpdatedAt) {
-            sync.synced = mostRecentUpdatedAt;
-          } else {
-            // otherwise we default to current date
-            sync.synced = new Date().toISOString();
-          }
-        }
-
-        if (sync.status === 'incomplete') {
-          console.log('🔵 syncing', collection, sync);
-          await this.#syncWorker({
-            collection,
-            synced: sync.synced,
-            activity,
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error syncing', err);
-    }
-  }
-
-  async #syncWorker({
-    collection,
-    synced,
-    activity,
-  }: {
-    collection: string;
-    synced: string;
-    activity: InstantSyncActivity;
-  }) {
-    let url = `${this.#serverURL}/sync/${collection}?activity=${activity}`;
-
-    if (synced) {
-      url += `&synced=${synced}`;
-    }
-
-    await this.#worker.postMessage(
-      JSON.stringify({
-        url,
-        sync: 'batch',
-        token: this.#token,
-        headers: this.#headers,
-        params: this.#params,
-      })
-    );
-  }
-
-  async #syncProcess({
-    collection,
-    status,
-    value,
-    updatedFields,
-  }: {
-    collection: string;
-    status: InstantSyncStatus;
-    value: Document;
-    updatedFields?: Record<string, any>;
-  }) {
-    const persist: Record<
-      InstantSyncStatus,
-      (
-        collection: string,
-        value: Document,
-        updatedFields?: Record<string, any>
-      ) => Promise<void>
-    > = {
-      created: async (collection: string, value: Document) => {
-        await this.db
-          .table(collection)
-          .add({ ...value, _sync: 0 })
-          .catch((err) => {
-            /* istanbul ignore next */
-            if (this.#inspect) {
-              console.error('Error adding document', collection, value, err);
-            }
-          });
-      },
-      updated: async (
-        collection: string,
-        value: Document,
-        updatedFields?: Record<string, any>
-      ) => {
-        // check if doc exits, if not, create it
-        const doc = await this.db.table(collection).get(value['_id']);
-        if (!doc) {
-          await persist.created(collection, value);
-        } else {
-          await this.db
-            .table(collection)
-            .update(value['_id'], {
-              ...(updatedFields ? updatedFields : value),
-              _sync: 0,
-            })
-            .catch((err) => {
-              /* istanbul ignore next */
-              if (this.#inspect) {
-                console.error(
-                  'Error updating document',
-                  collection,
-                  value,
-                  err
-                );
-              }
-            });
-        }
-      },
-      deleted: async (collection: string, value: Document) => {
-        await this.db
-          .table(collection)
-          .delete(value['_id'])
-          .catch((err) => {
-            /* istanbul ignore next */
-            if (this.#inspect) {
-              console.error('Error deleting document', collection, value, err);
-            }
-          });
-      },
-    };
-    await persist[status](collection, value, updatedFields);
-  }
-
-  #buildWebSocket(url: string) {
-    return (factory: WebSocketFactory) => {
-      const { onConnect, onOpen, onError, onClose, onMessage } = factory;
-      const ws = new WebSocket(url);
-
-      ws.onopen = (ev: Event) => onOpen(ws, ev);
-      ws.onerror = (err: Event) => onError(ws, err);
-      ws.onclose = (ev: CloseEvent) => onClose(ws, ev);
-      ws.onmessage = (ev: MessageEvent) => onMessage(ws, ev);
-
-      const timer = setInterval(() => {
-        if (ws.readyState === 1) {
-          clearInterval(timer);
-          onConnect(ws);
-        }
-      }, 1);
-    };
-  }
-
-  #buildIndexCombinations(fields: string[]): string[] {
-    const combo: string[] = [];
-
-    const permute = (arr: string[]): string[][] => {
-      if (arr.length <= 1) return [arr];
-      return arr.flatMap((item, i) =>
-        permute([...arr.slice(0, i), ...arr.slice(i + 1)]).map((perm) => [
-          item,
-          ...perm,
-        ])
-      );
-    };
-
-    for (let i = 1; i <= fields.length; i++) {
-      const combs = this.#getIndexCombinations(fields, i);
-      for (const comb of combs) {
-        const perms = permute(comb);
-        for (const perm of perms) {
-          combo.push(`[${perm.join('+')}]`);
-        }
-      }
-    }
-
-    return [...new Set(combo)]; // Remove any duplicates
-  }
-
-  #getIndexCombinations(arr: string[], k: number): string[][] {
-    const result: string[][] = [];
-
-    const combine = (start: number, current: string[]) => {
-      if (current.length === k) {
-        result.push([...current]);
-        return;
-      }
-
-      for (let i = start; i < arr.length; i++) {
-        current.push(arr[i]);
-        combine(i + 1, current);
-        current.pop();
-      }
-    };
-
-    combine(0, []);
-    return result;
-  }
-
-  public addBatch({
-    collection,
-    synced,
-    activity,
-    token,
-    headers,
-    params,
-  }: {
-    collection: string;
-    synced: string;
-    activity: InstantSyncActivity;
-    token: string;
-    headers: Record<string, string>;
-    params: Record<string, string>;
-  }) {
-    this.#batch.next({
-      collection,
-      synced,
-      activity,
-      token,
-      headers,
-      params,
-    });
   }
 
   public mutate<C extends keyof T>(collection: C) {
@@ -1434,7 +1470,6 @@ export class Instant<T extends SchemaType> {
               _sync: 1,
               _updated_at: new Date().toISOString(),
               _updated_by: createPointer('users', this.#user),
-              _updated_fields: updatedFields,
             });
           }
         );
@@ -1477,64 +1512,6 @@ export class Instant<T extends SchemaType> {
     }
 
     return {};
-  }
-
-  /**
-   * starts the sync process. usually called after user login because a session and user id are required.
-   * don't forget to handle extra permissions on the server and make your endpoint even more secure.
-   *
-   * @returns Promise<void>
-   */
-  public async sync({
-    /**
-     * session token used to authenticate the requests on the server
-     */
-    session,
-    /**
-     * user id used to create pointers when mutating data
-     */
-    user,
-    /**
-     * custom headers to send to the server
-     */
-    headers,
-    /**
-     * custom query params to send to the server
-     */
-    params,
-  }: {
-    session: string;
-    user: string;
-    headers?: Record<string, string>;
-    params?: Record<string, string>;
-  }) {
-    if (!this.db) {
-      throw new Error(
-        'Database not initialized. Try awaiting `ready()` first.'
-      );
-    }
-
-    if (!this.#worker) {
-      throw new Error(
-        // @todo add documentation and links
-        'Worker not initialized. Try instantiating a worker and adding it to Instant.setWorker({ worker })'
-      );
-    }
-
-    if (!this.#serverURL) {
-      throw new Error('Server URL is required to sync');
-    }
-
-    this.#token = session;
-    this.#user = user;
-    this.#headers = headers || {};
-    this.#params = params || {};
-
-    await Promise.allSettled([
-      this.#syncLive(),
-      this.syncBatch('oldest'),
-      this.syncBatch('recent'),
-    ]);
   }
 
   public syncPending(row: Document) {
@@ -1632,43 +1609,6 @@ export class Instant<T extends SchemaType> {
     [K in keyof Q]: z.infer<T[K & keyof T]>[];
   }> {
     return this.#executeQuery(iql);
-  }
-
-  #getPointerField(
-    childTable: keyof T,
-    parentTable: keyof T
-  ): string | undefined {
-    const childSchema = this.#schema[childTable];
-    if (!childSchema || !('shape' in childSchema)) return undefined;
-
-    // First, check for fields starting with _p_
-    for (const fieldName of Object.keys(
-      (childSchema as unknown as z.ZodObject<any, any, any>).shape
-    )) {
-      if (
-        fieldName.startsWith('_p_') &&
-        fieldName.endsWith(singular(parentTable as string))
-      ) {
-        return fieldName;
-      }
-    }
-
-    // If not found, check for pointer fields
-    for (const [fieldName, fieldSchema] of Object.entries(
-      (childSchema as unknown as z.ZodObject<any, any, any>).shape
-    )) {
-      if (
-        fieldSchema instanceof z.ZodBranded &&
-        fieldSchema._def.type instanceof z.ZodObject
-      ) {
-        const innerShape = fieldSchema._def.type.shape;
-        if ('collection' in innerShape) {
-          return fieldName;
-        }
-      }
-    }
-
-    return undefined;
   }
 
   async #executeQuery<Q extends iQL<T>>(
@@ -1851,5 +1791,88 @@ export class Instant<T extends SchemaType> {
     }
 
     return result;
+  }
+
+  #buildIndexCombinations(fields: string[]): string[] {
+    const combo: string[] = [];
+
+    const permute = (arr: string[]): string[][] => {
+      if (arr.length <= 1) return [arr];
+      return arr.flatMap((item, i) =>
+        permute([...arr.slice(0, i), ...arr.slice(i + 1)]).map((perm) => [
+          item,
+          ...perm,
+        ])
+      );
+    };
+
+    for (let i = 1; i <= fields.length; i++) {
+      const combs = this.#getIndexCombinations(fields, i);
+      for (const comb of combs) {
+        const perms = permute(comb);
+        for (const perm of perms) {
+          combo.push(`[${perm.join('+')}]`);
+        }
+      }
+    }
+
+    return [...new Set(combo)]; // Remove any duplicates
+  }
+
+  #getIndexCombinations(arr: string[], k: number): string[][] {
+    const result: string[][] = [];
+
+    const combine = (start: number, current: string[]) => {
+      if (current.length === k) {
+        result.push([...current]);
+        return;
+      }
+
+      for (let i = start; i < arr.length; i++) {
+        current.push(arr[i]);
+        combine(i + 1, current);
+        current.pop();
+      }
+    };
+
+    combine(0, []);
+    return result;
+  }
+
+  #getPointerField(
+    childTable: keyof T,
+    parentTable: keyof T
+  ): string | undefined {
+    const childSchema = this.#schema[childTable];
+    if (!childSchema || !('shape' in childSchema)) return undefined;
+
+    // First, check for fields starting with _p_
+    for (const fieldName of Object.keys(
+      (childSchema as unknown as z.ZodObject<any, any, any>).shape
+    )) {
+      if (
+        fieldName.startsWith('_p_') &&
+        fieldName.endsWith(singular(parentTable as string))
+      ) {
+        return fieldName;
+      }
+    }
+
+    // If not found, check for pointer fields
+    for (const [fieldName, fieldSchema] of Object.entries(
+      (childSchema as unknown as z.ZodObject<any, any, any>).shape
+    )) {
+      if (
+        fieldSchema instanceof z.ZodBranded &&
+        fieldSchema._def.type instanceof z.ZodObject
+      ) {
+        const innerShape = fieldSchema._def.type.shape;
+        if ('collection' in innerShape) {
+          return fieldName;
+        }
+      }
+    }
+
+    return undefined;
   }
 }

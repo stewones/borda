@@ -15,7 +15,8 @@ import {
   createSchema,
   delay,
   Instant,
-  InstantSyncResponse,
+  SyncResponse,
+  WebSocketFactory,
 } from '@borda/client';
 
 import * as lib from '../../../client/src/lib';
@@ -102,6 +103,7 @@ describe('Instant Client', () => {
 
   let insta: Instant<typeof schema>;
   let fetcherSpy: jest.SpyInstance;
+  let worker: any;
 
   beforeEach(async () => {
     insta = new Instant({
@@ -109,7 +111,7 @@ describe('Instant Client', () => {
       name: 'InstantTest',
       version: 1,
       inspect: true,
-      serverURL: 'https://some.api.com',
+      serverURL: 'http://localhost:1337',
       session: '1337',
       user: '420',
       index: {
@@ -120,10 +122,12 @@ describe('Instant Client', () => {
     await insta.ready();
 
     // mock worker
-    const worker = {
+    worker = {
       onmessage: jest.fn(),
-      postMessage: async (payload: string) =>
-        await insta.worker()({ data: payload }),
+      postMessage: async (payload: string) => {
+        // @ts-ignore
+        return await insta.worker()({ data: payload });
+      },
     };
 
     insta.setWorker({ worker } as any);
@@ -193,7 +197,7 @@ describe('Instant Client', () => {
       schema,
       name: 'InstantTest',
       inspect: true,
-      serverURL: 'https://some.api.com',
+      serverURL: 'http://localhost:1337',
     });
 
     await expect(async () => {
@@ -208,7 +212,7 @@ describe('Instant Client', () => {
       schema,
       name: 'InstantTest',
       inspect: true,
-      serverURL: 'https://some.api.com',
+      serverURL: 'http://localhost:1337',
     });
 
     // mock isServer to throw an error just for the sake of the test
@@ -487,7 +491,7 @@ describe('Instant Client', () => {
               },
             },
           ],
-        } as InstantSyncResponse);
+        } as SyncResponse);
       }
     );
 
@@ -525,7 +529,7 @@ describe('Instant Client', () => {
               },
             },
           ],
-        } as InstantSyncResponse);
+        } as SyncResponse);
       }
     );
 
@@ -562,7 +566,7 @@ describe('Instant Client', () => {
               },
             },
           ],
-        } as InstantSyncResponse);
+        } as SyncResponse);
       }
     );
 
@@ -639,7 +643,7 @@ describe('Instant Client', () => {
     const insta2 = new Instant({
       schema,
       name: 'InstantTest2',
-      serverURL: 'https://some.api.com',
+      serverURL: 'http://localhost:1337',
       session: '1337',
       index: {
         posts: ['title'],
@@ -722,6 +726,7 @@ describe('Instant Client', () => {
 
   test("worker should throw if there's no token", async () => {
     try {
+      // @ts-ignore
       await insta.worker()({
         data: JSON.stringify({}),
       });
@@ -734,13 +739,15 @@ describe('Instant Client', () => {
     const insta2 = new Instant({
       schema,
       name: 'InstantTest2',
-      serverURL: 'https://some.api.com',
+      serverURL: 'http://localhost:1337',
       session: '1337',
     });
 
+    // @ts-ignore
     const runBatchWorkerSpy = jest.spyOn(insta2, 'runBatchWorker');
     await insta2.ready();
 
+    // @ts-ignore
     await insta2.worker()({
       data: JSON.stringify({
         token: '1337',
@@ -760,16 +767,19 @@ describe('Instant Client', () => {
     const insta2 = new Instant({
       schema,
       name: 'InstantTest2',
-      serverURL: 'https://some.api.com',
+      serverURL: 'http://localhost:1337',
       session: '1337',
     });
 
     const runLiveWorkerSpy = jest
+      // @ts-ignore
       .spyOn(insta2, 'runLiveWorker')
+      // @ts-ignore
       .mockResolvedValue();
 
     await insta2.ready();
 
+    // @ts-ignore
     await insta2.worker()({
       data: JSON.stringify({
         token: '1337',
@@ -961,13 +971,14 @@ describe('Instant Client', () => {
       schema,
       inspect: true,
       name: 'InstantTest2',
-      serverURL: 'https://some.api.com',
+      serverURL: 'http://localhost:1337',
       session: '1337',
       user: '420',
     });
 
     await insta2.ready();
 
+    // @ts-ignore
     const runMutationWorkerSpy = jest.spyOn(insta2, 'runMutationWorker');
 
     await insta2.mutate('users').add({
@@ -975,8 +986,11 @@ describe('Instant Client', () => {
     });
 
     await Promise.allSettled([
+      // @ts-ignore
       insta2.runPendingMutations(),
+      // @ts-ignore
       insta2.runPendingMutations(),
+      // @ts-ignore
       insta2.runPendingMutations(),
     ]);
 
@@ -989,19 +1003,21 @@ describe('Instant Client', () => {
       schema,
       inspect: true,
       name: 'InstantTest2',
-      serverURL: 'https://some.api.com',
+      serverURL: 'http://localhost:1337',
       session: '1337',
       user: '420',
     });
 
     await insta2.ready();
 
+    // @ts-ignore
     const runMutationWorkerSpy = jest.spyOn(insta2, 'runMutationWorker');
 
     await insta2.mutate('users').add({
       name: 1,
     } as any);
 
+    // @ts-ignore
     await insta2.runPendingMutations();
 
     await insta2.mutate('users').add({
@@ -1009,9 +1025,332 @@ describe('Instant Client', () => {
       age: 420,
     } as any);
 
+    // @ts-ignore
     await insta2.runPendingMutations();
 
     expect(runMutationWorkerSpy).not.toHaveBeenCalled();
+    await insta2.destroy();
+  });
+
+  test('skip pending pointers if busy', async () => {
+    const insta2 = new Instant({
+      schema,
+      inspect: true,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '420',
+    });
+
+    await insta2.ready();
+
+    const querySpy = jest.spyOn(insta2, 'query');
+
+    await insta2.mutate('posts').add({
+      title: 'My forty-second post',
+      _p_user: 'users$420',
+    });
+
+    await Promise.allSettled([
+      // @ts-ignore
+      insta2.runPendingPointers(),
+      // @ts-ignore
+      insta2.runPendingPointers(),
+      // @ts-ignore
+      insta2.runPendingPointers(),
+      // @ts-ignore
+      insta2.runPendingPointers(),
+    ]);
+
+    expect(querySpy).toHaveBeenCalledTimes(2); // the total of collections to query against
+    await insta2.destroy();
+  });
+
+  test('deal with pending pointers created locally', async () => {
+    const insta2 = new Instant({
+      schema,
+      inspect: true,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '420',
+    });
+
+    await insta2.ready();
+
+    const querySpy = jest.spyOn(insta2, 'query');
+
+    await insta2.db.table('users').add({
+      _id: 'a1b2c3d4e', // external id
+      _uuid: '1111-2222-3333-4444', // local id
+      name: 'John Doe',
+    });
+
+    const post = await insta2.mutate('posts').add({
+      title: 'My offline post',
+      _p_user: 'users$1111-2222-3333-4444',
+    });
+
+    // @ts-ignore
+    await insta2.runPendingPointers();
+
+    expect(querySpy).toHaveBeenLastCalledWith({
+      users: {
+        $filter: {
+          _uuid: {
+            $eq: '1111-2222-3333-4444',
+          },
+        },
+      },
+    });
+
+    const updatedPost = await insta2.db.table('posts').get(post._id as string);
+
+    expect(updatedPost._p_user).toBe('users$a1b2c3d4e');
+
+    await insta2.destroy();
+  });
+
+  test('run pending created mutations', async () => {
+    const runMutationWorkerSpy = jest
+      // @ts-ignore
+      .spyOn(insta, 'runMutationWorker')
+      // @ts-ignore
+      .mockResolvedValue();
+
+    const newUser = await insta.mutate('users').add({
+      name: 'John Doez',
+    });
+
+    // @ts-ignore
+    await insta.runPendingMutations();
+
+    const data = await insta.db.table('users').get(newUser._id as string);
+
+    expect(runMutationWorkerSpy).toHaveBeenCalledTimes(1);
+    expect(runMutationWorkerSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        url: expect.stringContaining('sync/users'),
+      })
+    );
+
+    expect(data.name).toBe('John Doez');
+
+    await insta.destroy();
+  });
+
+  test('run pending updated mutations', async () => {
+    const runMutationWorkerSpy = jest
+      // @ts-ignore
+      .spyOn(insta, 'runMutationWorker')
+      // @ts-ignore
+      .mockResolvedValue();
+
+    await insta.mutate('users').update('objId2222', {
+      name: 'John Doer',
+    });
+
+    // @ts-ignore
+    await insta.runPendingMutations();
+
+    const data = await insta.db.table('users').get('objId2222');
+
+    expect(runMutationWorkerSpy).toHaveBeenCalledTimes(1);
+    expect(runMutationWorkerSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'PUT',
+        url: expect.stringContaining('sync/users/objId2222'),
+      })
+    );
+
+    expect(data.name).toBe('John Doer');
+
+    await insta.destroy();
+  });
+
+  test('run pending deleted mutations', async () => {
+    const runMutationWorkerSpy = jest
+      // @ts-ignore
+      .spyOn(insta, 'runMutationWorker')
+      // @ts-ignore
+      .mockResolvedValue();
+
+    await insta.mutate('users').delete('objId2222');
+
+    // @ts-ignore
+    await insta.runPendingMutations();
+
+    const data = await insta.db.table('users').get('objId2222');
+
+    expect(runMutationWorkerSpy).toHaveBeenCalledTimes(1);
+    expect(runMutationWorkerSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'DELETE',
+        url: expect.stringContaining('sync/users/objId2222'),
+      })
+    );
+
+    expect(data._expires_at).toBeDefined();
+
+    await insta.destroy();
+  });
+
+  test('batch worker shoud initialize db if not initialized', async () => {
+    const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+      // @ts-ignore
+      (url, options) => {
+        return Promise.resolve({
+          activity: 'recent',
+          collection: 'users',
+          count: 1,
+          synced: new Date().toISOString(),
+          data: [
+            {
+              status: 'created',
+              value: {
+                _id: 'objId1337',
+                _created_at: '2024-08-25T03:49:47.352Z',
+                _updated_at: '2024-08-25T03:49:47.352Z',
+                name: 'John Doex',
+              },
+            },
+          ],
+        } as SyncResponse);
+      }
+    );
+
+    const insta2 = new Instant({
+      schema,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '420',
+    });
+
+    // @ts-ignore
+    await insta2.runBatchWorker({
+      url: 'http://localhost:1337',
+      token: '1337',
+      headers: {},
+      params: {},
+    });
+
+    expect(insta2.db).toBeDefined();
+
+    fetcherSpy.mockRestore();
+    await insta2.destroy();
+  });
+
+  test('batch worker shoud accept custom params', async () => {
+    const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+      // @ts-ignore
+      (url, options) => {
+        return Promise.resolve({
+          activity: 'recent',
+          collection: 'users',
+          count: 1,
+          synced: new Date().toISOString(),
+          data: [
+            {
+              status: 'created',
+              value: {
+                _id: 'objId1337',
+                _created_at: '2024-08-25T03:49:47.352Z',
+                _updated_at: '2024-08-25T03:49:47.352Z',
+                name: 'John Doex',
+              },
+            },
+          ],
+        } as SyncResponse);
+      }
+    );
+
+    const insta2 = new Instant({
+      schema,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '420',
+    });
+
+    // @ts-ignore
+    await insta2.runBatchWorker({
+      url: `/sync/users?activity=recent`,
+      token: '1337',
+      headers: {},
+      params: {
+        org: 'a1b2c3d4e',
+      },
+    });
+
+    expect(fetcherSpy).toHaveBeenCalledWith(
+      '/sync/users?activity=recent&org=a1b2c3d4e',
+      expect.objectContaining({
+        method: 'GET',
+        headers: {
+          authorization: `Bearer 1337`,
+        },
+      })
+    );
+
+    fetcherSpy.mockRestore();
+    await insta2.destroy();
+  });
+
+  test('batch worker shoud account for older documents', async () => {
+    const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+      // @ts-ignore
+      (url, options) => {
+        return Promise.resolve({
+          activity: 'oldest',
+          collection: 'users',
+          count: 1,
+          synced: new Date().toISOString(),
+          data: [
+            {
+              status: 'created',
+              value: {
+                _id: 'objId1337',
+                _created_at: '2024-08-26T03:49:47.352Z',
+                _updated_at: '2024-08-26T03:49:47.352Z',
+                name: 'John Doex',
+              },
+            },
+          ],
+        } as SyncResponse);
+      }
+    );
+
+    const insta2 = new Instant({
+      schema,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '420',
+    });
+
+    // @ts-ignore
+    await insta2.runBatchWorker({
+      url: `/sync/users?activity=oldest`,
+      token: '1337',
+      headers: {},
+      params: {
+        org: 'a1b2c3d4e',
+      },
+    });
+
+    expect(fetcherSpy).toHaveBeenCalledWith(
+      '/sync/users?activity=oldest&org=a1b2c3d4e',
+      expect.objectContaining({
+        method: 'GET',
+        headers: {
+          authorization: `Bearer 1337`,
+        },
+      })
+    );
+
+    fetcherSpy.mockRestore();
     await insta2.destroy();
   });
 
@@ -1075,7 +1414,7 @@ describe('Instant Client', () => {
       const insta = new Instant({
         schema,
         name: 'InstantTest',
-        serverURL: 'https://some.api.com',
+        serverURL: 'http://localhost:1337',
       });
 
       insta.online.pipe(take(1)).subscribe((isOnline) => {
@@ -1088,7 +1427,7 @@ describe('Instant Client', () => {
       const insta = new Instant({
         schema,
         name: 'InstantTest',
-        serverURL: 'https://some.api.com',
+        serverURL: 'http://localhost:1337',
       });
 
       insta.online.pipe(take(3), toArray()).subscribe((statuses) => {
@@ -1107,7 +1446,7 @@ describe('Instant Client', () => {
       const insta = new Instant({
         schema,
         name: 'InstantTest',
-        serverURL: 'https://some.api.com',
+        serverURL: 'http://localhost:1337',
       });
 
       insta.online.pipe(take(3), toArray()).subscribe((statuses) => {
@@ -1129,13 +1468,14 @@ describe('Instant Client', () => {
         onmessage: jest.fn(),
         terminate: jest.fn(),
         postMessage: async (payload: string) =>
+          // @ts-ignore
           await insta.worker()({ data: payload }),
       };
 
       const insta2 = new Instant({
         schema,
         name: 'InstantTest2',
-        serverURL: 'https://some.api.com',
+        serverURL: 'http://localhost:1337',
         session: '1337',
       });
 
@@ -1144,8 +1484,8 @@ describe('Instant Client', () => {
 
       await insta2.ready();
 
-      const syncBatchRecentSpy = jest.spyOn(insta2, 'syncBatch');
-      const syncBatchOldestSpy = jest.spyOn(insta2, 'syncBatch');
+      const syncBatchRecentSpy = jest.spyOn(insta2, 'syncBatch' as any);
+      const syncBatchOldestSpy = jest.spyOn(insta2, 'syncBatch' as any);
 
       dispatchEvent('offline');
       dispatchEvent('online');
@@ -1163,29 +1503,6 @@ describe('Instant Client', () => {
 
       // await insta2.destroy(); // this breaks this test
     });
-  });
-
-  test('run pending deleted mutations', async () => {
-    const runMutationWorkerSpy = jest
-      .spyOn(insta, 'runMutationWorker')
-      .mockResolvedValue();
-
-    await insta.mutate('users').delete('objId2222');
-    await insta.runPendingMutations();
-
-    const data = await insta.db.table('users').get('objId2222');
-
-    expect(runMutationWorkerSpy).toHaveBeenCalledTimes(1);
-    expect(runMutationWorkerSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        method: 'DELETE',
-        url: expect.stringContaining('sync/users/objId2222'),
-      })
-    );
-
-    expect(data._expires_at).toBeDefined();
-
-    await insta.destroy();
   });
 
   describe('online stream (web worker)', () => {
@@ -1208,7 +1525,7 @@ describe('Instant Client', () => {
       const insta = new Instant({
         schema,
         name: 'InstantTest',
-        serverURL: 'https://some.api.com',
+        serverURL: 'http://localhost:1337',
       });
 
       insta.online.pipe(take(3), toArray()).subscribe((statuses) => {
@@ -1227,7 +1544,7 @@ describe('Instant Client', () => {
       const insta = new Instant({
         schema,
         name: 'InstantTest',
-        serverURL: 'https://some.api.com',
+        serverURL: 'http://localhost:1337',
       });
 
       insta.online.pipe(take(3), toArray()).subscribe((statuses) => {
@@ -1276,7 +1593,7 @@ describe('Instant Client', () => {
       const insta2 = new Instant({
         schema,
         name: 'InstantTest2',
-        serverURL: 'https://some.api.com',
+        serverURL: 'http://localhost:1337',
       });
 
       await insta2.ready();
@@ -1314,15 +1631,18 @@ describe('Instant Client', () => {
       const insta3 = new Instant({
         schema,
         name: 'InstantTest3',
-        serverURL: 'https://some.api.com',
+        serverURL: 'http://localhost:1337',
         buffer: 1,
       });
 
       const runBatchWorkerSpy = jest
+        // @ts-ignore
         .spyOn(insta3, 'runBatchWorker')
-        .mockResolvedValue({} as any);
+        // @ts-ignore
+        .mockResolvedValue({});
 
       await insta3.ready();
+      // @ts-ignore
       insta3.addBatch({
         collection: 'users',
         synced: new Date().toISOString(),
@@ -1339,6 +1659,544 @@ describe('Instant Client', () => {
 
       runBatchWorkerSpy.mockClear();
       await insta3.destroy();
+    });
+  });
+
+  describe('Live Sync', () => {
+    let isServerSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      isServerSpy = jest.spyOn(utils, 'isServer').mockReturnValue(true);
+    });
+
+    afterEach(() => {
+      isServerSpy.mockRestore();
+      jest.restoreAllMocks();
+    });
+
+    test('run live worker with custom params and headers', async () => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest1',
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '',
+      });
+
+      const buildWebSocketSpy = jest.spyOn(insta, 'buildWebSocket' as any);
+
+      await insta.ready();
+      // @ts-ignore
+      await insta.runLiveWorker({
+        url: 'ws://localhost:8080/sync/live?session=1337',
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        headers: {
+          timezone: 'GMT',
+        },
+      });
+
+      expect(buildWebSocketSpy).toHaveBeenCalled();
+      expect(buildWebSocketSpy).toHaveBeenCalledWith(
+        'ws://localhost:8080/sync/live?session=1337&org=a1b2c3d4e&timezone=GMT'
+      );
+
+      // clean up
+      buildWebSocketSpy.mockRestore();
+      await insta.destroy();
+    });
+
+    test('process externally created documents', async () => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest2',
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '',
+      });
+
+      const buildWebSocketSpy = jest
+        .spyOn(insta, 'buildWebSocket' as any)
+        .mockImplementation((url) => {
+          return (factory: WebSocketFactory) => {
+            const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+            onMessage(
+              null as any,
+              {
+                data: JSON.stringify({
+                  collection: 'users',
+                  status: 'created',
+                  value: {
+                    _id: 'a2b3c4d5e6',
+                    name: 'John Doey',
+                  },
+                }),
+              } as any
+            );
+          };
+        });
+
+      await insta.ready();
+      // @ts-ignore
+      await insta.runLiveWorker({
+        url: 'ws://localhost:8080/sync/live?session=1337',
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        headers: {
+          timezone: 'GMT',
+        },
+      });
+
+      const data = await insta.db.table('users').get('a2b3c4d5e6');
+
+      expect(data).toMatchObject({
+        name: 'John Doey',
+        _id: 'a2b3c4d5e6',
+        _sync: 0,
+      });
+
+      // clean up
+      buildWebSocketSpy.mockRestore();
+      await insta.destroy();
+    });
+
+    test('process externally updated documents', async () => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest2',
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '',
+      });
+
+      const buildWebSocketSpy = jest
+        .spyOn(insta, 'buildWebSocket' as any)
+        .mockImplementation((url) => {
+          return (factory: WebSocketFactory) => {
+            const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+            onMessage(
+              null as any,
+              {
+                data: JSON.stringify({
+                  collection: 'users',
+                  status: 'updated',
+                  value: {
+                    _id: 'a1b2c3d4e',
+                    name: 'John DoeY',
+                  },
+                }),
+              } as any
+            );
+          };
+        });
+
+      await insta.ready();
+
+      // add a user locally
+      await insta.db.table('users').add({
+        _id: 'a1b2c3d4e',
+        name: 'John DoeX',
+      });
+
+      // @ts-ignore
+      await insta.runLiveWorker({
+        url: 'ws://localhost:8080/sync/live?session=1337',
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        headers: {
+          timezone: 'GMT',
+        },
+      });
+
+      await delay(10);
+
+      const data = await insta.db.table('users').get('a1b2c3d4e');
+
+      expect(data).toMatchObject({
+        name: 'John DoeY',
+        _id: 'a1b2c3d4e',
+        _sync: 0,
+      });
+
+      // clean up
+      buildWebSocketSpy.mockRestore();
+      await insta.destroy();
+    });
+
+    test('process locally created documents by the owner', async () => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest4',
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '7331',
+      });
+
+      await insta.ready();
+
+      // add a user locally
+      const { _id, _uuid } = await insta.mutate('users').add({
+        name: 'John DoeX',
+      });
+      expect(_id).toEqual(_uuid);
+
+      const buildWebSocketSpy = jest
+        .spyOn(insta, 'buildWebSocket' as any)
+        .mockImplementation((url) => {
+          return (factory: WebSocketFactory) => {
+            const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+            onMessage(
+              null as any,
+              {
+                data: JSON.stringify({
+                  collection: 'users',
+                  status: 'created',
+                  value: {
+                    _uuid,
+                    _id: 'a2b3c4d5e6', // actual id from the server
+                    name: 'John DoeX',
+                  },
+                }),
+              } as any
+            );
+          };
+        });
+
+      // @ts-ignore
+      await insta.runLiveWorker({
+        url: 'ws://localhost:8080/sync/live?session=1337',
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        headers: {
+          timezone: 'GMT',
+        },
+      });
+
+      await delay(0);
+      const data = await insta.db.table('users').get('a2b3c4d5e6');
+
+      expect(data).toMatchObject({
+        name: 'John DoeX',
+        _id: 'a2b3c4d5e6', // actual id from the server
+        _uuid, // local id
+        _sync: 0,
+      });
+
+      // clean up
+      buildWebSocketSpy.mockRestore();
+      await insta.destroy();
+    });
+
+    test('process locally created documents by other clients', async () => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest3',
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '',
+      });
+
+      const buildWebSocketSpy = jest
+        .spyOn(insta, 'buildWebSocket' as any)
+        .mockImplementation((url) => {
+          return (factory: WebSocketFactory) => {
+            const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+            onMessage(
+              null as any,
+              {
+                data: JSON.stringify({
+                  collection: 'users',
+                  status: 'created',
+                  value: {
+                    _id: 'a2b3c4d5e6',
+                    _uuid: 'a1b2c3-d4e5-f6g7-h8i9',
+                    name: 'John Doez',
+                  },
+                }),
+              } as any
+            );
+          };
+        });
+
+      await insta.ready();
+
+      // @ts-ignore
+      await insta.runLiveWorker({
+        url: 'ws://localhost:8080/sync/live?session=1337',
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        headers: {
+          timezone: 'GMT',
+        },
+      });
+
+      await delay(10);
+      const data = await insta.db.table('users').get('a2b3c4d5e6');
+
+      expect(data).toMatchObject({
+        name: 'John Doez',
+        _id: 'a2b3c4d5e6',
+        _uuid: 'a1b2c3-d4e5-f6g7-h8i9',
+        _sync: 0,
+      });
+
+      // clean up
+      buildWebSocketSpy.mockRestore();
+      await insta.destroy();
+    });
+
+    test('should create a new entry if entry does not exist on process update', async () => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest1',
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '',
+      });
+
+      const buildWebSocketSpy = jest
+        .spyOn(insta, 'buildWebSocket' as any)
+        .mockImplementation((url) => {
+          return (factory: WebSocketFactory) => {
+            const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+            onMessage(
+              null as any,
+              {
+                data: JSON.stringify({
+                  collection: 'users',
+                  status: 'updated',
+                  value: {
+                    _id: 'a2b3c4d5e6',
+                    _uuid: 'a1b2c3-d4e5-f6g7-h8i9',
+                    name: 'John DoeK',
+                  },
+                }),
+              } as any
+            );
+          };
+        });
+
+      await insta.ready();
+
+      // @ts-ignore
+      await insta.runLiveWorker({
+        url: 'ws://localhost:8080/sync/live?session=1337',
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        headers: {
+          timezone: 'GMT',
+        },
+      });
+
+      await delay(10);
+      const data = await insta.db.table('users').get('a2b3c4d5e6');
+
+      expect(data).toMatchObject({
+        name: 'John DoeK',
+        _id: 'a2b3c4d5e6',
+        _sync: 0,
+      });
+
+      // clean up
+      buildWebSocketSpy.mockRestore();
+      await insta.destroy();
+    });
+
+    test('use the updated fields on process update', async () => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest1',
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '',
+      });
+
+      const buildWebSocketSpy = jest
+        .spyOn(insta, 'buildWebSocket' as any)
+        .mockImplementation((url) => {
+          return (factory: WebSocketFactory) => {
+            const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+            onMessage(
+              null as any,
+              {
+                data: JSON.stringify({
+                  collection: 'users',
+                  status: 'updated',
+                  updatedFields: {
+                    name: 'John DoeL',
+                  },
+                  value: {
+                    _id: 'a2b3c4d5e6',
+                    name: 'John DoeL',
+                  },
+                }),
+              } as any
+            );
+          };
+        });
+
+      await insta.ready();
+
+      // add the user locally
+      await insta.db.table('users').add({
+        _id: 'a2b3c4d5e6',
+        name: 'John DoeJ',
+      });
+
+      // @ts-ignore
+      await insta.runLiveWorker({
+        url: 'ws://localhost:8080/sync/live?session=1337',
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        headers: {
+          timezone: 'GMT',
+        },
+      });
+
+      await delay(10);
+
+      const data = await insta.db.table('users').get('a2b3c4d5e6');
+
+      expect(data).toMatchObject({
+        name: 'John DoeL',
+        _id: 'a2b3c4d5e6',
+        _sync: 0,
+      });
+
+      // clean up
+      buildWebSocketSpy.mockRestore();
+      await insta.destroy();
+    });
+
+    test('close websocket server on code 1000', async () => {
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest7',
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '7331',
+      });
+
+      await insta.ready();
+
+      // @ts-ignore
+      insta.wss = {
+        close: jest.fn(),
+      };
+
+      const wssCloseSpy = jest
+        // @ts-ignore
+        .spyOn(insta.wss, 'close')
+        // @ts-ignore
+        .mockImplementation(() => {});
+
+      const buildWebSocketSpy = jest
+        .spyOn(insta, 'buildWebSocket' as any)
+        .mockImplementation((url) => {
+          return async (factory: WebSocketFactory) => {
+            const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+
+            onClose(
+              null as any,
+              {
+                code: 1000,
+              } as any
+            );
+          };
+        });
+
+      // run live worker
+      // @ts-ignore
+      await insta.runLiveWorker({
+        url: 'ws://localhost:8080/sync/live?session=1337',
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        headers: {
+          timezone: 'GMT',
+        },
+      });
+
+      expect(wssCloseSpy).toHaveBeenCalled();
+
+      // clean up
+      buildWebSocketSpy.mockRestore();
+      wssCloseSpy.mockRestore();
+      await insta.destroy();
+    });
+
+    test('should retry on close', async () => {
+      let count = 0;
+      jest.useFakeTimers();
+      const insta = new Instant({
+        schema,
+        name: 'InstantTest0',
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '',
+        inspect: true,
+      });
+
+      const setTimeoutSpy = jest
+        .spyOn(global, 'setTimeout')
+        .mockImplementation((cb, ms) => {
+          cb();
+          return 1000 as any;
+        });
+
+      const buildWebSocketSpy = jest
+        .spyOn(insta, 'buildWebSocket' as any)
+        // @ts-ignore
+        .mockImplementation((url) => {
+          return (factory: WebSocketFactory) => {
+            const { onConnect, onOpen, onError, onClose, onMessage } = factory;
+
+            if (count <= 2) {
+              onConnect(null as any);
+              count++;
+            }
+
+            if (count < 2) {
+              onClose(
+                null as any,
+                {
+                  code: 1337,
+                } as any
+              );
+            }
+          };
+        });
+
+      await insta.ready();
+
+      // run live worker
+      // @ts-ignore
+      await insta.runLiveWorker({
+        url: 'ws://localhost:8080/sync/live?session=1337',
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        headers: {
+          timezone: 'GMT',
+        },
+      });
+
+      tick(2000);
+
+      expect(buildWebSocketSpy).toHaveBeenCalledTimes(2);
+
+      // clean up
+      buildWebSocketSpy.mockRestore();
+      jest.useRealTimers();
+      setTimeoutSpy.mockRestore();
+      // await insta.destroy(); // this breaks this test
     });
   });
 });

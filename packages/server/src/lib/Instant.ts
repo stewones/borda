@@ -24,11 +24,11 @@ import {
   createPointer,
   ejectPointerCollection,
   ejectPointerId,
-  InstantSyncResponse,
-  InstantSyncResponseData,
-  InstantSyncStatus,
   omit,
   pointer,
+  SyncResponse,
+  SyncResponseData,
+  SyncStatus,
 } from '@borda/client';
 import { Borda } from '@borda/server';
 
@@ -282,7 +282,7 @@ export class Instant<C extends string> {
                   constraints: this.#constraints,
                 });
 
-                const response: InstantSyncResponseData = {
+                const response: SyncResponseData = {
                   collection: collection,
                   status: 'updated',
                   value: fullDocument,
@@ -328,7 +328,7 @@ export class Instant<C extends string> {
                   constraints: this.#constraints,
                 });
 
-                const response: InstantSyncResponseData = {
+                const response: SyncResponseData = {
                   collection: collection,
                   status: 'created',
                   value: fullDocument,
@@ -376,7 +376,7 @@ export class Instant<C extends string> {
                   constraints: this.#constraints,
                 });
 
-                const response: InstantSyncResponseData = {
+                const response: SyncResponseData = {
                   collection: collection,
                   status: 'deleted',
                   value: doc,
@@ -805,7 +805,7 @@ export class Instant<C extends string> {
           const updatedAt = entry['_updated_at'].toISOString();
           const createdAt = entry['_created_at'].toISOString();
 
-          const status: InstantSyncStatus = expiresAt
+          const status: SyncStatus = expiresAt
             ? 'deleted'
             : updatedAt !== createdAt
             ? 'updated'
@@ -816,7 +816,7 @@ export class Instant<C extends string> {
             value,
           };
         }),
-      } as InstantSyncResponse;
+      } as SyncResponse;
     } catch (error) {
       console.error('sync error', error);
       set.status = 500;
@@ -882,12 +882,7 @@ export class Instant<C extends string> {
   }) {
     try {
       const { collection, id } = params;
-      const data = omit(body, [
-        '_id',
-        '_created_at',
-        '_updated_at',
-        '_updated_fields',
-      ]);
+      const data = omit(body, ['_id', '_created_at', '_updated_at']);
 
       if (data['_sync']) {
         delete data['_sync'];
