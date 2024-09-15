@@ -52,7 +52,7 @@
       "options": {
         "jestConfig": "packages/client/jest.config.ts",
         "codeCoverage": true,
-        "coverageReporters": ["json-summary", "lcov", "html", "text"]
+        "coverageReporters": ["json-summary", "lcov", "html"]
       }
     },
     "coverage": {

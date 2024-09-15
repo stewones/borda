@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import {
   createPointer,
+  createPointerSchema,
   createSchema,
   delay,
   Instant,
@@ -48,9 +49,18 @@ describe('Instant Client', () => {
     _p_user: z.string(),
   });
 
+  const CommentSchema = createSchema('comments', {
+    content: z.string(),
+    author: z.string(),
+    post: z.string(),
+    _p_user: z.string(),
+    _p_post: z.string(),
+  });
+
   const schema = {
     users: UserSchema,
     posts: PostSchema,
+    comments: CommentSchema,
   };
 
   const users = [
@@ -85,19 +95,29 @@ describe('Instant Client', () => {
       _id: 'post11112',
       _created_at: '2022-07-05T03:08:41.768Z',
       _updated_at: '2022-07-05T03:08:41.768Z',
+      _p_user: createPointer('users', 'objId0507'),
       title: 'Post 2',
       content: 'Ei gentiii chegueii',
-      author: createPointer('users', 'objId0507'),
-      _p_user: createPointer('users', 'objId0507'),
     },
     {
       _id: 'post11111',
       _created_at: '2020-07-28T03:08:41.768Z',
       _updated_at: '2020-07-28T03:08:41.768Z',
+      _p_user: createPointer('users', 'objId2807'),
       title: 'Post 1',
       content: 'Hello world',
-      author: createPointer('users', 'objId2807'),
+    },
+  ];
+
+  const comments = [
+    {
+      _id: 'comment11111',
+      _created_at: '2020-07-28T03:08:41.768Z',
+      _updated_at: '2020-07-28T03:08:41.768Z',
       _p_user: createPointer('users', 'objId2807'),
+      _p_post: createPointer('posts', 'post11111'),
+      content: 'I love to be here',
+      post: createPointer('posts', 'post11111'),
     },
   ];
 
@@ -139,6 +159,10 @@ describe('Instant Client', () => {
       await insta.db.table('posts').add(post);
     }
 
+    for (const comment of comments) {
+      await insta.db.table('comments').add(comment);
+    }
+
     fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
       // @ts-ignore
       (url, options) => {
@@ -148,51 +172,11 @@ describe('Instant Client', () => {
   });
 
   afterEach(async () => {
-    // insta.db.close({
-    //   disableAutoOpen: true,
-    // });
-    // await insta.db.delete({
-    //   disableAutoOpen: true,
-    // });
     await insta.destroy();
     fetcherSpy.mockRestore();
   });
 
-  test('list all users', async () => {
-    const result = await insta.db
-      .table('users')
-      .orderBy('_created_at')
-      .reverse()
-      .toArray()
-      .catch(console.log);
-    expect(result).toEqual(users);
-  });
-
-  test('filter users named Raul', async () => {
-    const result = await insta.db
-      .table('users')
-      .filter((user) => user.name === 'Raul')
-      .toArray()
-      .catch(console.log);
-    expect(result).toEqual([users.find((user) => user.name === 'Raul')]);
-  });
-
-  test('list users named tob using regex case insensitive', async () => {
-    const result = await insta.db
-      .table('users')
-      .filter((user) => /tob/i.test(user.name))
-      .toArray();
-
-    expect(result).toEqual([users.find((user) => /tob/i.test(user.name))]);
-  });
-
-  test('list all posts', async () => {
-    const result = await insta.db.table('posts').toArray();
-
-    expect(result).toEqual([...posts].reverse());
-  });
-
-  test('throw error if trying to access a non initialized db', async () => {
+  test('throw if trying to access a non initialized db', async () => {
     const insta = new Instant({
       schema,
       name: 'InstantTest',
@@ -227,7 +211,7 @@ describe('Instant Client', () => {
     isServerSpy.mockRestore();
   });
 
-  test('simple query', async () => {
+  test('simple iQL query', async () => {
     const iql = {
       users: {},
     };
@@ -306,7 +290,6 @@ describe('Instant Client', () => {
           _updated_at: '2020-07-28T03:08:41.768Z',
           title: 'Post 1',
           content: 'Hello world',
-          author: 'users$objId2807',
           _p_user: 'users$objId2807',
         },
         {
@@ -315,14 +298,548 @@ describe('Instant Client', () => {
           _updated_at: '2022-07-05T03:08:41.768Z',
           title: 'Post 2',
           content: 'Ei gentiii chegueii',
-          author: 'users$objId0507',
           _p_user: 'users$objId0507',
         },
       ],
     });
   });
 
+  test('query sort by multiple fields first descending', async () => {
+    const insta = new Instant({
+      schema: {
+        users: createSchema('users', {
+          name: z.string(),
+          age: z.number(),
+        }),
+      },
+      name: 'InstantTestIndexes',
+      inspect: true,
+      serverURL: 'http://localhost:1337',
+      index: {
+        users: ['age', 'name'],
+      },
+    });
+
+    await insta.ready();
+
+    await insta.db.table('users').add({
+      _id: 'objId1111',
+      _created_at: '2024-08-25T03:49:47.352Z',
+      _updated_at: '2024-08-25T03:49:47.352Z',
+      name: 'John Doe',
+      age: 30,
+    });
+
+    await insta.db.table('users').add({
+      _id: 'objId3333',
+      _created_at: '2024-08-26T03:49:47.352Z',
+      _updated_at: '2024-08-26T03:49:47.352Z',
+      name: 'Jim Beam',
+      age: 25,
+    });
+
+    await insta.db.table('users').add({
+      _id: 'objId2222',
+      _created_at: '2024-08-27T03:49:47.352Z',
+      _updated_at: '2024-08-27T03:49:47.352Z',
+      name: 'Jane Doe',
+      age: 25,
+    });
+
+    const { users: usersSorted } = await insta.query({
+      users: {
+        $sort: {
+          age: -1,
+          name: 1,
+        },
+      },
+    });
+
+    expect(usersSorted[0].name).toEqual('John Doe');
+    expect(usersSorted[0].age).toEqual(30);
+    expect(usersSorted[1].name).toEqual('Jane Doe');
+    expect(usersSorted[1].age).toEqual(25);
+    expect(usersSorted[2].name).toEqual('Jim Beam');
+    expect(usersSorted[2].age).toEqual(25);
+
+    await insta.destroy();
+  });
+
+  test('query sort by multiple fields first ascending', async () => {
+    const insta = new Instant({
+      schema: {
+        users: createSchema('users', {
+          name: z.string(),
+          age: z.number(),
+        }),
+      },
+      name: 'InstantTestIndexes2',
+      inspect: true,
+      serverURL: 'http://localhost:1337',
+      index: {
+        users: ['age', 'name'],
+      },
+    });
+
+    await insta.ready();
+
+    await insta.db.table('users').add({
+      _id: 'objId1111',
+      _created_at: '2024-08-25T03:49:47.352Z',
+      _updated_at: '2024-08-25T03:49:47.352Z',
+      name: 'John Doe',
+      age: 30,
+    });
+
+    await insta.db.table('users').add({
+      _id: 'objId3333',
+      _created_at: '2024-08-26T03:49:47.352Z',
+      _updated_at: '2024-08-26T03:49:47.352Z',
+      name: 'Jim Beam',
+      age: 25,
+    });
+
+    await insta.db.table('users').add({
+      _id: 'objId2222',
+      _created_at: '2024-08-27T03:49:47.352Z',
+      _updated_at: '2024-08-27T03:49:47.352Z',
+      name: 'Jane Doe',
+      age: 25,
+    });
+
+    const { users: usersSorted } = await insta.query({
+      users: {
+        $sort: {
+          age: 1,
+          name: -1,
+        },
+      },
+    });
+
+    expect(usersSorted[0].name).toEqual('Jim Beam');
+    expect(usersSorted[0].age).toEqual(25);
+    expect(usersSorted[1].name).toEqual('Jane Doe');
+    expect(usersSorted[1].age).toEqual(25);
+    expect(usersSorted[2].name).toEqual('John Doe');
+    expect(usersSorted[2].age).toEqual(30);
+
+    await insta.destroy();
+  });
+
+  test('query sort should maintain original order for identical sort field values', async () => {
+    const insta = new Instant({
+      schema: {
+        users: createSchema('users', {
+          name: z.string(),
+          age: z.number(),
+        }),
+      },
+      name: 'InstantTestIdenticalSort',
+      inspect: true,
+      serverURL: 'http://localhost:1337',
+      index: {
+        users: ['age', 'name'],
+      },
+    });
+
+    await insta.ready();
+
+    // Add users in a specific order
+    await insta.db.table('users').add({
+      _id: 'objId1111',
+      _created_at: '2024-08-25T03:49:47.352Z',
+      _updated_at: '2024-08-25T03:49:47.352Z',
+      name: 'John Doe',
+      age: 30,
+    });
+
+    await insta.db.table('users').add({
+      _id: 'objId2222',
+      _created_at: '2024-08-26T03:49:47.352Z',
+      _updated_at: '2024-08-26T03:49:47.352Z',
+      name: 'John Doe',
+      age: 30,
+    });
+
+    await insta.db.table('users').add({
+      _id: 'objId3333',
+      _created_at: '2024-08-27T03:49:47.352Z',
+      _updated_at: '2024-08-27T03:49:47.352Z',
+      name: 'Jane Doe',
+      age: 25,
+    });
+
+    const { users: usersSorted } = await insta.query({
+      users: {
+        $sort: {
+          age: 1,
+          name: 1,
+        },
+      },
+    });
+
+    expect(usersSorted).toHaveLength(3);
+    expect(usersSorted[0].name).toEqual('Jane Doe');
+    expect(usersSorted[0].age).toEqual(25);
+    // Check that the two John Doe entries maintain their original order
+    expect(usersSorted[1]._id).toEqual('objId1111');
+    expect(usersSorted[1].name).toEqual('John Doe');
+    expect(usersSorted[1].age).toEqual(30);
+    expect(usersSorted[2]._id).toEqual('objId2222');
+    expect(usersSorted[2].name).toEqual('John Doe');
+    expect(usersSorted[2].age).toEqual(30);
+
+    await insta.destroy();
+  });
+
+  test('query list all users', async () => {
+    const { users } = await insta.query({
+      users: {},
+    });
+
+    expect(users).toHaveLength(4);
+    expect(users[0].name).toBe('Elis');
+    expect(users[1].name).toBe('Tobias Afonso');
+    expect(users[2].name).toBe('Teobaldo José');
+    expect(users[3].name).toBe('Raul');
+  });
+
+  test('query list all posts', async () => {
+    const { posts } = await insta.query({
+      posts: {},
+    });
+
+    expect(posts).toHaveLength(2);
+    expect(posts[0].title).toBe('Post 1');
+    expect(posts[1].title).toBe('Post 2');
+  });
+
+  test('query list all comments', async () => {
+    const { comments } = await insta.query({
+      comments: {},
+    });
+
+    expect(comments).toHaveLength(1);
+    expect(comments[0].content).toBe('I love to be here');
+  });
+
+  test('query list all together', async () => {
+    const { users, posts, comments } = await insta.query({
+      users: {},
+      posts: {},
+      comments: {},
+    });
+
+    expect(users).toHaveLength(4);
+    expect(posts).toHaveLength(2);
+    expect(comments).toHaveLength(1);
+  });
+
+  test('query list $skip', async () => {
+    const { users } = await insta.query({
+      users: {
+        $skip: 2,
+      },
+    });
+
+    expect(users).toHaveLength(2);
+    expect(users[0].name).toBe('Teobaldo José');
+    expect(users[1].name).toBe('Raul');
+  });
+
+  test('query list $limit', async () => {
+    const { users } = await insta.query({
+      users: {
+        $limit: 2,
+      },
+    });
+
+    expect(users).toHaveLength(2);
+    expect(users[0].name).toBe('Elis');
+    expect(users[1].name).toBe('Tobias Afonso');
+  });
+
+  test('query list $skip and $limit', async () => {
+    const { users } = await insta.query({
+      users: {
+        $skip: 1,
+        $limit: 2,
+      },
+    });
+
+    expect(users).toHaveLength(2);
+    expect(users[0].name).toBe('Tobias Afonso');
+    expect(users[1].name).toBe('Teobaldo José');
+  });
+
+  test('query filter users using $regex case insensitive', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          name: { $regex: 't', $options: 'i' },
+        },
+      },
+    });
+
+    expect(users).toHaveLength(2);
+    expect(users[0].name).toBe('Tobias Afonso');
+    expect(users[1].name).toBe('Teobaldo José');
+  });
+
+  test('query filter users using $regex case sensitive', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          name: { $regex: 'Te' },
+        },
+      },
+    });
+
+    expect(users).toHaveLength(1);
+    expect(users[0].name).toBe('Teobaldo José');
+  });
+
+  test('query filter users using $or', async () => {
+    const { users } = await insta.query({
+      users: {
+        $or: [
+          { name: { $regex: 't', $options: 'i' } },
+          { name: { $regex: 'Ra' } },
+          { name: { $eq: 'Elis' } },
+        ],
+      },
+    });
+
+    expect(users).toHaveLength(4);
+    expect(users[0].name).toBe('Elis');
+    expect(users[1].name).toBe('Tobias Afonso');
+    expect(users[2].name).toBe('Teobaldo José');
+    expect(users[3].name).toBe('Raul');
+  });
+
+  test('query filter users using $or and empty conditions', async () => {
+    const { users } = await insta.query({
+      users: {
+        $or: [
+          {
+            name: {},
+          },
+        ],
+      },
+    });
+
+    expect(users).toHaveLength(0);
+  });
+
+  test('query filter users using $eq', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          name: { $eq: 'Raul' },
+        },
+      },
+    });
+
+    expect(users).toHaveLength(1);
+    expect(users[0].name).toBe('Raul');
+  });
+
+  test('query filter with nullish $eq', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          _sync: { $eq: null },
+        },
+      },
+    } as unknown as any);
+
+    expect(users).toHaveLength(0);
+  });
+
+  test('query filter with $eq zero', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          _sync: { $eq: 0 },
+        },
+      },
+    } as unknown as any);
+
+    expect(users).toHaveLength(0);
+  });
+
+  test('query filter and sort using _updated_at by default', async () => {
+    const { users } = await insta.query({
+      users: {},
+    });
+
+    expect(users[0].name).toBe('Elis');
+
+    // add new user
+    await insta.mutate('users').add({
+      name: 'Tunico',
+    });
+
+    const { users: usersUpdated } = await insta.query({
+      users: {},
+    });
+
+    expect(usersUpdated[0].name).toBe('Tunico');
+  });
+
+  test('query filter $regex with $options case insensitive', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: {
+          name: { $regex: 't', $options: 'i' },
+        },
+      },
+    });
+
+    expect(users).toHaveLength(2);
+    expect(users[0].name).toBe('Tobias Afonso');
+    expect(users[1].name).toBe('Teobaldo José');
+  });
+
+  test('query filter using $sort', async () => {
+    const { users } = await insta.query({
+      users: {
+        $sort: {
+          name: 1,
+        },
+      },
+    });
+    expect(users[0].name).toBe('Elis');
+  });
+
+  test('query filter using $sort + $filter', async () => {
+    const { users } = await insta.query({
+      users: {
+        $sort: {
+          name: -1,
+        },
+        $filter: {
+          name: { $regex: 't', $options: 'i' },
+        },
+      },
+    });
+    expect(users[0].name).toBe('Tobias Afonso');
+  });
+
+  test('query filter can also be a function', async () => {
+    const { users } = await insta.query({
+      users: {
+        $filter: (user) => user.name.startsWith('T'),
+      },
+    });
+
+    expect(users).toHaveLength(2);
+    expect(users[0].name).toBe('Tobias Afonso');
+    expect(users[1].name).toBe('Teobaldo José');
+  });
+
+  test('query sort using no index should throw', async () => {
+    const insta = new Instant({
+      schema,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      index: {
+        posts: ['title'],
+      },
+    });
+
+    await insta.ready();
+
+    await expect(
+      insta.query({
+        users: {
+          $sort: {
+            name: 1,
+          },
+        },
+      })
+    ).rejects.toThrow('KeyPath [name] on object store users is not indexed');
+
+    await insta.destroy();
+  });
+
   test('nested query with $by directive', async () => {
+    const insta = new Instant({
+      schema: {
+        users: z.object({
+          _id: z.string(),
+          name: z.string(),
+        }),
+        posts: z.object({
+          _id: z.string(),
+          title: z.string(),
+          author: createPointerSchema('users'),
+        }),
+      },
+      name: 'InstantTest$by',
+      serverURL: 'http://localhost:1337',
+      session: '1337'
+    });
+
+    await insta.ready();
+
+    const users = [
+      {
+        _id: 'objId2222',
+        _created_at: '2024-08-25T03:49:47.352Z',
+        _updated_at: '2024-08-25T03:49:47.352Z',
+        name: 'Teobaldo José',
+      },
+      {
+        _id: 'objId1111',
+        _created_at: '2024-08-24T03:49:47.352Z',
+        _updated_at: '2024-08-24T03:49:47.352Z',
+        name: 'Tobias Afonso',
+      },
+      {
+        _id: 'objId0507',
+        _created_at: '2022-07-05T03:08:41.768Z',
+        _updated_at: '2022-07-05T03:08:41.768Z',
+        name: 'Elis',
+      },
+      {
+        _id: 'objId2807',
+        _created_at: '2020-07-28T03:08:41.768Z',
+        _updated_at: '2020-07-28T03:08:41.768Z',
+        name: 'Raul',
+      },
+    ];
+  
+    const posts = [
+      {
+        _id: 'post11112',
+        _created_at: '2022-07-05T03:08:41.768Z',
+        _updated_at: '2022-07-05T03:08:41.768Z',
+        title: 'Post 2',
+        content: 'Ei gentiii chegueii',
+        author: createPointer('users', 'objId0507'),
+      //  _p_user: createPointer('users', 'objId0507'), // doesn't use prefixed pointer, instead uses the "author" pointer field
+      },
+      {
+        _id: 'post11111',
+        _created_at: '2020-07-28T03:08:41.768Z',
+        _updated_at: '2020-07-28T03:08:41.768Z',
+        title: 'Post 1',
+        content: 'Hello world',
+        author: createPointer('users', 'objId2807'),
+       // _p_user: createPointer('users', 'objId2807'), // doesn't use prefixed pointer, instead uses the "author" pointer field
+      },
+    ];
+
+    for (const user of users) {
+      await insta.db.table('users').add(user);
+    }
+
+    for (const post of posts) {
+      await insta.db.table('posts').add(post);
+    }
+  
     const result = await insta.query({
       users: {
         posts: {
@@ -346,7 +863,6 @@ describe('Instant Client', () => {
               title: 'Post 2',
               content: 'Ei gentiii chegueii',
               author: 'users$objId0507',
-              _p_user: 'users$objId0507',
             },
           ],
         },
@@ -377,12 +893,13 @@ describe('Instant Client', () => {
               title: 'Post 1',
               content: 'Hello world',
               author: 'users$objId2807',
-              _p_user: 'users$objId2807',
             },
           ],
         },
       ],
     });
+
+    await insta.destroy();
   });
 
   test('nested query without $by directive', async () => {
@@ -464,6 +981,181 @@ describe('Instant Client', () => {
               title: 'Post 1',
               content: 'Hello world',
               _p_user: 'users$objId2807',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  test('deep nested query with $by directive', async () => {
+    const insta = new Instant({
+      schema: {
+        users: z.object({
+          _id: z.string(),
+          name: z.string(),
+        }),
+        posts: z.object({
+          _id: z.string(),
+          title: z.string(),
+          author: createPointerSchema('users'),
+        }),
+        comments: z.object({
+          _id: z.string(),
+          content: z.string(),
+          author: createPointerSchema('users'),
+          post: createPointerSchema('posts'),
+        }),
+      },
+      name: 'InstantTest$by2',
+      serverURL: 'http://localhost:1337',
+      session: '1337'
+    });
+
+    await insta.ready();
+
+    const users = [
+      {
+        _id: 'objId2222',
+        _created_at: '2024-08-25T03:49:47.352Z',
+        _updated_at: '2024-08-25T03:49:47.352Z',
+        name: 'Teobaldo José',
+      },
+      {
+        _id: 'objId1111',
+        _created_at: '2024-08-24T03:49:47.352Z',
+        _updated_at: '2024-08-24T03:49:47.352Z',
+        name: 'Tobias Afonso',
+      },
+      {
+        _id: 'objId0507',
+        _created_at: '2022-07-05T03:08:41.768Z',
+        _updated_at: '2022-07-05T03:08:41.768Z',
+        name: 'Elis',
+      },
+      {
+        _id: 'objId2807',
+        _created_at: '2020-07-28T03:08:41.768Z',
+        _updated_at: '2020-07-28T03:08:41.768Z',
+        name: 'Raul',
+      },
+    ];
+  
+    const posts = [
+      {
+        _id: 'post11112',
+        _created_at: '2022-07-05T03:08:41.768Z',
+        _updated_at: '2022-07-05T03:08:41.768Z',
+        title: 'Post 2',
+        content: 'Ei gentiii chegueii',
+        author: createPointer('users', 'objId0507'),
+      //  _p_user: createPointer('users', 'objId0507'), // doesn't use prefixed pointer, instead uses the "author" pointer field
+      },
+      {
+        _id: 'post11111',
+        _created_at: '2020-07-28T03:08:41.768Z',
+        _updated_at: '2020-07-28T03:08:41.768Z',
+        title: 'Post 1',
+        content: 'Hello world',
+        author: createPointer('users', 'objId2807'),
+       // _p_user: createPointer('users', 'objId2807'), // doesn't use prefixed pointer, instead uses the "author" pointer field
+      },
+    ];
+
+    const comments = [
+      {
+        _id: 'comment11111',
+        _created_at: '2020-07-28T03:08:41.768Z',
+        _updated_at: '2020-07-28T03:08:41.768Z',
+        content: 'I love to be here',
+        author: createPointer('users', 'objId2807'),
+        post: createPointer('posts', 'post11111'),
+      },
+    ];
+
+    for (const user of users) {
+      await insta.db.table('users').add(user);
+    }
+
+    for (const post of posts) {
+      await insta.db.table('posts').add(post);
+    }
+  
+    for (const comment of comments) {
+      await insta.db.table('comments').add(comment);
+    }
+
+    const result = await insta.query({
+      users: {
+        posts: {
+          $by: 'author',
+          comments: {
+            $by: 'post',
+          },
+        },
+      },
+    });
+
+    expect(result.users[result.users.length - 1]).toMatchObject({
+      _id: 'objId2807',
+      _created_at: '2020-07-28T03:08:41.768Z',
+      _updated_at: '2020-07-28T03:08:41.768Z',
+      name: 'Raul',
+      posts: [
+        {
+          _id: 'post11111',
+          _created_at: '2020-07-28T03:08:41.768Z',
+          _updated_at: '2020-07-28T03:08:41.768Z',
+          title: 'Post 1',
+          content: 'Hello world',
+          author: 'users$objId2807',
+          comments: [
+            {
+              _id: 'comment11111',
+              _created_at: '2020-07-28T03:08:41.768Z',
+              _updated_at: '2020-07-28T03:08:41.768Z',
+              content: 'I love to be here',
+              author: 'users$objId2807',
+              post: 'posts$post11111',
+            },
+          ],
+        },
+      ],
+    });
+
+    await insta.destroy();
+  });
+
+  test('deep nested query without $by directive', async () => {
+    const result = await insta.query({
+      users: {
+        posts: {
+          comments: {},
+        },
+      },
+    });
+
+    expect(result.users[result.users.length - 1]).toMatchObject({
+      _id: 'objId2807',
+      _created_at: '2020-07-28T03:08:41.768Z',
+      _updated_at: '2020-07-28T03:08:41.768Z',
+      name: 'Raul',
+      posts: [
+        {
+          _id: 'post11111',
+          _created_at: '2020-07-28T03:08:41.768Z',
+          _updated_at: '2020-07-28T03:08:41.768Z',
+          title: 'Post 1',
+          content: 'Hello world',
+          _p_user: 'users$objId2807',
+          comments: [
+            {
+              _id: 'comment11111',
+              _created_at: '2020-07-28T03:08:41.768Z',
+              _updated_at: '2020-07-28T03:08:41.768Z',
+              _p_user: 'users$objId2807',
+              _p_post: 'posts$post11111',
+              content: 'I love to be here',
             },
           ],
         },
@@ -583,86 +1275,108 @@ describe('Instant Client', () => {
     fetcherSpy.mockRestore();
   });
 
-  test('query filter users using $regex', async () => {
-    const { users } = await insta.query({
-      users: {
-        $filter: {
-          name: { $regex: 't', $options: 'i' },
-        },
-      },
-    });
-
-    expect(users).toHaveLength(2);
-    expect(users[0].name).toBe('Tobias Afonso');
-    expect(users[1].name).toBe('Teobaldo José');
-  });
-
-  test('query filter users using $regex with $options i by default', async () => {
-    const { users } = await insta.query({
-      users: {
-        $filter: {
-          name: { $regex: 'Te' },
-        },
-      },
-    });
-
-    expect(users).toHaveLength(1);
-    expect(users[0].name).toBe('Teobaldo José');
-  });
-
-  test('query filter users using $or', async () => {
-    const { users } = await insta.query({
-      users: {
-        $or: [
-          { name: { $regex: 't', $options: 'i' } },
-          { name: { $eq: 'Elis' } },
-        ],
-      },
-    });
-
-    expect(users).toHaveLength(3);
-    expect(users[0].name).toBe('Elis');
-    expect(users[1].name).toBe('Tobias Afonso');
-    expect(users[2].name).toBe('Teobaldo José');
-  });
-
-  test('query filter users using $eq', async () => {
-    const { users } = await insta.query({
-      users: {
-        $filter: {
-          name: { $eq: 'Raul' },
-        },
-      },
-    });
-
-    expect(users).toHaveLength(1);
-    expect(users[0].name).toBe('Raul');
-  });
-
-  test('query sort using no index should throw', async () => {
-    const insta2 = new Instant({
+  test('sync should fail if database is not ready', async () => {
+    const insta = new Instant({
       schema,
-      name: 'InstantTest2',
+      name: 'InstantTest0',
       serverURL: 'http://localhost:1337',
       session: '1337',
-      index: {
-        posts: ['title'],
-      },
     });
 
-    await insta2.ready();
+    await expect(async () => {
+      await insta.sync();
+    }).rejects.toThrow(
+      'Database not initialized. Try awaiting `ready()` first.'
+    );
 
-    await expect(
-      insta2.query({
-        users: {
-          $sort: {
-            name: 1,
-          },
-        },
-      })
-    ).rejects.toThrow('KeyPath [name] on object store users is not indexed');
+    // await insta.destroy();
+  });
 
-    await insta2.destroy();
+  test('sync should fail if worker is not ready', async () => {
+    const insta = new Instant({
+      schema,
+      name: 'InstantTest01',
+      serverURL: 'http://localhost:1337',
+    });
+
+    await insta.ready();
+
+    await expect(async () => {
+      await insta.sync();
+    }).rejects.toThrow(
+      'Worker not initialized. Try instantiating a worker and adding it to Instant.setWorker({ worker })'
+    );
+
+    // await insta.destroy();
+  });
+
+  test('sync user initial token and user', async () => {
+    const insta = new Instant({
+      schema,
+      name: 'InstantTest01',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '420',
+    });
+
+    insta.setWorker({
+      worker,
+    });
+
+    await insta.ready();
+    await insta.sync({
+      session: '',
+      user: '',
+    });
+
+    expect(insta.token).toBe('1337');
+    expect(insta.user).toBe('420');
+
+    await insta.destroy();
+  });
+
+  test('syncing stream should emit true when there is an incomplete oldest sync activity', async () => {
+    const syncHistory: boolean[] = [];
+
+    insta.syncing.subscribe((syncing) => {
+      console.log('syncing', syncing);
+      syncHistory.push(syncing);
+    });
+
+    await insta.db.table('_sync').add({
+      collection: 'users',
+      activity: 'oldest',
+      status: 'incomplete',
+      synced: new Date().toISOString(),
+      count: 50000,
+    });
+
+    await delay(100);
+    expect(syncHistory).toEqual([false, true]);
+  });
+
+  test('syncing stream should emit false when all sync activities are complete', async () => {
+    const syncHistory: boolean[] = [];
+
+    insta.syncing.subscribe((syncing) => {
+      syncHistory.push(syncing);
+    });
+
+    await insta.db.table('_sync').add({
+      collection: 'users',
+      activity: 'oldest',
+      status: 'complete',
+      synced: new Date().toISOString(),
+      count: 42,
+    });
+
+    await delay(100);
+    expect(syncHistory).toEqual([false, false]);
+  });
+
+  test('syncing stream should emit false when no sync activities are present', async () => {
+    const syncingValue = await firstValueFrom(insta.syncing);
+    expect(syncingValue).toBe(false);
   });
 
   test('calculate all collections usage', async () => {
@@ -736,7 +1450,7 @@ describe('Instant Client', () => {
   });
 
   test('worker should run batch sync', async () => {
-    const insta2 = new Instant({
+    const insta = new Instant({
       schema,
       name: 'InstantTest2',
       serverURL: 'http://localhost:1337',
@@ -744,11 +1458,11 @@ describe('Instant Client', () => {
     });
 
     // @ts-ignore
-    const runBatchWorkerSpy = jest.spyOn(insta2, 'runBatchWorker');
-    await insta2.ready();
+    const runBatchWorkerSpy = jest.spyOn(insta, 'runBatchWorker');
+    await insta.ready();
 
     // @ts-ignore
-    await insta2.worker()({
+    await insta.worker()({
       data: JSON.stringify({
         token: '1337',
         sync: 'batch',
@@ -760,11 +1474,11 @@ describe('Instant Client', () => {
     // clean up
     runBatchWorkerSpy.mockRestore();
 
-    await insta2.destroy();
+    await insta.destroy();
   });
 
   test('worker should run live sync', async () => {
-    const insta2 = new Instant({
+    const insta = new Instant({
       schema,
       name: 'InstantTest2',
       serverURL: 'http://localhost:1337',
@@ -773,14 +1487,14 @@ describe('Instant Client', () => {
 
     const runLiveWorkerSpy = jest
       // @ts-ignore
-      .spyOn(insta2, 'runLiveWorker')
+      .spyOn(insta, 'runLiveWorker')
       // @ts-ignore
       .mockResolvedValue();
 
-    await insta2.ready();
+    await insta.ready();
 
     // @ts-ignore
-    await insta2.worker()({
+    await insta.worker()({
       data: JSON.stringify({
         token: '1337',
         sync: 'live',
@@ -791,7 +1505,7 @@ describe('Instant Client', () => {
 
     // clean up
     runLiveWorkerSpy.mockRestore();
-    await insta2.destroy();
+    await insta.destroy();
   });
 
   test('mutate add', async () => {
@@ -828,146 +1542,46 @@ describe('Instant Client', () => {
     expect(deletedUser._expires_at).toBeDefined();
   });
 
-  test('query filter with nullish $eq', async () => {
-    const { users } = await insta.query({
-      users: {
-        $filter: {
-          _sync: { $eq: null },
-        },
-      },
-    } as unknown as any);
+  test('mutate should fail if no user id is provided', async () => {
+    const insta = new Instant({
+      schema,
+      inspect: true,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '',
+    });
 
-    expect(users).toHaveLength(0);
+    await expect(async () => {
+      await insta.mutate('users').add({
+        name: 'Elon Musk',
+      });
+    }).rejects.toThrow(
+      'User id not set. Try to pass the user id as `user` to the Instant constructor or `sync` method.'
+    );
   });
 
-  test('query filter with $eq zero', async () => {
-    const { users } = await insta.query({
-      users: {
-        $filter: {
-          _sync: { $eq: 0 },
-        },
-      },
-    } as unknown as any);
+  test('mutate should fail if no token is provided', async () => {
+    const insta = new Instant({
+      schema,
+      inspect: true,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '',
+      user: '420',
+    });
 
-    expect(users).toHaveLength(0);
+    await expect(async () => {
+      await insta.mutate('users').add({
+        name: 'Elon Musk',
+      });
+    }).rejects.toThrow(
+      'Token not set. Try to pass the session token as `session` to the Instant constructor or `sync` method.'
+    );
   });
 
-  test('query filter and sort using _update_at by default', async () => {
-    const { users } = await insta.query({
-      users: {},
-    });
-
-    expect(users[0].name).toBe('Elis');
-
-    // add new user
-    await insta.mutate('users').add({
-      name: 'Tunico',
-    });
-
-    const { users: usersUpdated } = await insta.query({
-      users: {},
-    });
-
-    expect(usersUpdated[0].name).toBe('Tunico');
-  });
-
-  test('query filter $regex with $options `i` by default', async () => {
-    const { users } = await insta.query({
-      users: {
-        $filter: {
-          name: { $regex: 't' },
-        },
-      },
-    });
-
-    expect(users).toHaveLength(2);
-    expect(users[0].name).toBe('Tobias Afonso');
-    expect(users[1].name).toBe('Teobaldo José');
-  });
-
-  test('query filter using $sort', async () => {
-    const { users } = await insta.query({
-      users: {
-        $sort: {
-          name: 1,
-        },
-      },
-    });
-    expect(users[0].name).toBe('Elis');
-  });
-
-  test('query filter using $sort + $filter', async () => {
-    const { users } = await insta.query({
-      users: {
-        $sort: {
-          name: -1,
-        },
-        $filter: {
-          name: { $regex: 't' },
-        },
-      },
-    });
-    expect(users[0].name).toBe('Tobias Afonso');
-  });
-
-  test('query filter can also be a function', async () => {
-    const { users } = await insta.query({
-      users: {
-        $filter: (user) => user.name.startsWith('T'),
-      },
-    });
-
-    expect(users).toHaveLength(2);
-    expect(users[0].name).toBe('Tobias Afonso');
-    expect(users[1].name).toBe('Teobaldo José');
-  });
-
-  test('syncing stream should emit false when no sync activities are present', async () => {
-    const syncingValue = await firstValueFrom(insta.syncing);
-    expect(syncingValue).toBe(false);
-  });
-
-  test('syncing stream should emit true when there is an incomplete oldest sync activity', async () => {
-    const syncHistory: boolean[] = [];
-
-    insta.syncing.subscribe((syncing) => {
-      console.log('syncing', syncing);
-      syncHistory.push(syncing);
-    });
-
-    await insta.db.table('_sync').add({
-      collection: 'users',
-      activity: 'oldest',
-      status: 'incomplete',
-      synced: new Date().toISOString(),
-      count: 50000,
-    });
-
-    await delay(100);
-    expect(syncHistory).toEqual([false, true]);
-  });
-
-  test('syncing stream should emit false when all sync activities are complete', async () => {
-    const syncHistory: boolean[] = [];
-
-    insta.syncing.subscribe((syncing) => {
-      syncHistory.push(syncing);
-    });
-
-    await insta.db.table('_sync').add({
-      collection: 'users',
-      activity: 'oldest',
-      status: 'complete',
-      synced: new Date().toISOString(),
-      count: 42,
-    });
-
-    await delay(100);
-    expect(syncHistory).toEqual([false, false]);
-  });
-
-  test('skip pending mutations if busy', async () => {
-    const insta2 = new Instant({
+  test('mutate should fail on update if document does not exist', async () => {
+    const insta = new Instant({
       schema,
       inspect: true,
       name: 'InstantTest2',
@@ -976,30 +1590,79 @@ describe('Instant Client', () => {
       user: '420',
     });
 
-    await insta2.ready();
+    await insta.ready();
+
+    await expect(async () => {
+      await insta.mutate('users').update('a1b2c3d4e', {
+        name: 'John Doer',
+      });
+    }).rejects.toThrow('Document not found');
+
+    await insta.destroy();
+  });
+
+  test('mutate should skip on update if nothing changed', async () => {
+    const insta = new Instant({
+      schema,
+      inspect: true,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '420',
+    });
+
+    await insta.ready();
+
+    const { _id } = await insta.mutate('users').add({
+      name: 'John Doe',
+    });
+
+    const dbTransactionSpy = jest.spyOn(insta.db, 'transaction');
+
+    await insta.mutate('users').update(_id, {
+      name: 'John Doe',
+    });
+
+    expect(dbTransactionSpy).not.toHaveBeenCalled();
+
+    dbTransactionSpy.mockRestore();
+    await insta.destroy();
+  });
+
+  test('skip pending mutations if busy', async () => {
+    const insta = new Instant({
+      schema,
+      inspect: true,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '420',
+    });
+
+    await insta.ready();
 
     // @ts-ignore
-    const runMutationWorkerSpy = jest.spyOn(insta2, 'runMutationWorker');
+    const runMutationWorkerSpy = jest.spyOn(insta, 'runMutationWorker');
 
-    await insta2.mutate('users').add({
+    await insta.mutate('users').add({
       name: 'Elon Musk',
     });
 
     await Promise.allSettled([
       // @ts-ignore
-      insta2.runPendingMutations(),
+      insta.runPendingMutations(),
       // @ts-ignore
-      insta2.runPendingMutations(),
+      insta.runPendingMutations(),
       // @ts-ignore
-      insta2.runPendingMutations(),
+      insta.runPendingMutations(),
     ]);
 
     expect(runMutationWorkerSpy).toHaveBeenCalledTimes(1);
-    await insta2.destroy();
+    await insta.destroy();
   });
 
   test('skip pending mutations if validation fails', async () => {
-    const insta2 = new Instant({
+    const insta = new Instant({
       schema,
       inspect: true,
       name: 'InstantTest2',
@@ -1008,32 +1671,32 @@ describe('Instant Client', () => {
       user: '420',
     });
 
-    await insta2.ready();
+    await insta.ready();
 
     // @ts-ignore
-    const runMutationWorkerSpy = jest.spyOn(insta2, 'runMutationWorker');
+    const runMutationWorkerSpy = jest.spyOn(insta, 'runMutationWorker');
 
-    await insta2.mutate('users').add({
+    await insta.mutate('users').add({
       name: 1,
     } as any);
 
     // @ts-ignore
-    await insta2.runPendingMutations();
+    await insta.runPendingMutations();
 
-    await insta2.mutate('users').add({
+    await insta.mutate('users').add({
       name: 'Elon Musk',
       age: 420,
     } as any);
 
     // @ts-ignore
-    await insta2.runPendingMutations();
+    await insta.runPendingMutations();
 
     expect(runMutationWorkerSpy).not.toHaveBeenCalled();
-    await insta2.destroy();
+    await insta.destroy();
   });
 
   test('skip pending pointers if busy', async () => {
-    const insta2 = new Instant({
+    const insta = new Instant({
       schema,
       inspect: true,
       name: 'InstantTest2',
@@ -1042,33 +1705,36 @@ describe('Instant Client', () => {
       user: '420',
     });
 
-    await insta2.ready();
+    await insta.ready();
 
-    const querySpy = jest.spyOn(insta2, 'query');
+    const querySpy = jest.spyOn(insta, 'query');
 
-    await insta2.mutate('posts').add({
+    await insta.mutate('posts').add({
       title: 'My forty-second post',
       _p_user: 'users$420',
     });
 
     await Promise.allSettled([
       // @ts-ignore
-      insta2.runPendingPointers(),
+      insta.runPendingPointers(),
       // @ts-ignore
-      insta2.runPendingPointers(),
+      insta.runPendingPointers(),
       // @ts-ignore
-      insta2.runPendingPointers(),
+      insta.runPendingPointers(),
       // @ts-ignore
-      insta2.runPendingPointers(),
+      insta.runPendingPointers(),
     ]);
 
-    expect(querySpy).toHaveBeenCalledTimes(2); // the total of collections to query against
-    await insta2.destroy();
+    expect(querySpy).toHaveBeenCalledTimes(3); // the total of collections to query against
+    await insta.destroy();
   });
 
   test('deal with pending pointers created locally', async () => {
-    const insta2 = new Instant({
-      schema,
+    const insta = new Instant({
+      schema: {
+        users: UserSchema,
+        posts: PostSchema,
+      },
       inspect: true,
       name: 'InstantTest2',
       serverURL: 'http://localhost:1337',
@@ -1076,23 +1742,23 @@ describe('Instant Client', () => {
       user: '420',
     });
 
-    await insta2.ready();
+    await insta.ready();
 
-    const querySpy = jest.spyOn(insta2, 'query');
+    const querySpy = jest.spyOn(insta, 'query');
 
-    await insta2.db.table('users').add({
+    await insta.db.table('users').add({
       _id: 'a1b2c3d4e', // external id
       _uuid: '1111-2222-3333-4444', // local id
       name: 'John Doe',
     });
 
-    const post = await insta2.mutate('posts').add({
+    const post = await insta.mutate('posts').add({
       title: 'My offline post',
       _p_user: 'users$1111-2222-3333-4444',
     });
 
     // @ts-ignore
-    await insta2.runPendingPointers();
+    await insta.runPendingPointers();
 
     expect(querySpy).toHaveBeenLastCalledWith({
       users: {
@@ -1104,14 +1770,14 @@ describe('Instant Client', () => {
       },
     });
 
-    const updatedPost = await insta2.db.table('posts').get(post._id as string);
+    const updatedPost = await insta.db.table('posts').get(post._id as string);
 
     expect(updatedPost._p_user).toBe('users$a1b2c3d4e');
 
-    await insta2.destroy();
+    await insta.destroy();
   });
 
-  test('run pending created mutations', async () => {
+  test('deal with pending created mutations', async () => {
     const runMutationWorkerSpy = jest
       // @ts-ignore
       .spyOn(insta, 'runMutationWorker')
@@ -1140,7 +1806,7 @@ describe('Instant Client', () => {
     await insta.destroy();
   });
 
-  test('run pending updated mutations', async () => {
+  test('deal with pending updated mutations', async () => {
     const runMutationWorkerSpy = jest
       // @ts-ignore
       .spyOn(insta, 'runMutationWorker')
@@ -1169,7 +1835,7 @@ describe('Instant Client', () => {
     await insta.destroy();
   });
 
-  test('run pending deleted mutations', async () => {
+  test('deal with pending deleted mutations', async () => {
     const runMutationWorkerSpy = jest
       // @ts-ignore
       .spyOn(insta, 'runMutationWorker')
@@ -1220,7 +1886,7 @@ describe('Instant Client', () => {
       }
     );
 
-    const insta2 = new Instant({
+    const insta = new Instant({
       schema,
       name: 'InstantTest2',
       serverURL: 'http://localhost:1337',
@@ -1229,17 +1895,17 @@ describe('Instant Client', () => {
     });
 
     // @ts-ignore
-    await insta2.runBatchWorker({
+    await insta.runBatchWorker({
       url: 'http://localhost:1337',
       token: '1337',
       headers: {},
       params: {},
     });
 
-    expect(insta2.db).toBeDefined();
+    expect(insta.db).toBeDefined();
 
     fetcherSpy.mockRestore();
-    await insta2.destroy();
+    await insta.destroy();
   });
 
   test('batch worker shoud accept custom params', async () => {
@@ -1266,7 +1932,7 @@ describe('Instant Client', () => {
       }
     );
 
-    const insta2 = new Instant({
+    const insta = new Instant({
       schema,
       name: 'InstantTest2',
       serverURL: 'http://localhost:1337',
@@ -1275,7 +1941,7 @@ describe('Instant Client', () => {
     });
 
     // @ts-ignore
-    await insta2.runBatchWorker({
+    await insta.runBatchWorker({
       url: `/sync/users?activity=recent`,
       token: '1337',
       headers: {},
@@ -1295,7 +1961,7 @@ describe('Instant Client', () => {
     );
 
     fetcherSpy.mockRestore();
-    await insta2.destroy();
+    await insta.destroy();
   });
 
   test('batch worker shoud account for older documents', async () => {
@@ -1322,7 +1988,7 @@ describe('Instant Client', () => {
       }
     );
 
-    const insta2 = new Instant({
+    const insta = new Instant({
       schema,
       name: 'InstantTest2',
       serverURL: 'http://localhost:1337',
@@ -1331,7 +1997,7 @@ describe('Instant Client', () => {
     });
 
     // @ts-ignore
-    await insta2.runBatchWorker({
+    await insta.runBatchWorker({
       url: `/sync/users?activity=oldest`,
       token: '1337',
       headers: {},
@@ -1351,10 +2017,229 @@ describe('Instant Client', () => {
     );
 
     fetcherSpy.mockRestore();
-    await insta2.destroy();
+    await insta.destroy();
   });
 
-  describe('online stream', () => {
+  test('check if a document is pending sync', async () => {
+    const insta = new Instant({
+      schema,
+      name: 'InstantTest2',
+      serverURL: 'http://localhost:1337',
+      session: '1337',
+      user: '420',
+    });
+
+    await insta.ready();
+
+    // uuid case
+    const doc = await insta.mutate('users').add({
+      name: 'John Doer',
+    });
+
+    expect(insta.modified(doc)).toBe(true);
+
+    // sync case
+    await insta.db.table('users').clear();
+    await insta.db.table('users').add({
+      _id: 'a1b2c3d4',
+      name: 'John Doe',
+    });
+
+    await insta.mutate('users').update('a1b2c3d4', {
+      name: 'John Doer',
+    });
+
+    const doc2 = await insta.db.table('users').get('a1b2c3d4');
+
+    expect(insta.modified(doc)).toBe(true);
+    expect(insta.modified(doc2)).toBe(true);
+
+    await insta.destroy();
+  });
+
+  test('count data', async () => {
+    expect(await insta.count('users', {})).toBe(4);
+  });
+
+  test('count using iQL $regex', async () => {
+    expect(
+      await insta.count('users', {
+        $filter: {
+          name: {
+            $regex: 'Ra',
+          },
+        },
+      })
+    ).toBe(1);
+    expect(
+      await insta.count('users', {
+        $filter: {
+          name: {
+            $regex: 'joh',
+          },
+        },
+      })
+    ).toBe(0);
+  });
+
+  test('count using iQL $regex and $options', async () => {
+    expect(
+      await insta.count('users', {
+        $filter: {
+          name: {
+            $regex: 'ra',
+            $options: 'i',
+          },
+        },
+      })
+    ).toBe(1);
+    expect(
+      await insta.count('users', {
+        $filter: {
+          name: {
+            $regex: 'joh',
+            $options: 'i',
+          },
+        },
+      })
+    ).toBe(0);
+  });
+
+  test('count using iQL $filter function', async () => {
+    expect(
+      await insta.count('users', {
+        $filter: ({ name }) => name.startsWith('Ra'),
+      })
+    ).toBe(1);
+    expect(
+      await insta.count('users', {
+        $filter: ({ name }) => name.startsWith('joh'),
+      })
+    ).toBe(0);
+  });
+
+  test('count using iQL $eq', async () => {
+    expect(
+      await insta.count('users', {
+        $filter: {
+          name: {
+            $eq: 'Raul',
+          },
+        },
+      })
+    ).toBe(1);
+    expect(
+      await insta.count('users', {
+        $filter: {
+          name: {
+            $eq: 'John',
+          },
+        },
+      })
+    ).toBe(0);
+  });
+
+  test('count using iQL $or and $eq', async () => {
+    expect(
+      await insta.count('users', {
+        $or: [
+          {
+            name: {
+              $eq: 'Raul',
+            },
+          },
+          {
+            name: {
+              $eq: 'Elis',
+            },
+          },
+        ],
+      })
+    ).toBe(2);
+    expect(
+      await insta.count('users', {
+        $or: [
+          {
+            name: {
+              $eq: 'John',
+            },
+          },
+          {
+            name: {
+              $eq: 'Elis',
+            },
+          },
+        ],
+      })
+    ).toBe(1);
+  });
+
+  test('count using iQL $or and $regex', async () => {
+    expect(
+      await insta.count('users', {
+        $or: [
+          {
+            name: {
+              $regex: 'Ra',
+            },
+          },
+          {
+            name: {
+              $regex: 'el',
+              $options: 'i',
+            },
+          },
+        ],
+      })
+    ).toBe(2);
+
+    expect(
+      await insta.count('users', {
+        $or: [
+          {
+            name: {
+              $regex: 'ra',
+            },
+          },
+          {
+            name: {
+              $regex: 'el',
+            },
+          },
+        ],
+      })
+    ).toBe(0);
+  });
+
+  test('count using iQL and empty conditions', async () => {
+    expect(
+      await insta.count('users', {
+        $or: [
+          {
+            name: {},
+          },
+          {
+            name: {},
+          },
+        ],
+      })
+    ).toBe(0);
+
+    expect(
+      await insta.count('users', {
+        $or: [
+          {
+            name: {},
+          },
+          {
+            name: {},
+          },
+        ],
+      })
+    ).toBe(0);
+  });
+
+  describe('Online Stream (browser)', () => {
     let originalAddEventListener: typeof window.addEventListener;
     let originalRemoveEventListener: typeof window.removeEventListener;
     let originalNavigatorOnLine: boolean;
@@ -1472,7 +2357,7 @@ describe('Instant Client', () => {
           await insta.worker()({ data: payload }),
       };
 
-      const insta2 = new Instant({
+      const insta = new Instant({
         schema,
         name: 'InstantTest2',
         serverURL: 'http://localhost:1337',
@@ -1480,12 +2365,12 @@ describe('Instant Client', () => {
       });
 
       // Set the mocked worker
-      insta2.setWorker({ worker } as any);
+      insta.setWorker({ worker } as any);
 
-      await insta2.ready();
+      await insta.ready();
 
-      const syncBatchRecentSpy = jest.spyOn(insta2, 'syncBatch' as any);
-      const syncBatchOldestSpy = jest.spyOn(insta2, 'syncBatch' as any);
+      const syncBatchRecentSpy = jest.spyOn(insta, 'syncBatch' as any);
+      const syncBatchOldestSpy = jest.spyOn(insta, 'syncBatch' as any);
 
       dispatchEvent('offline');
       dispatchEvent('online');
@@ -1501,11 +2386,11 @@ describe('Instant Client', () => {
       syncBatchRecentSpy.mockRestore();
       syncBatchOldestSpy.mockRestore();
 
-      // await insta2.destroy(); // this breaks this test
+      // await insta.destroy(); // this breaks this test
     });
   });
 
-  describe('online stream (web worker)', () => {
+  describe('Online Stream (web worker)', () => {
     let isServerSpy: jest.SpyInstance;
     let eventTarget: EventTarget;
 
@@ -1577,8 +2462,6 @@ describe('Instant Client', () => {
         .mockReturnValue(intervalSubject);
 
       allSettledSpy = jest.spyOn(Promise, 'allSettled').mockResolvedValue([]);
-
-      jest.useFakeTimers();
     });
 
     afterEach(() => {
@@ -1586,17 +2469,16 @@ describe('Instant Client', () => {
       intervalSpy.mockRestore();
       allSettledSpy.mockRestore();
       jest.restoreAllMocks();
-      jest.useRealTimers();
     });
 
     test('should schedule tasks when isServer is true', async () => {
-      const insta2 = new Instant({
+      const insta = new Instant({
         schema,
         name: 'InstantTest2',
         serverURL: 'http://localhost:1337',
       });
 
-      await insta2.ready();
+      await insta.ready();
 
       expect(isServerSpy).toHaveBeenCalled();
       expect(intervalSpy).toHaveBeenCalledWith(1000);
@@ -1609,7 +2491,7 @@ describe('Instant Client', () => {
         expect.any(Promise),
       ]);
 
-      // await insta2.destroy(); // this breaks this test
+      // await insta.destroy(); // this breaks this test
     });
   });
 
@@ -1628,7 +2510,7 @@ describe('Instant Client', () => {
     });
 
     test('run batch worker through sync scheduler', async () => {
-      const insta3 = new Instant({
+      const insta = new Instant({
         schema,
         name: 'InstantTest3',
         serverURL: 'http://localhost:1337',
@@ -1637,13 +2519,13 @@ describe('Instant Client', () => {
 
       const runBatchWorkerSpy = jest
         // @ts-ignore
-        .spyOn(insta3, 'runBatchWorker')
+        .spyOn(insta, 'runBatchWorker')
         // @ts-ignore
         .mockResolvedValue({});
 
-      await insta3.ready();
+      await insta.ready();
       // @ts-ignore
-      insta3.addBatch({
+      insta.addBatch({
         collection: 'users',
         synced: new Date().toISOString(),
         activity: 'recent',
@@ -1658,7 +2540,7 @@ describe('Instant Client', () => {
       expect(runBatchWorkerSpy).toHaveBeenCalledTimes(1);
 
       runBatchWorkerSpy.mockClear();
-      await insta3.destroy();
+      await insta.destroy();
     });
   });
 
@@ -2197,6 +3079,122 @@ describe('Instant Client', () => {
       jest.useRealTimers();
       setTimeoutSpy.mockRestore();
       // await insta.destroy(); // this breaks this test
+    });
+  });
+
+  describe('Mutation Worker', () => {
+    let isServerSpy: jest.SpyInstance;
+    let originalOnLine: boolean;
+
+    beforeEach(() => {
+      isServerSpy = jest.spyOn(utils, 'isServer').mockReturnValue(true);
+      originalOnLine = navigator.onLine;
+    });
+
+    afterEach(() => {
+      isServerSpy.mockRestore();
+      Object.defineProperty(navigator, 'onLine', {
+        configurable: true,
+        value: originalOnLine,
+      });
+    });
+
+    test('should skip if offline', async () => {
+      Object.defineProperty(navigator, 'onLine', {
+        configurable: true,
+        value: false,
+      });
+
+      const insta = new Instant({
+        schema,
+        name: `InstantTest33`,
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '420',
+        buffer: 1,
+      });
+
+      const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+        // @ts-ignore
+        (url, options) => {
+          return Promise.resolve({});
+        }
+      );
+
+      await insta.ready();
+
+      // @ts-ignore
+      await insta.runMutationWorker({
+        collection: 'users',
+        url: 'http://localhost:8080/sync/users',
+        data: {
+          _sync: 1,
+          name: 'John Doe',
+        },
+        token: '123',
+        headers: {},
+        params: {},
+        method: 'POST',
+      });
+
+      expect(fetcherSpy).not.toHaveBeenCalled();
+
+      // clean up
+      fetcherSpy.mockRestore();
+      await insta.destroy();
+    });
+
+    test('should use custom params and headers', async () => {
+      const insta = new Instant({
+        schema,
+        name: `InstantTest33`,
+        serverURL: 'http://localhost:8080',
+        session: '1337',
+        user: '420',
+        buffer: 1,
+      });
+
+      const fetcherSpy = jest.spyOn(lib, 'fetcher').mockImplementation(
+        // @ts-ignore
+        (url, options) => {
+          return Promise.resolve({});
+        }
+      );
+
+      await insta.ready();
+
+      // @ts-ignore
+      await insta.runMutationWorker({
+        collection: 'users',
+        url: 'http://localhost:8080/sync/users',
+        data: {
+          _sync: 1,
+          name: 'John Doe',
+        },
+        token: '123',
+        headers: {
+          timezone: 'GMT',
+        },
+        params: {
+          org: 'a1b2c3d4e',
+        },
+        method: 'POST',
+      });
+
+      expect(fetcherSpy).toHaveBeenCalledWith(
+        'http://localhost:8080/sync/users?org=a1b2c3d4e&timezone=GMT',
+        expect.objectContaining({
+          method: 'POST',
+          body: {
+            _sync: 1,
+            name: 'John Doe',
+          },
+        })
+      );
+
+      // clean up
+      fetcherSpy.mockRestore();
+      await insta.destroy();
     });
   });
 });

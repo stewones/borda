@@ -170,6 +170,7 @@ export class OrgSelectComponent {
         $filter: {
           name: {
             $regex: this.search(),
+            $options: 'i',
           },
         },
       },

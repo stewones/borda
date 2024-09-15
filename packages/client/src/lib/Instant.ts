@@ -33,13 +33,36 @@ import {
 } from './utils';
 import { WebSocketFactory } from './websocket';
 
-type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
-  [P in K]?: iQL<T, K> & QueryDirectives<z.infer<T[P]>>;
-};
-
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
 
-type FilterCondition<T> =
+/**
+ * A subset of Dexie's query language, inspired by MongoDB query style.
+ * This interface allows for strongly-typed queries based on the provided schema.
+ *
+ * @example
+ * const schema = {
+ *   users: z.object({
+ *     name: z.string().min(3),
+ *     age: z.number(),
+ *   }),
+ * }
+ *
+ * const query: iQL<typeof schema> = {
+ *   users: {
+ *     $filter: {
+ *       name: { $regex: 'John' },
+ *       age: { $gt: 18 }
+ *     },
+ *     $sort: { age: -1 },
+ *     $limit: 10
+ *   }
+ * }
+ */
+export type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
+  [P in K]?: iQL<T, K> & iQLDirectives<z.infer<T[P]>>;
+};
+
+export type iQLFilterCondition<T> =
   | {
       $exists?: boolean;
       $nin?: any[];
@@ -49,16 +72,16 @@ type FilterCondition<T> =
     }
   | ((item: T) => boolean);
 
-type QueryDirectives<T> = {
+export type iQLDirectives<T> = {
   $limit?: number;
   $skip?: number;
   $sort?: { [K in keyof T]?: number };
   $filter?:
     | {
-        [K in keyof T]?: FilterCondition<T>;
+        [K in keyof T]?: iQLFilterCondition<T>;
       }
     | ((item: T) => boolean);
-  $or?: Array<{ [K in keyof T]?: FilterCondition<T> | T }>;
+  $or?: Array<{ [K in keyof T]?: iQLFilterCondition<T> | T }>;
   $by?: string;
 };
 
@@ -96,6 +119,9 @@ export const ejectPointerCollection = (pointer: string) => {
 export const createObjectIdSchema = <T extends string>(p: T) =>
   z.string().min(9).max(36).brand<T>();
 
+export const createPointerSchema = (collection: string) =>
+  z.string().brand<string>(collection).describe('pointer');
+
 export const createSchema = <S extends SchemaType>(
   collection: string,
   schema: S
@@ -114,16 +140,12 @@ export const createSchema = <S extends SchemaType>(
   });
 
 /**
- * A brand typed string representation of the pointer
- * which identifies the collection and the objectId
+ * A string representation of the pointer
+ * which identifies the collection and the document id
  *
  * @example
  * const userId = createPointer('users', 'a1b2c3');
  * // userId => 'users$a1b2c3'
- *
- * @param p - pointer
- * @param objectId - objectId
- * @returns string
  */
 export const createPointer = (collection: string, id: string) => {
   return `${collection}$${id}`;
@@ -215,6 +237,14 @@ export class Instant<T extends SchemaType> {
     return this.#db;
   }
 
+  get token() {
+    return this.#token;
+  }
+
+  get user() {
+    return this.#user;
+  }
+
   constructor({
     schema,
     name,
@@ -229,7 +259,7 @@ export class Instant<T extends SchemaType> {
     session,
     user,
   }: {
-    name: Capitalize<string>;
+    name: string;
     version?: number;
     schema: T;
     index?: Partial<Record<keyof T, string[]>>;
@@ -413,85 +443,16 @@ export class Instant<T extends SchemaType> {
     await persist[status](collection, value, updatedFields);
   }
 
-  /**
-   * worker entry point
-   * should be called with postMessage from the main thread
-   *
-   * @returns void
-   */
-  protected worker() {
-    return async ({ data }: { data: string }) => {
-      try {
-        const {
-          url,
-          sync = 'batch',
-          token = '',
-          headers = {},
-          params = {},
-        } = JSON.parse(data);
-
-        if (!token) {
-          return Promise.reject('No token provided');
-        }
-
-        this.#token = token;
-        this.#headers = headers;
-        this.#params = params;
-
-        const perf = performance.now();
-
-        /**
-         * run the worker, it should:
-         * 1. fetch filtered and paginated data from the server
-         * 2. update the local indexedDB
-         * 3. keep syncing older and new data in background
-         *
-         * now the ui can just query against the local db instead
-         * including realtime updates via dexie livequery 🎉
-         */
-        if (sync === 'batch') {
-          const { collection, activity, synced } = await this.runBatchWorker({
-            url,
-            token,
-            headers,
-            params,
-          });
-
-          /* istanbul ignore next */
-          if (this.inspect) {
-            const syncDuration = performance.now() - perf;
-            const usage = await this.usage(collection);
-            console.log(
-              `💨 sync ${syncDuration.toFixed(2)}ms`,
-              collection,
-              activity,
-              synced
-            );
-            console.log('💾 estimated usage for', collection, usage);
-          }
-        }
-
-        if (sync === 'live') {
-          this.runLiveWorker({ url, token, headers, params });
-        }
-      } catch (err) {
-        /* istanbul ignore next */
-        if (this.inspect) {
-          console.error('Error running worker', err);
-        }
-      }
-    };
-  }
-
   protected buildWebSocket(url: string) {
     return (factory: WebSocketFactory) => {
       const { onConnect, onOpen, onError, onClose, onMessage } = factory;
       const ws = new WebSocket(url);
 
+      /* istanbul ignore next */
+      ws.onmessage = (ev: MessageEvent) => onMessage(ws, ev);
       ws.onopen = (ev: Event) => onOpen(ws, ev);
       ws.onerror = (err: Event) => onError(ws, err);
       ws.onclose = (ev: CloseEvent) => onClose(ws, ev);
-      ws.onmessage = (ev: MessageEvent) => onMessage(ws, ev);
 
       const timer = setInterval(() => {
         if (ws.readyState === 1) {
@@ -1288,10 +1249,7 @@ export class Instant<T extends SchemaType> {
   }
 
   /**
-   * starts the sync process
-   * don't forget to handle extra permissions on the server and make your endpoint even more secure.
-   *
-   * @returns Promise<void>
+   * Starts the sync process
    */
   public async sync({
     /**
@@ -1316,7 +1274,7 @@ export class Instant<T extends SchemaType> {
     headers?: Record<string, string>;
     params?: Record<string, string>;
   } = {}) {
-    if (!this.db) {
+    if (!this.#db) {
       throw new Error(
         'Database not initialized. Try awaiting `ready()` first.'
       );
@@ -1327,10 +1285,6 @@ export class Instant<T extends SchemaType> {
         // @todo add documentation and links
         'Worker not initialized. Try instantiating a worker and adding it to Instant.setWorker({ worker })'
       );
-    }
-
-    if (!this.#serverURL) {
-      throw new Error('Server URL is required to sync');
     }
 
     this.#token = session || this.#token;
@@ -1345,11 +1299,6 @@ export class Instant<T extends SchemaType> {
     ]);
   }
 
-  /**
-   * Destroy the Instant instance
-   *
-   * @returns void
-   */
   /* istanbul ignore next */
   public async destroy({ db = true }: { db?: boolean } = {}) {
     this.#batch.complete();
@@ -1395,6 +1344,104 @@ export class Instant<T extends SchemaType> {
     return Promise.resolve();
   }
 
+  /**
+   * worker entry point
+   * should be called only once within your worker setup
+   * anything executed here is ran in the background thread
+   *
+   * @example
+   * import { insta } from './your-shared-instance';
+   *
+   * addEventListener('message', insta.worker()); // <- this is it
+   *
+   * @returns void
+   */
+  public worker() {
+    return async ({ data }: { data: string }) => {
+      try {
+        const {
+          url,
+          sync = 'batch',
+          token = '',
+          headers = {},
+          params = {},
+        } = JSON.parse(data);
+
+        if (!token) {
+          return Promise.reject('No token provided');
+        }
+
+        this.#token = token;
+        this.#headers = headers;
+        this.#params = params;
+
+        const perf = performance.now();
+
+        /**
+         * run the worker, it should:
+         * 1. fetch filtered and paginated data from the server
+         * 2. update the local indexedDB
+         * 3. keep syncing older and new data in background
+         *
+         * now the ui can just query against the local db instead
+         * including realtime updates via dexie livequery 🎉
+         */
+        if (sync === 'batch') {
+          const { collection, activity, synced } = await this.runBatchWorker({
+            url,
+            token,
+            headers,
+            params,
+          });
+
+          /* istanbul ignore next */
+          if (this.inspect) {
+            const syncDuration = performance.now() - perf;
+            const usage = await this.usage(collection);
+            console.log(
+              `💨 sync ${syncDuration.toFixed(2)}ms`,
+              collection,
+              activity,
+              synced
+            );
+            console.log('💾 estimated usage for', collection, usage);
+          }
+        }
+
+        if (sync === 'live') {
+          this.runLiveWorker({ url, token, headers, params });
+        }
+      } catch (err) {
+        /* istanbul ignore next */
+        if (this.inspect) {
+          console.error('Error running worker', err);
+        }
+      }
+    };
+  }
+
+  /**
+   * Mutate data locally and synchronize with the server
+   *
+   * 1. Mutate data locally
+   * 2. If online, send changes to the server
+   * 3. Server propagates changes to other connected clients
+   * 4. Local database stays in sync via websocket
+   *
+   * @example
+   * const user = await insta.mutate('users').add({ name: 'John' });
+   * console.log(user);
+   * // { _id: 'a1b2-c3d4-e5f6', _uuid: 'a1b2-c3d4-e5f6', _sync: 1, _updated_at: '2024-09-15T12:00:00Z', name: 'John' }
+   *
+   * // ... a couple of milliseconds later
+   * const user = await insta.db.table('users').where('_uuid').equals(user._uuid).first();
+   *
+   * console.log(user);
+   * // { _id: 'zxAvYaLcR', _uuid: 'a1b2-c3d4-e5f6', _sync: 0, _updated_at: '2024-09-15T12:00:10Z', name: 'John' }
+   * // _id is different here because it means this object was synced and given a new identifier from the server to be used as source of truth
+   * // while _uuid is the local generated id used to reference the object before syncing
+   * @returns void
+   */
   public mutate<C extends keyof T>(collection: C) {
     if (!this.#user) {
       throw new Error(
@@ -1407,37 +1454,39 @@ export class Instant<T extends SchemaType> {
       );
     }
     return {
-      add: async (
-        value: Partial<z.infer<T[keyof T]>> & {
-          _id?: string;
-          _uuid?: string;
-          _sync?: number;
-          _created_at?: string;
-          _updated_at?: string;
-          _created_by?: string;
-          _updated_by?: string;
+      add: async (value: Partial<z.infer<T[keyof T]>>) => {
+        const now = new Date().toISOString();
+        const valueWithMetadata = { ...value } as Partial<
+          z.infer<T[keyof T]>
+        > & {
+          _id: string;
+          _uuid: string;
+          _sync: number;
+          _created_at: string;
+          _updated_at: string;
+          _created_by: string;
+          _updated_by: string;
           _expires_at?: string;
           _deleted_by?: string;
-        }
-      ) => {
-        const now = new Date().toISOString();
-        value._sync = 1;
-        value._created_at = now;
-        value._updated_at = now;
-        value._id = guid();
-        value._uuid = value._id;
-        value._created_by = createPointer('users', this.#user);
-        value._updated_by = createPointer('users', this.#user);
+        };
+
+        valueWithMetadata._sync = 1;
+        valueWithMetadata._created_at = now;
+        valueWithMetadata._updated_at = now;
+        valueWithMetadata._id = guid();
+        valueWithMetadata._uuid = valueWithMetadata._id;
+        valueWithMetadata._created_by = createPointer('users', this.#user);
+        valueWithMetadata._updated_by = createPointer('users', this.#user);
 
         await this.db.transaction(
           'rw!',
           this.db.table(collection as string),
           async () => {
-            await this.db.table(collection as string).add(value);
+            await this.db.table(collection as string).add(valueWithMetadata);
           }
         );
 
-        return value;
+        return valueWithMetadata;
       },
       update: async (id: string, value: Partial<z.infer<T[keyof T]>>) => {
         const currentDoc = await this.db.table(collection as string).get(id);
@@ -1508,78 +1557,162 @@ export class Instant<T extends SchemaType> {
           })),
         };
       }
-      throw zodError; // Re-throw if it's not a ZodError
     }
 
     return {};
   }
 
-  public syncPending(row: Document) {
+  /**
+   * Checks if a document is expired, newly created or needs to be synced
+   */
+  public modified(row: Document) {
     return row['_expires_at'] || row['_id'].includes('-') || row['_sync'] === 1;
   }
 
   /**
-   * count local data
+   * Count local data based on query criteria
    *
    * @example
    * const count = await insta.count('users', {
    *     $filter: {
-   *       name: { $eq: 'Raul' },
+   *       name: { $regex: 'John', $options: 'i' },
+   *       age: { $gt: 18 }
    *     },
+   *     $or: [
+   *       { status: 'active' },
+   *       { lastLogin: { $exists: true } }
+   *     ]
    * });
    *
    * // console.log(count)
-   * // 1
+   * // 5
    */
   public async count<C extends keyof T>(
-    collection: C,
-    query: Exclude<QueryDirectives<z.infer<T[keyof T]>>, '$by'> & iQL<T>
-  ) {
-    let table = this.db.table(collection as string);
-    const tableQuery = query as QueryDirectives<z.infer<T[keyof T]>> & iQL<T>;
+    collectionName: C,
+    query: Exclude<iQLDirectives<z.infer<T[C]>>, '$by'> & iQL<T>
+  ): Promise<number> {
+    let table = this.db.table(collectionName as string);
+    const tableQuery = query as iQLDirectives<z.infer<T[C]>> & iQL<T>;
+
+    let queryCollection: Collection<
+      z.infer<T[C]>,
+      IndexableType
+    > = table as unknown as Collection<z.infer<T[C]>, IndexableType>;
 
     // Apply $filter
     if (tableQuery.$filter) {
       if (typeof tableQuery.$filter === 'function') {
-        // If $filter is a function, use it directly
-        table = table.filter(tableQuery.$filter) as unknown as Table<
-          any,
-          IndexableType
-        >;
+        queryCollection = queryCollection.filter(tableQuery.$filter);
       } else {
         for (const [field, condition] of Object.entries(tableQuery.$filter)) {
-          if (
-            typeof condition === 'object' &&
-            condition &&
-            '$exists' in condition
-          ) {
-            table = table.filter(
-              (item) => item[field] != null
-            ) as unknown as Table<any, IndexableType>;
+          // @todo implement $exists and $nin
+          // if (condition && '$exists' in condition) {
+          //   queryCollection = queryCollection.filter(
+          //     (item) => item[field] != null
+          //   );
+          // }
+          // if (condition && '$nin' in condition && condition.$nin) {
+          //   queryCollection = queryCollection.filter(
+          //     (item) => !(condition.$nin ?? []).includes(item[field])
+          //   );
+          // }
+          if (condition && '$regex' in condition && condition.$regex) {
+            const regex = new RegExp(
+              condition.$regex,
+              condition.$options ?? ''
+            );
+            queryCollection = queryCollection.filter((item) =>
+              regex.test(item[field])
+            );
           }
-          if (
-            typeof condition === 'object' &&
-            condition &&
-            '$nin' in condition
-          ) {
-            table = table.filter(
-              (item) => !(condition.$nin ?? []).includes(item[field])
-            ) as unknown as Table<any, IndexableType>;
+          if (condition && '$eq' in condition) {
+            queryCollection = queryCollection.filter(
+              (item) => item[field] === condition.$eq
+            );
           }
+          // @todo implement $gt, $lt, $gte, $lte
+          // if (condition && '$gt' in condition) {
+          //   queryCollection = queryCollection.filter(
+          //     (item) => item[field] > condition.$gt
+          //   );
+          // }
+          // if (condition && '$lt' in condition) {
+          //   queryCollection = queryCollection.filter(
+          //     (item) => item[field] < condition.$lt
+          //   );
+          // }
+          // if (condition && '$gte' in condition) {
+          //   queryCollection = queryCollection.filter(
+          //     (item) => item[field] >= condition.$gte
+          //   );
+          // }
+          // if (condition && '$lte' in condition) {
+          //   queryCollection = queryCollection.filter(
+          //     (item) => item[field] <= condition.$lte
+          //   );
+          // }
         }
       }
     }
 
-    return table.count();
+    // Apply $or
+    if (tableQuery.$or) {
+      queryCollection = queryCollection.filter((item) => {
+        return tableQuery.$or!.some((condition) => {
+          return Object.entries(condition).every(([field, fieldCondition]) => {
+            // @todo implement exact match for all types
+            // if (typeof fieldCondition === 'object') {
+            // @todo implement $exists and $nin
+            // if ('$exists' in fieldCondition) {
+            //   return fieldCondition.$exists
+            //     ? item[field] != null
+            //     : item[field] == null;
+            // }
+            // if ('$nin' in fieldCondition) {
+            //   return !(fieldCondition.$nin ?? []).includes(item[field]);
+            // }
+
+            if (fieldCondition && '$regex' in fieldCondition) {
+              const regex = new RegExp(
+                fieldCondition.$regex as string,
+                fieldCondition.$options ?? ''
+              );
+              return regex.test(item[field]);
+            }
+
+            if (fieldCondition && '$eq' in fieldCondition) {
+              return item[field] === fieldCondition.$eq;
+            }
+
+            // @todo implement $gt, $lt, $gte, $lte
+            // if ('$gt' in fieldCondition) {
+            //   return item[field] > fieldCondition.$gt;
+            // }
+            // if ('$lt' in fieldCondition) {
+            //   return item[field] < fieldCondition.$lt;
+            // }
+            // if ('$gte' in fieldCondition) {
+            //   return item[field] >= fieldCondition.$gte;
+            // }
+            // if ('$lte' in fieldCondition) {
+            //   return item[field] <= fieldCondition.$lte;
+            // }
+            // } else {
+            //   return item[field] === fieldCondition;
+            // }
+
+            return false;
+          });
+        });
+      });
+    }
+
+    return queryCollection.count();
   }
 
   /**
-   * query syntax based on a graph of collections
-   * so we can have easy access to nested data, while reusing
-   * mongodb query style which is then translated to dexie
-   *
-   * server should follow the same pattern so we can have
-   * the same query format for both client and server
+   * Provides easy access to nested data while utilizing a MongoDB-like query style.
+   * This syntax is then translated to Dexie operations for local data retrieval.
    *
    * @example
    * const query = {
@@ -1602,7 +1735,6 @@ export class Instant<T extends SchemaType> {
    *   },
    * }
    */
-
   public async query<Q extends iQL<T>>(
     iql: Q
   ): Promise<{
@@ -1614,7 +1746,7 @@ export class Instant<T extends SchemaType> {
   async #executeQuery<Q extends iQL<T>>(
     queryObject: Q,
     parentTable?: keyof T,
-    parentId?: string
+    parentId?: string,
   ): Promise<{
     [K in keyof Q]: z.infer<T[K & keyof T]>[];
   }> {
@@ -1628,7 +1760,7 @@ export class Instant<T extends SchemaType> {
         !tableName.startsWith('$')
       ) {
         const table = this.db.table(tableName);
-        const tableQuery = queryObject[tableName] as QueryDirectives<
+        const tableQuery = queryObject[tableName] as iQLDirectives<
           z.infer<T[keyof T]>
         > &
           iQL<T>;
@@ -1640,28 +1772,27 @@ export class Instant<T extends SchemaType> {
 
         // Handle parent relationship
         if (parentTable && parentId) {
-          const pointerField = this.#getPointerField(
+          const by = queryObject[tableName]!['$by'];
+          const pointerField = by || this.#getPointerField(
             tableName as keyof T,
             parentTable
           );
-          const parentTableAsBy = `_p_${singular(parentTable as string)}`;
-
+ 
           if (pointerField) {
             collection = collection.filter(
               (item) =>
-                item[pointerField] === `${parentTable as string}$${parentId}`
-            );
-          } else if (parentTableAsBy in collection) {
-            collection = collection.filter(
-              (item) =>
-                item[parentTableAsBy] === `${parentTable as string}$${parentId}`
+                item[pointerField as keyof z.infer<T[keyof T]>] === `${parentTable as string}$${parentId}`
             );
           }
         }
 
         // Apply $sort
+        let sortFields: [string, number | undefined][] = [];
         if (tableQuery.$sort && Object.keys(tableQuery.$sort).length > 0) {
-          const sortFields = Object.entries(tableQuery.$sort);
+          sortFields = Object.entries(tableQuery.$sort);
+
+          // const primarySortField = sortFields[0][0];
+          const primarySortOrder = sortFields[0][1];
 
           // Construct the compound index string with brackets
           const indexString = `[${sortFields
@@ -1673,9 +1804,8 @@ export class Instant<T extends SchemaType> {
             collection as unknown as Table<z.infer<T[keyof T]>, IndexableType>
           ).orderBy(indexString);
 
-          // Apply reverse for descending order for the first field
-          // cause apparently we can't do multi-sorting with compound indexes yet
-          if (sortFields.length > 0 && sortFields[0][1] === -1) {
+          // Apply reverse for descending order if needed
+          if (primarySortOrder === -1) {
             collection = collection.reverse();
           }
         }
@@ -1689,18 +1819,19 @@ export class Instant<T extends SchemaType> {
             for (const [field, condition] of Object.entries(
               tableQuery.$filter
             )) {
-              if (condition && '$exists' in condition) {
-                collection = collection.filter((item) => item[field] != null);
-              }
-              if (condition && '$nin' in condition && condition.$nin) {
-                collection = collection.filter(
-                  (item) => !(condition.$nin ?? []).includes(item[field])
-                );
-              }
+              // @todo implement $exists and $nin
+              // if (condition && '$exists' in condition) {
+              //   collection = collection.filter((item) => item[field] != null);
+              // }
+              // if (condition && '$nin' in condition && condition.$nin) {
+              //   collection = collection.filter(
+              //     (item) => !(condition.$nin ?? []).includes(item[field])
+              //   );
+              // }
               if (condition && '$regex' in condition && condition.$regex) {
                 const regex = new RegExp(
                   condition.$regex,
-                  condition.$options ?? 'i'
+                  condition.$options ?? ''
                 );
                 collection = collection.filter((item) =>
                   regex.test(item[field])
@@ -1732,27 +1863,29 @@ export class Instant<T extends SchemaType> {
               return Object.entries(condition).every(
                 ([field, fieldCondition]) => {
                   if (typeof fieldCondition === 'object') {
-                    if ('$exists' in fieldCondition) {
-                      return fieldCondition.$exists
-                        ? item[field] != null
-                        : item[field] == null;
-                    }
-                    if ('$nin' in fieldCondition) {
-                      return !(fieldCondition.$nin ?? []).includes(item[field]);
-                    }
+                    // @todo implement $exists and $nin
+                    // if ('$exists' in fieldCondition) {
+                    //   return fieldCondition.$exists
+                    //     ? item[field] != null
+                    //     : item[field] == null;
+                    // }
+                    // if ('$nin' in fieldCondition) {
+                    //   return !(fieldCondition.$nin ?? []).includes(item[field]);
+                    // }
                     if ('$regex' in fieldCondition) {
                       const regex = new RegExp(
-                        fieldCondition.$regex ?? '',
-                        fieldCondition.$options ?? 'i'
+                        fieldCondition.$regex as string,
+                        fieldCondition.$options ?? ''
                       );
                       return regex.test(item[field]);
                     }
                     if ('$eq' in fieldCondition) {
                       return item[field] === fieldCondition.$eq;
                     }
-                  } else {
-                    return item[field] === fieldCondition;
                   }
+                  // } else {
+                  //   return item[field] === fieldCondition;
+                  // }
                   return false;
                 }
               );
@@ -1762,6 +1895,18 @@ export class Instant<T extends SchemaType> {
 
         // Execute the query
         let tableData = cloneDeep(await collection.toArray());
+
+        // Sort by secondary sort fields if more than one sort field
+        if (sortFields.length > 1) {
+          tableData.sort((a: any, b: any) => {
+            for (let i = 0; i < sortFields.length; i++) {
+              const [field, order] = sortFields[i] as [string, number];
+              if (a[field] < b[field]) return -1 * order;
+              if (a[field] > b[field]) return 1 * order;
+            }
+            return 0;
+          });
+        }
 
         // Process nested queries
         for (const item of tableData) {
@@ -1773,9 +1918,12 @@ export class Instant<T extends SchemaType> {
               ) &&
               !nestedTableName.startsWith('$')
             ) {
-              const nestedQuery = tableQuery[
-                nestedTableName
-              ] as QueryDirectives<z.infer<T[keyof T]>> & iQL<T>;
+           
+              const nestedQuery = tableQuery[nestedTableName] as iQLDirectives<
+                z.infer<T[keyof T]>
+              > &
+                iQL<T>;
+
               const nestedResult = await this.#executeQuery(
                 { [nestedTableName]: nestedQuery } as Q,
                 tableName as keyof T,
@@ -1844,9 +1992,20 @@ export class Instant<T extends SchemaType> {
     parentTable: keyof T
   ): string | undefined {
     const childSchema = this.#schema[childTable];
-    if (!childSchema || !('shape' in childSchema)) return undefined;
 
-    // First, check for fields starting with _p_
+    // First check for custom named pointer fields (not needed anymore, keeping for future reference)
+    // eg: { users: { posts: { $by: 'author' } } }
+    // for (const [fieldName, fieldSchema] of Object.entries(
+    //   (childSchema as unknown as z.ZodObject<any, any, any>).shape
+    // )) {
+    //   if (fieldSchema instanceof z.ZodBranded) {
+    //     if (fieldSchema.description === 'pointer') {
+    //       return fieldName;
+    //     }
+    //   }
+    // }
+
+    // Lastly, check for fields starting with _p_
     for (const fieldName of Object.keys(
       (childSchema as unknown as z.ZodObject<any, any, any>).shape
     )) {
@@ -1858,21 +2017,8 @@ export class Instant<T extends SchemaType> {
       }
     }
 
-    // If not found, check for pointer fields
-    for (const [fieldName, fieldSchema] of Object.entries(
-      (childSchema as unknown as z.ZodObject<any, any, any>).shape
-    )) {
-      if (
-        fieldSchema instanceof z.ZodBranded &&
-        fieldSchema._def.type instanceof z.ZodObject
-      ) {
-        const innerShape = fieldSchema._def.type.shape;
-        if ('collection' in innerShape) {
-          return fieldName;
-        }
-      }
-    }
-
+    // getting here is unlikely to happen because Dexie would fail before
+    /* istanbul ignore next */
     return undefined;
   }
 }

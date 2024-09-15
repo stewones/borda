@@ -163,7 +163,7 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
           truncate
           *brnCellDef="let row"
           [ngClass]="{
-            'text-muted-foreground': insta.syncPending(row),
+            'text-muted-foreground': insta.modified(row),
           }"
         >
           {{ row.org?.name || '' }}
@@ -197,7 +197,7 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
           truncate
           *brnCellDef="let row"
           [ngClass]="{
-            'text-muted-foreground': insta.syncPending(row),
+            'text-muted-foreground': insta.modified(row),
           }"
         >
           {{ row.name }}
@@ -230,7 +230,7 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
           truncate
           *brnCellDef="let row"
           [ngClass]="{
-            'text-muted-foreground': insta.syncPending(row),
+            'text-muted-foreground': insta.modified(row),
           }"
         >
           {{ row.email }}
@@ -263,7 +263,7 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
           class="font-normal whitespace-nowrap"
           *brnCellDef="let row"
           [ngClass]="{
-            'text-muted-foreground': insta.syncPending(row),
+            'text-muted-foreground': insta.modified(row),
           }"
         >
           {{ row._updated_at | dfnsParseIso | dfnsFormat : 'MMM d, HH:mm' }}
@@ -314,7 +314,7 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
                   })
                 "
               >
-                Delete user (synced)
+                Delete user (sync)
               </button>
               <button hlmMenuItem (click)="deleteLocalRow(row)">
                 Delete user (local)
@@ -412,8 +412,8 @@ export class UsersTableComponent {
         $limit: this.pageSize(),
         $sort: this.sort(),
         $or: [
-          { name: { $regex: this.search() } },
-          { email: { $regex: this.search() } },
+          { name: { $regex: this.search(), $options: 'i' } },
+          { email: { $regex: this.search(), $options: 'i' } },
         ],
       },
     };

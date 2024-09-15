@@ -24,6 +24,7 @@ import {
   createPointer,
   ejectPointerCollection,
   ejectPointerId,
+  isEmpty,
   omit,
   pointer,
   SyncResponse,
@@ -123,6 +124,7 @@ export class Instant<C extends string> {
   /**
    * attach borda instance
    * required in order to use the sync feature
+   * @todo unify borda server in here with the same composition of the sync endpoints
    */
   attach(borda: Borda) {
     this.#borda = borda;
@@ -379,7 +381,10 @@ export class Instant<C extends string> {
                 const response: SyncResponseData = {
                   collection: collection,
                   status: 'deleted',
-                  value: doc,
+                  value: {
+                    _id: doc['_id'],
+                    _uuid: doc['_uuid'],
+                  },
                 };
 
                 for (const identifier of identifiers) {
@@ -403,7 +408,11 @@ export class Instant<C extends string> {
        * task scheduler
        */
       this.#pendingTasks = interval(1000)
-        .pipe(tap(async () => Promise.allSettled([this.#runPendingPointers()])))
+        .pipe(
+          tap(
+            async () => await Promise.allSettled([this.#runPendingPointers()])
+          )
+        )
         .subscribe();
 
       Promise.resolve();
@@ -497,13 +506,15 @@ export class Instant<C extends string> {
           params,
           set,
           body,
+          query,
+          headers,
         }: {
           headers: Record<string, string | undefined>;
           params: typeof ParamsSchema;
           query: Static<typeof Instant.SyncBatchQuerySchema>;
           set: SetOptions;
           body: Document;
-        }) => this.#putData({ params, set, body });
+        }) => this.#putData({ params, set, body, query, headers });
       },
       delete: () => {
         const ParamsSchema = Instant.SyncMutationParamsSchema(this.collections);
@@ -856,7 +867,7 @@ export class Instant<C extends string> {
       await this.#borda.query(collection).insert({ ...data });
 
       return {
-        _id: body['_id'], // because it can also be uuid
+        _id: body['_id'], // which can also be an uuid generated locally. so we need to match it so that the client can mark as synced
         _updated_at: new Date().toISOString(),
       };
     } catch (error) {
@@ -875,10 +886,14 @@ export class Instant<C extends string> {
     params,
     set,
     body,
+    query,
+    headers,
   }: {
     params: Record<string, string>;
     set: SetOptions;
     body: Document;
+    query: Static<typeof Instant.SyncBatchQuerySchema>;
+    headers: Record<string, string | undefined>;
   }) {
     try {
       const { collection, id } = params;
@@ -886,6 +901,31 @@ export class Instant<C extends string> {
 
       if (data['_sync']) {
         delete data['_sync'];
+      }
+
+      const doc = await this.#borda
+        .query(collection)
+        .filter({
+          $or: [
+            {
+              _id: id,
+            },
+            {
+              _uuid: id,
+            },
+          ],
+        })
+        .findOne();
+
+      // if doc doesn't exist and id is an uuid, create it
+      if (isEmpty(doc) && id.includes('-')) {
+        return this.#postData({
+          params,
+          set,
+          body,
+          query,
+          headers,
+        });
       }
 
       await this.#borda
@@ -947,6 +987,7 @@ export class Instant<C extends string> {
         .delete();
 
       return {
+        _id: id,
         _updated_at: now.toISOString(),
       };
     } catch (error) {
