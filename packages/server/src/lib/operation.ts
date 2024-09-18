@@ -1156,7 +1156,7 @@ export async function del({
   cache,
   cloud,
 }: {
-  docQRL: DocQRL;
+  docQRL: DocQRL & { expiresAt?: Date };
   objectId: string;
   inspect?: boolean;
   unlocked?: boolean;
@@ -1165,7 +1165,7 @@ export async function del({
   cloud: Cloud;
 }) {
   try {
-    const { collection$, collection } = docQRL;
+    const { collection$, collection, expiresAt } = docQRL;
     const collectionName = collection;
     /**
      * query against to any of the reserved collections
@@ -1197,12 +1197,9 @@ export async function del({
       },
     };
 
-    const in1year = new Date(
-      new Date().setFullYear(new Date().getFullYear() + 1)
-    );
     const cursor = await collection$!.findOneAndUpdate(
       { ...qrl.filter },
-      { $set: { in1year } },
+      { $set: { _expires_at: expiresAt ?? new Date() } },
       {
         returnDocument: 'after',
         readPreference: 'primary',

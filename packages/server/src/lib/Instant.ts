@@ -972,6 +972,9 @@ export class Instant<C extends string> {
     try {
       const { collection, id } = params;
       const now = new Date();
+      const in1year = new Date(
+        new Date().setFullYear(new Date().getFullYear() + 1)
+      );
       await this.#borda
         .query(collection)
         .filter({
@@ -984,7 +987,9 @@ export class Instant<C extends string> {
             },
           ],
         })
-        .delete();
+        .delete({
+          expiresAt: in1year,
+        });
 
       return {
         _id: id,

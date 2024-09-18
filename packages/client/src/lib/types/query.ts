@@ -26,6 +26,7 @@ export interface DocumentExtraOptions {
   parse?: {
     doc?: boolean;
   };
+  expiresAt?: Date;
 }
 export type DocumentOptions =
   | DocumentExtraOptions
