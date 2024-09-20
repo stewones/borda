@@ -6,7 +6,12 @@ import Elysia, {
 } from 'elysia';
 import type { HTTPHeaders } from 'elysia/dist/types';
 import { ElysiaWS } from 'elysia/dist/ws';
-import type { Document } from 'mongodb';
+import type {
+  Db,
+  Document,
+  Filter,
+  Sort,
+} from 'mongodb';
 import {
   ChangeStreamDeleteDocument,
   ChangeStreamInsertDocument,
@@ -21,10 +26,13 @@ import {
 import { z } from 'zod';
 
 import {
+  cleanKey,
   createPointer,
   ejectPointerCollection,
   ejectPointerId,
+  isArrayPointer,
   isEmpty,
+  isPointer,
   omit,
   pointer,
   SyncResponse,
@@ -32,6 +40,49 @@ import {
   SyncStatus,
 } from '@borda/client';
 import { Borda } from '@borda/server';
+
+type SchemaType = Record<string, z.ZodType<any, any, any>>;
+
+/**
+ * A custom query language inspired by MongoDB query style.
+ * This interface allows for strongly-typed queries based on the provided schema.
+ *
+ * @example
+ * const schema = {
+ *   users: z.object({
+ *     name: z.string().min(3),
+ *     age: z.number(),
+ *   }),
+ * }
+ *
+ * const query: iQL<typeof schema> = {
+ *   users: {
+ *     $filter: {
+ *       name: { $regex: 'John', $options: 'i' },
+ *       age: { $gt: 18 }
+ *     },
+ *     $sort: { age: -1 },
+ *     $limit: 10
+ *   }
+ * }
+ */
+export type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
+  [P in K]?: iQL<T, K> & iQLDirectives<z.infer<T[P]>>;
+};
+
+export type iQLDirectives<TSchema> = {
+  $limit?: number;
+  $skip?: number;
+  $sort?: Sort;
+  $filter?:
+    | {
+        [K in keyof TSchema]?: Filter<TSchema>;
+      }
+    | ((item: TSchema) => boolean);
+  $or?: Array<{ [K in keyof TSchema]?: Filter<TSchema> | TSchema }>;
+  $by?: string;
+  $include?: string[];
+};
 
 export interface SetOptions {
   headers: HTTPHeaders;
@@ -75,15 +126,17 @@ const SyncLiveQuery = {
 
 const SyncLiveQuerySchema = t.Object(SyncLiveQuery);
 
-export class Instant<C extends string> {
+export class Instant<TSchema extends SchemaType> {
   #size = 1_000;
-  #borda!: Borda;
+  #borda!: Borda; // @todo replace with a local db instance
   #inspect = false;
   #connection = new Map<string, { clients: ElysiaWS<object, object>[] }>();
   #constraints: SyncConstraint[] = [];
-  #schema: Record<C, z.ZodTypeAny>;
+  #schema!: TSchema;
   #pendingTasks: Subscription | undefined;
   #pendingPointersBusy = false;
+  #db!: Db;
+  #collections: string[] = []; // collections to sync
 
   static SyncBatchQuery = SyncBatchQuery;
   static SyncBatchQuerySchema = SyncBatchQuerySchema;
@@ -94,23 +147,36 @@ export class Instant<C extends string> {
   static SyncParamsSchema = SyncParamsSchema;
   static SyncMutationParamsSchema = SyncMutationParamsSchema;
 
-  collections: C[] = [];
+  get db() {
+    if (!this.#db) {
+      throw new Error('MongoDB is not initialized');
+    }
+    return this.#db;
+  }
+
+  get collections() {
+    return this.#collections;
+  }
 
   constructor({
     size,
     inspect,
-    collections,
     constraints,
     schema,
+    db,
   }: {
     size?: number | undefined;
     inspect?: boolean | undefined;
-    collections?: C[];
     constraints?: SyncConstraint[];
-    schema: Record<C, z.ZodTypeAny>;
+    schema: TSchema;
+    db?: Db;
   }) {
     if (!schema) {
       throw new Error('a data schema is required');
+    }
+
+    if (db) {
+      this.#db = db;
     }
 
     this.#schema = schema;
@@ -118,7 +184,12 @@ export class Instant<C extends string> {
     this.#inspect = inspect || this.#inspect;
     this.#constraints = constraints || [];
 
-    this.collections = collections || (Object.keys(schema) as C[]);
+    this.#collections = Object.keys(schema).filter((key) => {
+      return (
+        schema[key as keyof TSchema] &&
+        (schema[key as keyof TSchema] as any)._sync
+      );
+    });
   }
 
   /**
@@ -205,7 +276,7 @@ export class Instant<C extends string> {
           );
       };
 
-      for (const collection of this.collections) {
+      for (const collection of this.#collections) {
         const task = this.#borda.db.collection(collection);
         const stream = task.watch(
           [
@@ -435,7 +506,7 @@ export class Instant<C extends string> {
     rest
       .get(':collection', this.collection(), {
         query: Instant.SyncBatchQuerySchema,
-        params: Instant.SyncParamsSchema(this.collections),
+        params: Instant.SyncParamsSchema(this.#collections),
         headers: Instant.SyncHeadersSchema,
         // @todo default logic to validate request before it's handled
         beforeHandle({ headers, params }) {
@@ -469,7 +540,7 @@ export class Instant<C extends string> {
   public collection() {
     return {
       get: () => {
-        const ParamsSchema = Instant.SyncParamsSchema(this.collections);
+        const ParamsSchema = Instant.SyncParamsSchema(this.#collections);
 
         return ({
           headers,
@@ -484,7 +555,7 @@ export class Instant<C extends string> {
         }) => this.#getData({ headers, params, query, set });
       },
       post: () => {
-        const ParamsSchema = Instant.SyncParamsSchema(this.collections);
+        const ParamsSchema = Instant.SyncParamsSchema(this.#collections);
 
         return ({
           headers,
@@ -501,7 +572,9 @@ export class Instant<C extends string> {
         }) => this.#postData({ headers, params, query, set, body });
       },
       put: () => {
-        const ParamsSchema = Instant.SyncMutationParamsSchema(this.collections);
+        const ParamsSchema = Instant.SyncMutationParamsSchema(
+          this.#collections
+        );
         return ({
           params,
           set,
@@ -517,7 +590,9 @@ export class Instant<C extends string> {
         }) => this.#putData({ params, set, body, query, headers });
       },
       delete: () => {
-        const ParamsSchema = Instant.SyncMutationParamsSchema(this.collections);
+        const ParamsSchema = Instant.SyncMutationParamsSchema(
+          this.#collections
+        );
 
         return ({
           headers,
@@ -623,7 +698,7 @@ export class Instant<C extends string> {
   }
 
   public validate(collection: string, data: unknown) {
-    const schema = this.#schema[collection as C];
+    const schema = this.#schema[collection];
 
     try {
       // validate the body
@@ -1019,7 +1094,7 @@ export class Instant<C extends string> {
       for (const collection of collections) {
         // Extract pointer fields from the schema
         const pointerFields = Object.entries(
-          (this.#schema[collection as C] as z.ZodObject<any>).shape
+          (this.#schema[collection] as z.ZodObject<any>).shape
         )
           .filter(
             ([key, value]) =>
@@ -1089,5 +1164,326 @@ export class Instant<C extends string> {
     } finally {
       this.#pendingPointersBusy = false;
     }
+  }
+
+  /**
+   * Provides easy access to nested data while utilizing a MongoDB-like query style.
+   * This syntax is then translated to Dexie operations for local data retrieval.
+   *
+   * @example
+   * const query = {
+   *   users: {
+   *     $limit: 10,
+   *     $skip: 0,
+   *     $or: [
+   *       { title: { $exists: true } },
+   *       { status: { $nin: ['draft', 'archived'] } }
+   *     ],
+   *     posts: {
+   *       // $by is a special syntax
+   *       // the value is a pointer to the author of the post (ie the user: users$objectId)
+   *       // when not specified, it will try to match by a pointer _p_user
+   *       $by: 'author',
+   *       $limit: 10,
+   *       $skip: 0,
+   *       $sort: { rating: -1 },
+   *       $filter: {
+   *         email: { $regex: 'eli', $options: 'i' }
+   *       },
+   *     },
+   *   },
+   * }
+   * console.log(await insta.query(query))
+   * // {
+   * //   users: [
+   * //     {
+   * //       _id: 'userObjectId',
+   * //       name: 'John Doe',
+   * //       email: 'john.doe@example.com',
+   * //       posts: [
+   * //         {
+   * //           _id: 'postObjectId',
+   * //           title: 'Post Title',
+   * //           content: 'Post Content',
+   * //           author: 'users$userObjectId'
+   * //         }
+   * //       ]
+   * //     }
+   * //   ]
+   * // }
+   */
+  public async query<Q extends iQL<TSchema>>(
+    iql: Q
+  ): Promise<{
+    [K in keyof Q]: z.infer<TSchema[K & keyof TSchema]>[];
+  }> {
+    return this.#executeQuery(iql);
+  }
+
+  async #executeQuery<TQuery extends iQL<TSchema>>(
+    iql: TQuery,
+    parentCollection?: keyof TSchema,
+    parentId?: string
+  ): Promise<{
+    [K in keyof TQuery]: z.infer<TSchema[K & keyof TSchema]>[];
+  }> {
+    let result: any = {};
+    let key = '';
+    const cache: Map<string, any> = new Map();
+
+    for (const [collection, query] of Object.entries(iql)) {
+      if (typeof query !== 'object' || query === null) continue;
+
+      const {
+        $limit = 100,
+        $skip = 0,
+        $sort,
+        $filter,
+        $or,
+        $by,
+        $include,
+        ...nestedQueries
+      } = query as iQLDirectives<any> & Record<string, any>;
+
+      let mongoQuery: Filter<Document> = {};
+
+      // Handle $filter
+      if ($filter) {
+        if (typeof $filter === 'function') {
+          // Client-side filtering, not applicable for server-side
+          console.warn(
+            'Function-based filtering is not supported on the server'
+          );
+        } else {
+          mongoQuery = { ...mongoQuery, ...$filter };
+        }
+      }
+
+      // Handle $or
+      if ($or) {
+        mongoQuery.$or = $or;
+      }
+
+      // Handle parent relationship
+      if (parentCollection && parentId) {
+        const relationField =
+          $by || `_p_${singular(parentCollection as string)}`;
+        mongoQuery[relationField] = createPointer(
+          parentCollection as string,
+          parentId
+        );
+
+        // Create a unique cache key
+        // it should be the last step to account for all possible query variations
+        key = cleanKey({
+          collection,
+          [relationField]: mongoQuery[relationField],
+          query,
+        });
+      }
+
+      if (key && cache.has(key)) {
+        result[collection] = cache.get(key);
+        if (this.#inspect) {
+          console.log('cache hit', key, result[collection]);
+        }
+      } else {
+        // Create a query
+        let queryResult = this.#db.collection(collection).find(mongoQuery);
+
+        // Apply sorting
+        if ($sort) {
+          queryResult = queryResult.sort($sort);
+        }
+
+        // Apply pagination
+        queryResult = queryResult.skip($skip).limit($limit);
+
+        // Execute and store the result
+        result[collection] = await queryResult.toArray();
+
+        // Cache the result locally
+        if (key) {
+          cache.set(key, [...result[collection]]);
+          if (this.#inspect) {
+            console.log('cache miss', key, result[collection]);
+          }
+        }
+      }
+
+      // Handle nested queries recursively
+      for (const doc of result[collection]) {
+        for (const [nestedCollection, nestedQuery] of Object.entries(
+          nestedQueries
+        )) {
+          if (typeof nestedQuery === 'object' && nestedQuery !== null) {
+            const nestedResult = await this.#executeQuery(
+              { [nestedCollection]: nestedQuery } as any,
+              collection,
+              doc._id.toString()
+            );
+            doc[nestedCollection] = nestedResult[nestedCollection];
+          }
+        }
+      }
+
+      // Handle inclusion
+      await this.#parseInclusion({
+        groupedResult: result,
+        include: $include || [],
+        cache,
+      });
+    }
+
+    return result as {
+      [K in keyof TQuery]: z.infer<TSchema[K & keyof TSchema]>[];
+    };
+  }
+
+  async #parseInclusion({
+    groupedResult,
+    include,
+    cache,
+  }: {
+    groupedResult: Record<string, any>;
+    include: string[];
+    cache: Map<string, any>;
+  }) {
+    for (const collection in groupedResult) {
+      const result = groupedResult[collection];
+
+      /**
+       * create a tree structure out of include
+       * to recursively join the pointers in the following format
+       *
+       * ie:
+       * ['a', 'b', 'b.c', 'b.a', 'x.y.z']
+       *
+       * becomes:
+       * {
+       *    a: [],
+       *    b: ['c', 'a'],
+       *    x: ['y.z']
+       * }
+       *
+       * then:
+       * a, b, x becomes the pointer names (which should be mapped to the actual collection)
+       * while their values are the new join paths to be requested
+       */
+      const tree = this.#parseTree(include ?? []);
+      // console.log('tree', tree);
+      /**
+       * parse tree
+       */
+      for (const obj of result) {
+        for (const pointerField in tree) {
+          // console.log('pointerField', pointerField);
+          // console.log('obj', obj);
+          const pointerValue = obj[`_p_${pointerField}`] || obj[pointerField];
+          //console.log('pointerValue', pointerValue);
+
+          if (!pointerValue || !isPointer(pointerValue)) continue;
+
+          if (isArrayPointer(pointerValue)) {
+            for (let pointer of pointerValue) {
+              const index = pointerValue.indexOf(pointer);
+              const join = tree[pointerField];
+              pointer = await this.#parseJoin({
+                cache,
+                join,
+                pointerValue: pointerValue[index],
+              });
+              pointerValue[index] = pointer;
+            }
+            continue;
+          }
+
+          const join = tree[pointerField];
+          // console.log('join', join);
+
+          const doc = await this.#parseJoin({
+            cache,
+            join,
+            pointerValue,
+          });
+
+          // replace pointer with the actual document
+          obj[pointerField] = doc;
+
+          // remove raw _p_ entry
+          delete obj[`_p_${pointerField}`];
+
+          /**
+           * reaching here means the object may be populated in the first level
+           * but we still need to keep trying to populate the next level
+           */
+          // for (const pointerTreeField of join) {
+          //   const pointerTreeBase = pointerTreeField.split('.')[0];
+
+          //   await this.#parseInclusion({
+          //     groupedResult: {
+          //       [pointerTreeBase]: obj[pointerTreeBase],
+          //     },
+          //     include: [pointerTreeField],
+          //   });
+          // }
+        }
+      }
+    }
+  }
+
+  async #parseJoin({
+    cache,
+    join,
+    pointerValue,
+  }: {
+    cache: Map<string, any>;
+    join: string[];
+    pointerValue: any;
+  }) {
+    const collection = ejectPointerCollection(pointerValue);
+    const objectId = ejectPointerId(pointerValue);
+
+    const cacheKey = `${collection}-${objectId}`;
+
+    if (cache.has(cacheKey)) {
+      if (this.#inspect) {
+        console.log('cache hit', cacheKey, cache.get(cacheKey));
+      }
+      return cache.get(cacheKey);
+    }
+
+    const result = await this.query({
+      [collection]: {
+        $include: join,
+        $filter: {
+          _id: objectId,
+        },
+      },
+    } as any);
+
+    cache.set(cacheKey, result[collection][0]);
+
+    if (this.#inspect) {
+      console.log('cache miss', cacheKey, result[collection][0]);
+    }
+
+    return result[collection][0];
+  }
+
+  #parseTree(arr: string[]) {
+    return (
+      arr.reduce((acc, item) => {
+        const [key, ...rest] = item.split('.');
+        const value = rest.join('.');
+        if (acc[key]) {
+          acc[key].push(value);
+        } else {
+          acc[key] = [value];
+        }
+        acc[key] = acc[key].filter((item) => item);
+        return acc;
+      }, {} as Record<string, string[]>) ?? {}
+    );
   }
 }

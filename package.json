@@ -107,7 +107,7 @@
     "jest-preset-angular": "14.1.1",
     "jsonc-eslint-parser": "^2.1.0",
     "mongodb": "^6.3.0",
-    "mongodb-memory-server": "^9.1.6",
+    "mongodb-memory-server": "^10.0.0",
     "ng-packagr": "~18.2.0",
     "ngx-date-fns": "^11.0.0",
     "ngx-scrollbar": "^13.0.1",

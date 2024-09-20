@@ -12,9 +12,16 @@
  * - a custom email provider plugin
  * - a custom email password reset template plugin
  */
-import { Elysia, t } from 'elysia';
+import {
+  Elysia,
+  t,
+} from 'elysia';
 
-import { BordaServer, Instant, memoryUsage } from '@borda/server';
+import {
+  BordaServer,
+  Instant,
+  memoryUsage,
+} from '@borda/server';
 
 import { schema } from '@/common';
 import { cors } from '@elysiajs/cors';
@@ -23,7 +30,10 @@ import { html } from '@elysiajs/html';
 import { getCounter } from './functions/getCounter';
 import { getPublicUsers } from './functions/getPublicUsers';
 import { increaseCounter } from './functions/increaseCounter';
-import { passwordResetGet, passwordResetPost } from './routes/password';
+import {
+  passwordResetGet,
+  passwordResetPost,
+} from './routes/password';
 import {
   afterDeletePublicUser,
   afterSaveUser,
@@ -95,8 +105,6 @@ const insta = new Instant({
   schema,
   inspect: true,
   size: parseInt(process.env['INSTANT_SIZE'] || '1_000'),
-  // optionally restrict the collections to sync, otherwise all collections are synced based on the schema
-  // collections: ['orgs', 'users', 'posts', 'comments'],
   // set constraints to restrict broadcast and filtered data
   // constraints: [
   //   {

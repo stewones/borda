@@ -23,7 +23,7 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "tsc --noEmit --skipLibCheck --showConfig -p packages/elysia/tsconfig.lib.json"
+          "tsc --noEmit --skipLibCheck --showConfig -p apps/elysia/tsconfig.lib.json"
         ]
       }
     },

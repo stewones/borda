@@ -54,7 +54,7 @@ export function createServer({
   inspect,
 }: {
   name?: string;
-  config?: Partial<ElysiaConfig>;
+  config?: Partial<ElysiaConfig<any, any>>;
   serverHeaderPrefix: string;
   serverKey: string;
   serverSecret: string;

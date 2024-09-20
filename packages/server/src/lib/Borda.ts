@@ -22,7 +22,10 @@ import {
   ensureSessionInvalidation,
 } from './Cache';
 import { Cloud } from './Cloud';
-import { mongoConnect, mongoCreateIndexes } from './mongodb';
+import {
+  mongoConnect,
+  mongoCreateIndexes,
+} from './mongodb';
 import {
   BordaEmailPasswordResetTemplatePlugin,
   BordaEmailPlugin,
@@ -78,7 +81,7 @@ export interface BordaParams {
   /**
    * Elysia config
    */
-  config?: Partial<ElysiaConfig>;
+  config?: Partial<ElysiaConfig<any, any>>;
 
   /**
    * Collections allowances
@@ -94,7 +97,7 @@ export class Borda {
   #mongoURI!: string;
   #queryLimit!: number;
   #cacheTTL!: number;
-  #config!: Partial<ElysiaConfig>;
+  #config!: Partial<ElysiaConfig<any, any>>;
 
   #serverKey!: string;
   #serverSecret!: string;

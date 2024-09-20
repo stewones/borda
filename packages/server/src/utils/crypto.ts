@@ -6,7 +6,11 @@
  * found in the LICENSE file at https://borda.dev/license
  */
 
-import { createHash, randomBytes } from 'crypto';
+import {
+  createHash,
+  randomBytes,
+} from 'crypto';
+import { ObjectId } from 'mongodb';
 
 // Returns a new random hex string of the given even size.
 export function randomHexString(size: number): string {
@@ -51,4 +55,9 @@ export function newToken(): string {
 
 export function md5Hash(string: string): string {
   return createHash('md5').update(string).digest('hex');
+}
+
+// same as newObjectId but typed
+export function createObjectId() {
+  return newObjectId() as unknown as ObjectId;
 }

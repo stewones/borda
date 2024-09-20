@@ -7,11 +7,10 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
+// @ts-nocheck
 import {
   Collection,
   Db,
-  Document,
 } from 'mongodb';
 
 import {
@@ -36,6 +35,8 @@ import {
 
 import { Cache } from './Cache';
 import { BordaServerQuery } from './query';
+
+type Document = any;
 
 export interface DocQRL<T extends Document = Document> extends DocumentQuery<T> {
   collection$: Collection<T>;

@@ -1,20 +1,14 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "../../dist/out-tsc",
+    "outDir": "../../dist/packages/common",
+    "declarationDir": "../../dist/packages/common",
     "declaration": true,
-    "types": ["node"],
-    "skipLibCheck": true
+    "declarationMap": true,
+    "sourceMap": true,
+    "types": []
   },
+  "files": [],
   "include": ["**/*.ts", "**/*.d.ts"],
-  "exclude": [
-    "jest.config.ts",
-    "**/*.spec.ts",
-    "**/*.test.ts",
-    "jest.setup.ts",
-    "jest.config.ts",
-    "node_modules",
-    "node_modules/**",
-    "test"
-  ]
+  "exclude": ["jest.config.ts", "**/*.spec.ts", "**/*.test.ts"]
 }

@@ -124,18 +124,23 @@ export const createPointerSchema = (collection: string) =>
 
 export const createSchema = <S extends SchemaType>(
   collection: string,
-  schema: S
+  schema: S,
+  options: {
+    sync?: boolean;
+  } = {
+    sync: true,
+  }
 ) =>
   z.object({
     _id: createObjectIdSchema(collection),
     _uuid: z.string().length(36).optional(),
-    _sync: z.number().optional(),
     _created_at: z.string().optional(),
     _updated_at: z.string().optional(),
     _expires_at: z.string().optional(),
     _created_by: z.string().optional(),
     _updated_by: z.string().optional(),
     _deleted_by: z.string().optional(),
+    ...(options.sync ? { _sync: z.number().optional() } : {}),
     ...schema,
   });
 
@@ -1746,7 +1751,7 @@ export class Instant<T extends SchemaType> {
   async #executeQuery<Q extends iQL<T>>(
     queryObject: Q,
     parentTable?: keyof T,
-    parentId?: string,
+    parentId?: string
   ): Promise<{
     [K in keyof Q]: z.infer<T[K & keyof T]>[];
   }> {
@@ -1773,15 +1778,14 @@ export class Instant<T extends SchemaType> {
         // Handle parent relationship
         if (parentTable && parentId) {
           const by = queryObject[tableName]!['$by'];
-          const pointerField = by || this.#getPointerField(
-            tableName as keyof T,
-            parentTable
-          );
- 
+          const pointerField =
+            by || this.#getPointerField(tableName as keyof T, parentTable);
+
           if (pointerField) {
             collection = collection.filter(
               (item) =>
-                item[pointerField as keyof z.infer<T[keyof T]>] === `${parentTable as string}$${parentId}`
+                item[pointerField as keyof z.infer<T[keyof T]>] ===
+                `${parentTable as string}$${parentId}`
             );
           }
         }
@@ -1918,7 +1922,6 @@ export class Instant<T extends SchemaType> {
               ) &&
               !nestedTableName.startsWith('$')
             ) {
-           
               const nestedQuery = tableQuery[nestedTableName] as iQLDirectives<
                 z.infer<T[keyof T]>
               > &
