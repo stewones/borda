@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  Elysia,
-  ElysiaConfig,
-} from 'elysia';
+import { Elysia, ElysiaConfig } from 'elysia';
 import { Db } from 'mongodb';
+import { Subject } from 'rxjs';
 
 import {
   Auth,
+  BordaQuery,
   BordaServerAdditionalHeaders,
   Document,
   InternalCollectionName,
@@ -22,10 +21,7 @@ import {
   ensureSessionInvalidation,
 } from './Cache';
 import { Cloud } from './Cloud';
-import {
-  mongoConnect,
-  mongoCreateIndexes,
-} from './mongodb';
+import { mongoConnect, mongoCreateIndexes } from './mongodb';
 import {
   BordaEmailPasswordResetTemplatePlugin,
   BordaEmailPlugin,
@@ -115,6 +111,14 @@ export class Borda {
 
   #reservedCollections!: string[];
   #liveCollections!: string[];
+
+  public onReady = new Subject<{
+    db: Db;
+    app: string;
+    server: Elysia;
+    cloud: Cloud;
+    cache: Cache;
+  }>();
 
   get db() {
     return this.#db;
@@ -268,7 +272,7 @@ export class Borda {
     return this.#server;
   }
 
-  async ready() {
+  async server() {
     // instantiate auth
     this.#auth = new Auth({
       name: this.#name,
@@ -290,13 +294,6 @@ export class Borda {
     await mongoCreateIndexes({ db: this.#db });
     // const collections = await this.#db.listCollections().toArray();
 
-    return {
-      db: this.#db,
-      name: this.#name,
-    };
-  }
-
-  server() {
     // instantiate the server
     this.#server = createServer({
       liveCollections: this.#liveCollections,
@@ -308,7 +305,7 @@ export class Borda {
       serverSecret: this.#serverSecret,
       name: this.#name,
       poweredBy: this.#serverPoweredBy,
-      query: this.query.bind(this),
+      query: this.query.bind(this) as any,
       queryLimit: this.#queryLimit,
       plugin: this.plugin.bind(this),
       cache: this.#cache,
@@ -329,7 +326,16 @@ export class Borda {
     ensureSessionInvalidation({
       db: this.#db,
       cache: this.#cache,
-      query: this.query.bind(this),
+      query: this.query.bind(this) as any,
+    });
+
+    // broadcast event
+    this.onReady.next({
+      db: this.#db,
+      app: this.#name,
+      server: this.#server,
+      cloud: this.#cloud,
+      cache: this.#cache,
     });
 
     console.log(`📡 Borda Server v${version}`);
@@ -404,7 +410,7 @@ export class Borda {
       cloud: this.#cloud,
       queryLimit: this.#queryLimit,
       serverAdditionalHeaders: this.#serverAdditionalHeaders,
-    });
+    }) as BordaQuery<TSchema>;
   }
 }
 

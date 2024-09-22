@@ -106,7 +106,7 @@
     "jest-environment-jsdom": "29.7.0",
     "jest-preset-angular": "14.1.1",
     "jsonc-eslint-parser": "^2.1.0",
-    "mongodb": "^6.3.0",
+    "mongodb": "^6.9.0",
     "mongodb-memory-server": "^10.0.0",
     "ng-packagr": "~18.2.0",
     "ngx-date-fns": "^11.0.0",

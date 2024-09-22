@@ -7,6 +7,7 @@ import Elysia, {
 import type { HTTPHeaders } from 'elysia/dist/types';
 import { ElysiaWS } from 'elysia/dist/ws';
 import type {
+  AggregateOptions,
   Db,
   Document,
   Filter,
@@ -26,7 +27,6 @@ import {
 import { z } from 'zod';
 
 import {
-  cleanKey,
   createPointer,
   ejectPointerCollection,
   ejectPointerId,
@@ -74,15 +74,21 @@ export type iQLDirectives<TSchema> = {
   $limit?: number;
   $skip?: number;
   $sort?: Sort;
-  $filter?:
-    | {
-        [K in keyof TSchema]?: Filter<TSchema>;
-      }
-    | ((item: TSchema) => boolean);
   $or?: Array<{ [K in keyof TSchema]?: Filter<TSchema> | TSchema }>;
   $by?: string;
   $include?: string[];
-};
+  $options?: AggregateOptions;
+} & (
+  | { $filter?: { [K in keyof TSchema]?: Filter<TSchema> }; $aggregate?: never }
+  | {
+      $aggregate?: Document[];
+      $filter?: never;
+      $limit?: never;
+      $skip?: never;
+      $sort?: never;
+      $or?: never;
+    }
+);
 
 export interface SetOptions {
   headers: HTTPHeaders;
@@ -1227,9 +1233,8 @@ export class Instant<TSchema extends SchemaType> {
   ): Promise<{
     [K in keyof TQuery]: z.infer<TSchema[K & keyof TSchema]>[];
   }> {
-    let result: any = {};
-    let key = '';
     const cache: Map<string, any> = new Map();
+    let result: any = {};
 
     for (const [collection, query] of Object.entries(iql)) {
       if (typeof query !== 'object' || query === null) continue;
@@ -1242,52 +1247,45 @@ export class Instant<TSchema extends SchemaType> {
         $or,
         $by,
         $include,
+        $aggregate,
+        $options,
         ...nestedQueries
       } = query as iQLDirectives<any> & Record<string, any>;
 
-      let mongoQuery: Filter<Document> = {};
+      // Handle $aggregate
+      if ($aggregate) {
+        const aggregationPipeline = $aggregate; // Use the provided aggregation pipeline
+        const options = $options || {}; // Use provided options or default to an empty object
 
-      // Handle $filter
-      if ($filter) {
-        if (typeof $filter === 'function') {
-          // Client-side filtering, not applicable for server-side
-          console.warn(
-            'Function-based filtering is not supported on the server'
-          );
-        } else {
+        // Execute the aggregation query
+        const aggregationResult = await this.#db
+          .collection(collection)
+          .aggregate(aggregationPipeline, options)
+          .toArray();
+        result[collection] = aggregationResult; // Store the result
+      } else {
+        let mongoQuery: Filter<Document> = {};
+
+        // Handle $filter
+        if ($filter) {
           mongoQuery = { ...mongoQuery, ...$filter };
         }
-      }
 
-      // Handle $or
-      if ($or) {
-        mongoQuery.$or = $or;
-      }
-
-      // Handle parent relationship
-      if (parentCollection && parentId) {
-        const relationField =
-          $by || `_p_${singular(parentCollection as string)}`;
-        mongoQuery[relationField] = createPointer(
-          parentCollection as string,
-          parentId
-        );
-
-        // Create a unique cache key
-        // it should be the last step to account for all possible query variations
-        key = cleanKey({
-          collection,
-          [relationField]: mongoQuery[relationField],
-          query,
-        });
-      }
-
-      if (key && cache.has(key)) {
-        result[collection] = cache.get(key);
-        if (this.#inspect) {
-          console.log('cache hit', key, result[collection]);
+        // Handle $or
+        if ($or) {
+          mongoQuery.$or = $or;
         }
-      } else {
+
+        // Handle parent relationship
+        if (parentCollection && parentId) {
+          const relationField =
+            $by || `_p_${singular(parentCollection as string)}`;
+          mongoQuery[relationField] = createPointer(
+            parentCollection as string,
+            parentId
+          );
+        }
+
         // Create a query
         let queryResult = this.#db.collection(collection).find(mongoQuery);
 
@@ -1301,14 +1299,6 @@ export class Instant<TSchema extends SchemaType> {
 
         // Execute and store the result
         result[collection] = await queryResult.toArray();
-
-        // Cache the result locally
-        if (key) {
-          cache.set(key, [...result[collection]]);
-          if (this.#inspect) {
-            console.log('cache miss', key, result[collection]);
-          }
-        }
       }
 
       // Handle nested queries recursively
@@ -1412,21 +1402,6 @@ export class Instant<TSchema extends SchemaType> {
 
           // remove raw _p_ entry
           delete obj[`_p_${pointerField}`];
-
-          /**
-           * reaching here means the object may be populated in the first level
-           * but we still need to keep trying to populate the next level
-           */
-          // for (const pointerTreeField of join) {
-          //   const pointerTreeBase = pointerTreeField.split('.')[0];
-
-          //   await this.#parseInclusion({
-          //     groupedResult: {
-          //       [pointerTreeBase]: obj[pointerTreeBase],
-          //     },
-          //     include: [pointerTreeField],
-          //   });
-          // }
         }
       }
     }

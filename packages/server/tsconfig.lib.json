@@ -1,8 +1,11 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "../../dist/out-tsc",
+    "outDir": "../../dist/packages/server",
+    "declarationDir": "../../dist/packages/server",
     "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "types": ["node", "jest"],
     "skipLibCheck": true
   },

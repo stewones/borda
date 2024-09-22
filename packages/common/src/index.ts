@@ -49,6 +49,7 @@ export const PostSchema = createSchema('posts', {
   content: z.string(),
   author: z.string(), // a custom way to reference the user
   user: z.optional(UserSchema), // injected by the client
+  org: z.optional(OrgSchema), // injected by the client
 });
 
 export const CommentSchema = createSchema('comments', {
