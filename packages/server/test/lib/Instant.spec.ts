@@ -7,18 +7,18 @@ import { z } from 'zod';
 
 import { createPointer } from '@borda/client';
 
-import { schema as commonSchema } from '@/common';
+import { PostSchema, schema as commonSchema, UserSchema } from '@/common';
 
 import { createObjectId } from '../../src';
 import { Instant } from '../../src/lib/Instant';
 
 const schema = {
   ...commonSchema,
-  users: commonSchema.users.extend({
-    posts: z.array(commonSchema.posts).optional(),
+  users: UserSchema.extend({
+    posts: z.array(PostSchema).optional(),
   }),
-  posts: commonSchema.posts.extend({
-    user: commonSchema.users.optional(),
+  posts: PostSchema.extend({
+    user: UserSchema.optional(),
   }),
 };
 

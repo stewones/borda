@@ -17,11 +17,7 @@ import {
   t,
 } from 'elysia';
 
-import {
-  BordaServer,
-  Instant,
-  memoryUsage,
-} from '@borda/server';
+import { BordaServer, Instant } from '@borda/server';
 
 import { schema } from '@/common';
 import { cors } from '@elysiajs/cors';
@@ -96,7 +92,6 @@ export const borda = new BordaServer({
   ],
 });
 
-const { db, name } = await borda.ready();
 
 /**
  * Attach the borda instance to the Instant class
@@ -112,7 +107,7 @@ const insta = new Instant({
   //     collection: 'orgs',
   //   },
   // ],
-}).attach(borda);
+});
 
 await insta.ready();
 
@@ -186,7 +181,7 @@ const api = new Elysia({
  * configure and start the server
  */
 api
-  .use(borda.server())
+  // .use(borda.server())
   // .use(insta.server()) // default instant server
   .use(cors())
   // handle html response for custom routes
@@ -299,12 +294,10 @@ api
   // start the server
   .listen(1337);
 
-console.log(
-  `🦊 Borda is running at http://${api.server?.hostname}:${api.server?.port}`
-);
+console.log(`🏄 Running at http://${api.server?.hostname}:${api.server?.port}`);
 
-const stats = await db.stats();
-console.log(`💽 Connected to Database ${stats['db']} from ${name}`);
+const stats = await insta.db.stats();
+console.log(`💽 Connected to database ${stats['db']}`);
 
 delete stats['$clusterTime'];
 delete stats['operationTime'];
@@ -312,11 +305,3 @@ delete stats['operationTime'];
 console.table(stats);
 console.timeEnd('startup');
 console.time('latency');
-
-await borda
-  .ping()
-  .then(() => {
-    console.timeEnd('latency');
-    console.log('🧠 memory', memoryUsage());
-  })
-  .catch((err) => console.log(err));

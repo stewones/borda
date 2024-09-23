@@ -122,27 +122,32 @@ export const createObjectIdSchema = <T extends string>(p: T) =>
 export const createPointerSchema = (collection: string) =>
   z.string().brand<string>(collection).describe('pointer');
 
-export const createSchema = <S extends SchemaType>(
-  collection: string,
-  schema: S,
-  options: {
-    sync?: boolean;
-  } = {
-    sync: true,
-  }
-) =>
-  z.object({
-    _id: createObjectIdSchema(collection),
-    _uuid: z.string().length(36).optional(),
-    _created_at: z.string().optional(),
-    _updated_at: z.string().optional(),
-    _expires_at: z.string().optional(),
-    _created_by: z.string().optional(),
-    _updated_by: z.string().optional(),
-    _deleted_by: z.string().optional(),
-    ...(options.sync ? { _sync: z.number().optional() } : {}),
-    ...schema,
-  });
+export const createSchema = <S extends SchemaType>(collection: string, schema: S) =>
+  z
+    .object({
+      _id: createObjectIdSchema(collection),
+      _uuid: z.string().length(36).optional(),
+      _created_at: z.string().optional(),
+      _updated_at: z.string().optional(),
+      _expires_at: z.string().optional(),
+      _created_by: z.string().optional(),
+      _updated_by: z.string().optional(),
+      _deleted_by: z.string().optional(),
+      _sync: z.number().optional(),
+      ...schema,
+    })
+    .describe(
+      JSON.stringify({
+        sync: true,
+      })
+    );
+
+export const withOptions = <T extends z.ZodType<any, any, any>>(
+  schema: T,
+  options: { sync?: boolean; description?: string }
+) => {
+  return schema.describe(JSON.stringify(options));
+};
 
 /**
  * A string representation of the pointer
@@ -194,6 +199,7 @@ export class Instant<T extends SchemaType> {
   #worker!: Worker;
   #serverURL: string;
   #schema: T;
+  #collections: string[] = [];
   #index!: Partial<Record<keyof T, string[]>>;
   #inspect: boolean;
   #token!: string;
@@ -250,6 +256,10 @@ export class Instant<T extends SchemaType> {
     return this.#user;
   }
 
+  get collections() {
+    return this.#collections;
+  }
+
   constructor({
     schema,
     name,
@@ -290,6 +300,15 @@ export class Instant<T extends SchemaType> {
     this.#index = index || {};
     this.#token = session || '';
     this.#user = user || '';
+    this.#collections = Object.keys(schema).filter((key) => {
+      try {
+        const item = schema[key];
+        const options = JSON.parse(item.description || '{}');
+        return options.sync;
+      } catch (error) {
+        return false;
+      }
+    });
   }
 
   async #useSync({
@@ -501,7 +520,7 @@ export class Instant<T extends SchemaType> {
     try {
       this.#pendingMutationsBusy = true;
 
-      const collections = Object.keys(this.#schema);
+      const collections = this.collections;
 
       for (const collection of collections) {
         const query = {
@@ -588,7 +607,7 @@ export class Instant<T extends SchemaType> {
 
     this.#pendingPointersBusy = true;
 
-    const collections = Object.keys(this.#schema);
+    const collections = this.collections;
 
     for (const collection of collections) {
       // check for pointers using uuid
@@ -1037,7 +1056,7 @@ export class Instant<T extends SchemaType> {
 
   protected async syncBatch(activity: SyncActivity) {
     try {
-      const collections = Object.keys(this.#schema);
+      const collections = this.collections;
 
       for (const collection of collections) {
         const sync = await this.#useSync({

@@ -11,12 +11,14 @@ import type {
   Db,
   Document,
   Filter,
+  ObjectId,
   Sort,
 } from 'mongodb';
 import {
   ChangeStreamDeleteDocument,
   ChangeStreamInsertDocument,
   ChangeStreamUpdateDocument,
+  MongoClient,
 } from 'mongodb';
 import { singular } from 'pluralize';
 import {
@@ -39,7 +41,8 @@ import {
   SyncResponseData,
   SyncStatus,
 } from '@borda/client';
-import { Borda } from '@borda/server';
+
+import { newObjectId } from '../utils';
 
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
 
@@ -134,7 +137,6 @@ const SyncLiveQuerySchema = t.Object(SyncLiveQuery);
 
 export class Instant<TSchema extends SchemaType> {
   #size = 1_000;
-  #borda!: Borda; // @todo replace with a local db instance
   #inspect = false;
   #connection = new Map<string, { clients: ElysiaWS<object, object>[] }>();
   #constraints: SyncConstraint[] = [];
@@ -143,6 +145,7 @@ export class Instant<TSchema extends SchemaType> {
   #pendingPointersBusy = false;
   #db!: Db;
   #collections: string[] = []; // collections to sync
+  #mongoURI: string;
 
   static SyncBatchQuery = SyncBatchQuery;
   static SyncBatchQuerySchema = SyncBatchQuerySchema;
@@ -170,12 +173,14 @@ export class Instant<TSchema extends SchemaType> {
     constraints,
     schema,
     db,
+    mongoURI,
   }: {
     size?: number | undefined;
     inspect?: boolean | undefined;
     constraints?: SyncConstraint[];
     schema: TSchema;
     db?: Db;
+    mongoURI?: string;
   }) {
     if (!schema) {
       throw new Error('a data schema is required');
@@ -189,23 +194,18 @@ export class Instant<TSchema extends SchemaType> {
     this.#size = size || this.#size;
     this.#inspect = inspect || this.#inspect;
     this.#constraints = constraints || [];
+    this.#mongoURI = mongoURI || process.env['INSTANT_MONGO_URI'] || '';
 
     this.#collections = Object.keys(schema).filter((key) => {
-      return (
-        schema[key as keyof TSchema] &&
-        (schema[key as keyof TSchema] as any)._sync
-      );
+      try {
+        const { sync } = JSON.parse(
+          schema[key as keyof TSchema]?.description || '{}'
+        );
+        return schema[key as keyof TSchema] && sync;
+      } catch (err) {
+        return false;
+      }
     });
-  }
-
-  /**
-   * attach borda instance
-   * required in order to use the sync feature
-   * @todo unify borda server in here with the same composition of the sync endpoints
-   */
-  attach(borda: Borda) {
-    this.#borda = borda;
-    return this;
   }
 
   #buildIdentifiers({
@@ -243,88 +243,76 @@ export class Instant<TSchema extends SchemaType> {
     return identifiers;
   }
 
-  /**
-   * listen to mongo change stream
-   * and notify the clients about the changes
-   */
-  async ready() {
-    try {
-      const excludedFields = [
-        '_id',
-        '_created_at',
-        '_updated_at',
-        '_expires_at',
-      ];
+  #liveSync() {
+    const excludedFields = ['_id', '_created_at', '_updated_at', '_expires_at'];
 
-      const maybePointer = (key: string, value: unknown) => {
-        if (
-          key.startsWith('_p_') &&
-          typeof value === 'string' &&
-          value.includes('$')
-        ) {
-          return value.split('$')[1];
-        }
-        return value;
-      };
+    const maybePointer = (key: string, value: unknown) => {
+      if (
+        key.startsWith('_p_') &&
+        typeof value === 'string' &&
+        value.includes('$')
+      ) {
+        return value.split('$')[1];
+      }
+      return value;
+    };
 
-      const docQueryParams = (doc: Document) => {
-        return Object.entries(doc)
-          .filter(
-            ([key, value]) =>
-              typeof value === 'string' && !excludedFields.includes(key)
-          )
-          .reduce(
-            (acc, [key, value]) => ({
-              ...acc,
-              [key.replace('_p_', '') as string]: maybePointer(key, value),
-            }),
-            {}
-          );
-      };
+    const docQueryParams = (doc: Document) => {
+      return Object.entries(doc)
+        .filter(
+          ([key, value]) =>
+            typeof value === 'string' && !excludedFields.includes(key)
+        )
+        .reduce(
+          (acc, [key, value]) => ({
+            ...acc,
+            [key.replace('_p_', '') as string]: maybePointer(key, value),
+          }),
+          {}
+        );
+    };
 
-      for (const collection of this.#collections) {
-        const task = this.#borda.db.collection(collection);
-        const stream = task.watch(
-          [
-            {
-              $match: {
-                operationType: {
-                  $in: ['insert', 'update', 'delete'],
-                },
+    for (const collection of this.#collections) {
+      const task = this.db.collection(collection);
+      const stream = task.watch(
+        [
+          {
+            $match: {
+              operationType: {
+                $in: ['insert', 'update', 'delete'],
               },
             },
-          ],
-          {
-            fullDocument: 'updateLookup',
-          }
-        );
+          },
+        ],
+        {
+          fullDocument: 'updateLookup',
+        }
+      );
 
-        stream.on('error', (err) => {
-          console.error('Instant listener error', err);
-        });
+      stream.on('error', (err) => {
+        console.error('Instant listener error', err);
+      });
 
-        stream.on('close', () => {
-          console.log('Instant listener close');
-        });
+      stream.on('close', () => {
+        console.log('Instant listener close');
+      });
 
-        stream.on('init', () => {
-          console.log('Instant listener initialized');
-        });
+      stream.on('init', () => {
+        console.log('Instant listener initialized');
+      });
 
-        stream.on(
-          'change',
-          async (
-            change:
-              | ChangeStreamUpdateDocument
-              | ChangeStreamInsertDocument
-              | ChangeStreamDeleteDocument
-          ) => {
-            const { operationType } = change;
+      stream.on(
+        'change',
+        async (
+          change:
+            | ChangeStreamUpdateDocument
+            | ChangeStreamInsertDocument
+            | ChangeStreamDeleteDocument
+        ) => {
+          const { operationType } = change;
 
-            const broadcast: Record<
-              'update' | 'insert' | 'delete',
-              () => void
-            > = {
+          const broadcast: Record<'update' | 'insert' | 'delete', () => void> =
+            {
               update: () => {
                 const { fullDocument, updateDescription } =
                   change as ChangeStreamUpdateDocument;
@@ -361,10 +349,13 @@ export class Instant<TSchema extends SchemaType> {
                   constraints: this.#constraints,
                 });
 
+                // cleanup value props with sync: false according to the schema
+                const value = this.#cleanValue(collection, fullDocument);
+
                 const response: SyncResponseData = {
                   collection: collection,
                   status: 'updated',
-                  value: fullDocument,
+                  value,
                   updatedFields,
                   removedFields,
                   truncatedArrays,
@@ -407,10 +398,13 @@ export class Instant<TSchema extends SchemaType> {
                   constraints: this.#constraints,
                 });
 
+                // cleanup value props with sync: false according to the schema
+                const value = this.#cleanValue(collection, fullDocument);
+
                 const response: SyncResponseData = {
                   collection: collection,
                   status: 'created',
-                  value: fullDocument,
+                  value,
                 };
 
                 for (const identifier of identifiers) {
@@ -476,10 +470,55 @@ export class Instant<TSchema extends SchemaType> {
               },
             };
 
-            broadcast[operationType]();
-          }
-        );
+          broadcast[operationType]();
+        }
+      );
+    }
+  }
+
+  #cleanValue(collection: string, entry: Record<string, unknown>) {
+    const schema = this.#schema[collection];
+    const value: Record<string, unknown> = {};
+    const schemaFields = Object.entries((schema as any).shape);
+
+    for (const [key, entryValue] of Object.entries(entry)) {
+      const field = schemaFields.find(([fieldKey]) => fieldKey === key);
+      if (field) {
+        const [, fieldValue] = field;
+        const description = (fieldValue as any).description || '{}';
+        const { sync } = JSON.parse(description);
+        if (sync !== false) {
+          value[key] = entryValue;
+        }
       }
+    }
+    return value;
+  }
+
+  /**
+   * listen to mongo change stream
+   * and notify the clients about the changes
+   */
+  async ready() {
+    try {
+      /**
+       * start mongo db if there's no instance
+       */
+      if (!this.#db) {
+        const client = new MongoClient(this.#mongoURI);
+        await client.connect();
+        this.#db = client.db();
+      }
+
+      /**
+       * create indexes
+       */
+      await this.#createIndexes();
+
+      /**
+       * start live sync
+       */
+      this.#liveSync();
 
       /**
        * task scheduler
@@ -492,10 +531,11 @@ export class Instant<TSchema extends SchemaType> {
         )
         .subscribe();
 
-      Promise.resolve();
-    } catch (err) {
-      console.error('Instant listener error', err);
-      Promise.reject(err);
+      if (this.#inspect) {
+        console.log('🦊 Instant Server is ready');
+      }
+    } catch (error) {
+      console.error('🚨 Instant Server failed to start', error);
     }
   }
 
@@ -727,6 +767,33 @@ export class Instant<TSchema extends SchemaType> {
     return {};
   }
 
+  async #createIndexes() {
+    const collections = Object.keys(this.#schema);
+    for (const collection of collections) {
+      /**
+       * Create `_expires_at` index used for soft deletes.
+       * We don't actually delete a document right away, we update its _expires_at field with a `Date` so that clients can be aware of the delete.
+       * Then mongo will automatically delete this document once the date is reached.
+       * Another reasoning is due to hooks like `afterDelete` where we need the document to be available for linking it back to the consumer.
+       */
+
+      // check if index exists first
+      const indexes = await this.db.collection(collection).indexes();
+      const indexExists = indexes.find(
+        (index) => index['name'] === '_expires_at_1'
+      );
+      if (indexExists) {
+        continue;
+      }
+
+      const indexResult = await this.db
+        .collection(collection)
+        .createIndex({ _expires_at: 1 }, { expireAfterSeconds: 0 });
+
+      console.log(`💽 Index created for collection ${collection}`, indexResult);
+    }
+  }
+
   async #getData({
     headers,
     params,
@@ -862,26 +929,14 @@ export class Instant<TSchema extends SchemaType> {
             }),
       };
 
-      console.log('filter', collection, filter);
+      const count = await this.db.collection(collection).countDocuments(filter);
 
-      const count = await this.#borda
-        .query(collection)
+      const data = await this.db
+        .collection(collection)
+        .find(filter)
         .sort({ _updated_at: activity === 'oldest' ? -1 : 1 })
-        .filter(filter)
-        .count();
-
-      const data = await this.#borda
-        .query(collection)
-        .sort({
-          _updated_at: activity === 'oldest' ? -1 : 1,
-        })
-        .filter(filter)
         .limit(this.#size)
-        .find({
-          parse: {
-            doc: false,
-          },
-        });
+        .toArray();
 
       const nextSynced = data[data.length - 1]?.['_updated_at'].toISOString();
 
@@ -891,8 +946,6 @@ export class Instant<TSchema extends SchemaType> {
         activity,
         synced: nextSynced || synced || new Date().toISOString(),
         data: data.map((entry) => {
-          const value = entry;
-
           const expiresAt = entry['_expires_at']?.toISOString();
           const updatedAt = entry['_updated_at'].toISOString();
           const createdAt = entry['_created_at'].toISOString();
@@ -902,6 +955,9 @@ export class Instant<TSchema extends SchemaType> {
             : updatedAt !== createdAt
             ? 'updated'
             : 'created';
+
+          // cleanup value props with sync: false according to the schema
+          const value = this.#cleanValue(collection, entry);
 
           return {
             status,
@@ -945,7 +1001,7 @@ export class Instant<TSchema extends SchemaType> {
         data['_expires_at'] = new Date(data['_expires_at']);
       }
 
-      await this.#borda.query(collection).insert({ ...data });
+      await this.db.collection(collection).insertOne({ ...data });
 
       return {
         _id: body['_id'], // which can also be an uuid generated locally. so we need to match it so that the client can mark as synced
@@ -984,19 +1040,9 @@ export class Instant<TSchema extends SchemaType> {
         delete data['_sync'];
       }
 
-      const doc = await this.#borda
-        .query(collection)
-        .filter({
-          $or: [
-            {
-              _id: id,
-            },
-            {
-              _uuid: id,
-            },
-          ],
-        })
-        .findOne();
+      const doc = await this.db.collection(collection).findOne({
+        $or: [{ _id: id as unknown as ObjectId }, { _uuid: id }],
+      });
 
       // if doc doesn't exist and id is an uuid, create it
       if (isEmpty(doc) && id.includes('-')) {
@@ -1009,24 +1055,21 @@ export class Instant<TSchema extends SchemaType> {
         });
       }
 
-      await this.#borda
-        .query(collection)
-        .filter({
-          $or: [
-            {
-              _id: id,
-            },
-            {
-              _uuid: id,
-            },
-          ],
-        })
-        .update(data);
+      await this.db.collection(collection).updateOne(
+        {
+          $or: [{ _id: id as unknown as ObjectId }, { _uuid: id }],
+        },
+        { $set: data },
+        { upsert: false }
+      );
 
       const now = new Date();
 
+      // cleanup value props with sync: false according to the schema
+      const value = this.#cleanValue(collection, data);
+
       return {
-        ...data,
+        ...value,
         _updated_at: now.toISOString(),
       };
     } catch (error) {
@@ -1056,21 +1099,18 @@ export class Instant<TSchema extends SchemaType> {
       const in1year = new Date(
         new Date().setFullYear(new Date().getFullYear() + 1)
       );
-      await this.#borda
-        .query(collection)
-        .filter({
-          $or: [
-            {
-              _id: id,
-            },
-            {
-              _uuid: id,
-            },
-          ],
-        })
-        .delete({
-          expiresAt: in1year,
-        });
+
+      await this.db.collection(collection).updateOne(
+        {
+          $or: [{ _id: id as unknown as ObjectId }, { _uuid: id }],
+        },
+        {
+          $set: {
+            _expires_at: in1year,
+          },
+        },
+        { upsert: false }
+      );
 
       return {
         _id: id,
@@ -1110,7 +1150,7 @@ export class Instant<TSchema extends SchemaType> {
 
         // Build the query
         if (pointerFields.length > 0) {
-          const query = this.#borda.db.collection(collection).find({
+          const query = this.db.collection(collection).find({
             $or: pointerFields.map((field) => ({
               [field]: {
                 $type: 'string',
@@ -1134,22 +1174,21 @@ export class Instant<TSchema extends SchemaType> {
               const pointerUuid = ejectPointerId(value as string);
 
               // grab the pointer data
-              const pointerData = await this.#borda.db
+              const pointerData = await this.db
                 .collection(pointerCollection)
                 .findOne({
                   _uuid: pointerUuid,
                 });
+
               const pointerId = pointerData?._id.toString() || '';
 
               if (pointerId && pointerData && !pointerId.includes('-')) {
                 // update the item in the database
-                await this.#borda.db.collection(collection).updateOne(
-                  {
-                    _id: item._id,
-                  },
+                await this.db.collection(collection).updateOne(
+                  { _id: item._id },
                   {
                     $set: {
-                      [key]: createPointer(pointerCollection, pointerId),
+                      [key]: `${pointerCollection}$${pointerId}`,
                       _updated_at: new Date(),
                     },
                   }
@@ -1224,6 +1263,59 @@ export class Instant<TSchema extends SchemaType> {
     [K in keyof Q]: z.infer<TSchema[K & keyof TSchema]>[];
   }> {
     return this.#executeQuery(iql);
+  }
+
+  public mutate<C extends keyof TSchema>(collection: C) {
+    return {
+      add: async (value: Partial<z.infer<TSchema[C]>>) => {
+        const now = new Date();
+        const doc = {
+          ...(value as unknown as any),
+          _created_at: now,
+          _updated_at: now,
+          _id: newObjectId(),
+        };
+        await this.db
+          .collection(collection as unknown as string)
+          .insertOne(doc);
+        return doc;
+      },
+      update: async (id: string, value: Partial<z.infer<TSchema[C]>>) => {
+        const doc = await this.db
+          .collection(collection as unknown as string)
+          .findOne({ _id: id as unknown as ObjectId });
+
+        if (!doc) {
+          return Promise.reject('Document not found');
+        }
+
+        const nextDoc = {
+          ...value,
+          _updated_at: new Date(),
+        };
+
+        await this.db.collection(collection as string).updateOne(
+          { _id: id as unknown as ObjectId },
+          {
+            $set: nextDoc,
+          }
+        );
+      },
+      delete: async (id: string) => {
+        const in1year = new Date(
+          new Date().setFullYear(new Date().getFullYear() + 1)
+        );
+        await this.db.collection(collection as string).updateOne(
+          { _id: id as unknown as ObjectId },
+          {
+            $set: {
+              _updated_at: new Date(),
+              _expires_at: in1year,
+            },
+          }
+        );
+      },
+    };
   }
 
   async #executeQuery<TQuery extends iQL<TSchema>>(

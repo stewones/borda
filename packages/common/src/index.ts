@@ -8,6 +8,7 @@ import {
   createObjectIdSchema,
   createPointer,
   createSchema,
+  withOptions,
 } from '@borda/client';
 
 /**
@@ -35,12 +36,22 @@ export const OrgSchema = createSchema('orgs', {
   name: z.string(),
 });
 
-export const UserSchema = createSchema('users', {
-  _p_org: z.string(),
-  org: z.optional(OrgSchema), // injected by the client
-  name: z.string(),
-  email: z.string().email(),
-});
+export const UserSchema = withOptions(
+  createSchema('users', {
+    _p_org: z.string(),
+    org: OrgSchema.optional(), // injected by the client
+    name: z.string(),
+    email: z.string().email(),
+    password: withOptions(z.string().optional(), {
+      sync: false,
+      description: 'the user password is never synced',
+    }),
+  }),
+  {
+    sync: true, // change to false to skip syncing the whole collection
+    description: 'the user schema, all fields are synced except the password',
+  }
+);
 
 export const PostSchema = createSchema('posts', {
   _p_user: z.string(), // default way to reference the user (so nested queries work out of the box)
