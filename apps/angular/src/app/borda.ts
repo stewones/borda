@@ -1,7 +1,7 @@
 import { Action, Borda, createAction, createReducer } from '@borda/browser';
 import { Instant, isEqual, Record, Session, User } from '@borda/client';
 
-import { schema } from '@/common';
+import { SyncSchema } from '@/common';
 
 import { environment } from '../environment';
 
@@ -108,9 +108,13 @@ const borda = new Borda({
 });
 
 const insta = new Instant({
-  schema,
+  schema: SyncSchema,
+  // cloud: CloudSchema, // @todo
+  // cloudHeaders: CloudHeadersSchema, // @todo
   name: 'InstantTest',
   inspect: true,
+  // @todo transfer to the schema itself as an option
+  // and implement server side auto index generation
   index: {
     users: ['_updated_at', '_expires_at', 'name', 'email'],
     orgs: ['_updated_at', 'name'],

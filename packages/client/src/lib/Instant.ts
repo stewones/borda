@@ -122,7 +122,10 @@ export const createObjectIdSchema = <T extends string>(p: T) =>
 export const createPointerSchema = (collection: string) =>
   z.string().brand<string>(collection).describe('pointer');
 
-export const createSchema = <S extends SchemaType>(collection: string, schema: S) =>
+export const createSchema = <S extends SchemaType>(
+  collection: string,
+  schema: S
+) =>
   z
     .object({
       _id: createObjectIdSchema(collection),
@@ -133,6 +136,7 @@ export const createSchema = <S extends SchemaType>(collection: string, schema: S
       _created_by: z.string().optional(),
       _updated_by: z.string().optional(),
       _deleted_by: z.string().optional(),
+      _updated_fields: z.record(z.any()).optional(),
       _sync: z.number().optional(),
       ...schema,
     })
@@ -144,7 +148,17 @@ export const createSchema = <S extends SchemaType>(collection: string, schema: S
 
 export const withOptions = <T extends z.ZodType<any, any, any>>(
   schema: T,
-  options: { sync?: boolean; description?: string }
+  options:
+    | {
+        sync?: boolean;
+        public?: never;
+        description?: string;
+      }
+    | {
+        sync?: never;
+        public?: boolean;
+        description?: string;
+      }
 ) => {
   return schema.describe(JSON.stringify(options));
 };
@@ -259,6 +273,8 @@ export class Instant<T extends SchemaType> {
   get collections() {
     return this.#collections;
   }
+
+  static cloudHeaders: Record<string, z.ZodType<any, any, any>> = {};
 
   constructor({
     schema,
@@ -572,21 +588,29 @@ export class Instant<T extends SchemaType> {
             url += `/${item['_id']}`;
           }
 
+          // data should be only updated fields if updated
+          const data =
+            method === 'PUT'
+              ? item._updated_fields
+              : method === 'POST'
+              ? { ...item, _updated_fields: undefined }
+              : {};
+
           await this.runMutationWorker({
             collection,
             url,
-            data: item,
+            data,
             method,
             token,
             headers,
             params,
           });
-        }
 
-        if (data.length > 0) {
-          /* istanbul ignore next */
-          if (this.#inspect) {
-            console.log('🔵 pending mutations', data);
+          if (data.length > 0) {
+            /* istanbul ignore next */
+            if (this.#inspect) {
+              console.log('🔵 pending mutations', collection, method, data);
+            }
           }
         }
       }
@@ -1017,7 +1041,7 @@ export class Instant<T extends SchemaType> {
 
     try {
       // post to the server
-      await fetcher(url, {
+      const { _id } = await fetcher(url, {
         direct: true,
         method,
         body: data,
@@ -1028,7 +1052,7 @@ export class Instant<T extends SchemaType> {
       });
 
       // mark record as synced since the network request was successful
-      await this.db.table(collection).update(data['_id'], {
+      await this.db.table(collection).update(_id, {
         _sync: 0,
       });
     } catch (err) {
@@ -1519,15 +1543,7 @@ export class Instant<T extends SchemaType> {
         }
 
         // calc what changed excluding _updated_at, _created_at, _sync
-        const updatedFields = Object.keys(value).reduce((acc, key) => {
-          if (
-            !['_updated_at', '_created_at', '_sync'].includes(key) &&
-            value[key] !== currentDoc[key]
-          ) {
-            acc[key] = value[key];
-          }
-          return acc;
-        }, {} as Record<string, any>);
+        const updatedFields = this.#updatedFields(currentDoc, value);
 
         // skip if nothing changed
         if (Object.keys(updatedFields).length === 0) {
@@ -1543,6 +1559,7 @@ export class Instant<T extends SchemaType> {
               _sync: 1,
               _updated_at: new Date().toISOString(),
               _updated_by: createPointer('users', this.#user),
+              _updated_fields: updatedFields,
             });
           }
         );
@@ -2042,5 +2059,17 @@ export class Instant<T extends SchemaType> {
     // getting here is unlikely to happen because Dexie would fail before
     /* istanbul ignore next */
     return undefined;
+  }
+
+  #updatedFields(currentDoc: Document, newDoc: Partial<z.infer<T[keyof T]>>) {
+    return Object.keys(newDoc).reduce((acc, key) => {
+      if (
+        !['_updated_at', '_created_at', '_sync'].includes(key) &&
+        newDoc[key] !== currentDoc[key]
+      ) {
+        acc[key] = newDoc[key];
+      }
+      return acc;
+    }, {} as Record<string, any>);
   }
 }

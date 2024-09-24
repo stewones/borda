@@ -17,15 +17,18 @@ import {
   t,
 } from 'elysia';
 
-import { BordaServer, Instant } from '@borda/server';
+import {
+  BordaServer,
+  Instant,
+} from '@borda/server';
 
-import { schema } from '@/common';
+import {
+  CloudSchema,
+  SyncSchema,
+} from '@/common';
 import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
 
-import { getCounter } from './functions/getCounter';
-import { getPublicUsers } from './functions/getPublicUsers';
-import { increaseCounter } from './functions/increaseCounter';
 import {
   passwordResetGet,
   passwordResetPost,
@@ -92,12 +95,12 @@ export const borda = new BordaServer({
   ],
 });
 
-
 /**
  * Attach the borda instance to the Instant class
  */
 const insta = new Instant({
-  schema,
+  schema: SyncSchema,
+  cloud: CloudSchema,
   inspect: true,
   size: parseInt(process.env['INSTANT_SIZE'] || '1_000'),
   // set constraints to restrict broadcast and filtered data
@@ -112,33 +115,33 @@ const insta = new Instant({
 await insta.ready();
 
 // custom route params schema
-const SyncParamsSchema = Instant.SyncParamsSchema(insta.collections);
-const SyncMutationParamsSchema = Instant.SyncMutationParamsSchema(
-  insta.collections
-);
+// const SyncParamsSchema = Instant.SyncParamsSchema(insta.collections);
+// const SyncMutationParamsSchema = Instant.SyncMutationParamsSchema(
+//   insta.collections
+// );
 
 // custom query schema
-const SyncBatchQueryCustomSchema = t.Object({
-  ...Instant.SyncBatchQuery,
-  //org: t.String(), // can also be multiple orgs split by comma
-});
+// const SyncBatchQueryCustomSchema = t.Object({
+//   ...Instant.SyncBatchQuery,
+//   //org: t.String(), // can also be multiple orgs split by comma
+// });
 
 // custom mutation query schema
-const SyncMutationQueryCustomSchema = t.Object({
-  // org: t.String(), // can also be multiple orgs split by comma
-});
+// const SyncMutationQueryCustomSchema = t.Object({
+//   // org: t.String(), // can also be multiple orgs split by comma
+// });
 
 // custom headers schema
-const SyncHeadersCustomSchema = t.Object({
-  ...Instant.SyncHeaders,
-  // another custom header
-  //someCustomHeaderParam: t.Optional(t.String()),
-});
+// const SyncHeadersCustomSchema = t.Object({
+//   ...Instant.SyncHeaders,
+//   // another custom header
+//   //someCustomHeaderParam: t.Optional(t.String()),
+// });
 
 // custom live query schema
 const SyncLiveQueryOrgSchema = t.Object({
   ...Instant.SyncLiveQuery,
-  // org: t.String(), // can also be multiple orgs split by comma
+  // org: t.String(), // can also be multiple orgs split by comma - the key must be a pointer mapped in the constraints
 });
 
 /**
@@ -150,17 +153,33 @@ borda.cloud.afterSave('User', afterSaveUser);
 borda.cloud.afterDelete('PublicUser', afterDeletePublicUser);
 
 /**
- * attach some server functions
+ * attach some server functions with full type safety
  */
-borda.cloud.addFunction(getCounter, {
-  public: true,
+insta.cloud.addFunction('login', async ({ body, headers }) => {
+  console.log('body', body);
+  console.log('headers', headers); // expected to be unknown
+
+  // expects a token to be returned
+  return {
+    token: '1234567890',
+  };
 });
-borda.cloud.addFunction(getPublicUsers, {
-  public: true,
+
+insta.cloud.addFunction('logout', async ({ headers }) => {
+  console.log('headers', headers); // expected authorization header to be used
+
+  // doesn't expect anything to be returned
 });
-borda.cloud.addFunction(increaseCounter, {
-  public: true,
-});
+
+// borda.cloud.addFunction(getCounter, {
+//   public: true,
+// });
+// borda.cloud.addFunction(getPublicUsers, {
+//   public: true,
+// });
+// borda.cloud.addFunction(increaseCounter, {
+//   public: true,
+// });
 
 // runLiveQueryTest();
 // await runQueryClientTest();
@@ -204,83 +223,87 @@ api
       })
     )
   )
-  // add custom instant server
+  // add custom sync endpoints
   .group('sync', (endpoint) =>
     endpoint
-      .get(':collection', insta.collection().get(), {
-        query: SyncBatchQueryCustomSchema,
-        params: SyncParamsSchema,
-        headers: SyncHeadersCustomSchema,
+      .get(':collection', insta.collection.get(), {
+        // already supports bearer token auth validation out of the box
+        // uncomment the following to add custom validation
+        // query: SyncBatchQueryCustomSchema,
+        // params: SyncParamsSchema,
+        // headers: SyncHeadersCustomSchema,
         // custom logic to validate request before it's handled
-        beforeHandle({ headers, params }) {
-          // @todo validate headers
-          // console.log('params', params);
-          // console.log('headers', headers);
-        },
+        // beforeHandle({ headers, params }) {
+        //   // console.log('params', params);
+        //   // console.log('headers', headers);
+        // },
       })
-      .post(':collection', insta.collection().post(), {
-        query: SyncMutationQueryCustomSchema,
-        params: SyncParamsSchema,
-        headers: SyncHeadersCustomSchema,
+      .post(':collection', insta.collection.post(), {
+        // already supports bearer token auth validation out of the box
+        // uncomment the following to add custom validation
+        // query: SyncMutationQueryCustomSchema,
+        // params: SyncParamsSchema,
+        // headers: SyncHeadersCustomSchema,
         // custom logic to validate request before it's handled
-        beforeHandle({ headers, params, body, set }) {
-          // @todo validate headers
-          // console.log('params', params);
-          // console.log('headers', headers);
-
-          const collection = params.collection;
-          const { type, message, summary, errors } = insta.validate(
-            collection,
-            body
-          );
-          if (errors) {
-            set.status = 400;
-            return {
-              type,
-              message,
-              summary,
-              errors,
-            };
-          }
-        },
+        // beforeHandle({ headers, params, body, set }) {
+        //   // console.log('params', params);
+        //   // console.log('headers', headers);
+        //   const collection = params.collection;
+        //   const { type, message, summary, errors } = insta.validateBody(
+        //     collection,
+        //     body
+        //   );
+        //   if (errors) {
+        //     set.status = 400;
+        //     return {
+        //       type,
+        //       message,
+        //       summary,
+        //       errors,
+        //     };
+        //   }
+        // },
       })
-      .put(':collection/:id', insta.collection().put(), {
-        query: SyncMutationQueryCustomSchema,
-        params: SyncMutationParamsSchema,
-        headers: SyncHeadersCustomSchema,
+      .put(':collection/:id', insta.collection.put(), {
+        // already supports bearer token auth validation out of the box
+        // uncomment the following to add custom validation
+        // query: SyncMutationQueryCustomSchema,
+        // params: SyncMutationParamsSchema,
+        // headers: SyncHeadersCustomSchema,
         // custom logic to validate request before it's handled
-        beforeHandle({ headers, params, body, set }) {
-          // console.log('params', params);
-          // console.log('headers', headers);
-
-          const collection = params.collection;
-          const { type, message, summary, errors } = insta.validate(
-            collection,
-            body
-          );
-          if (errors) {
-            set.status = 400;
-            return {
-              type,
-              message,
-              summary,
-              errors,
-            };
-          }
-        },
+        // beforeHandle({ headers, params, body, set }) {
+        //   // console.log('params', params);
+        //   // console.log('headers', headers);
+        //   const collection = params.collection;
+        //   const { type, message, summary, errors } = insta.validateBody(
+        //     collection,
+        //     body
+        //   );
+        //   if (errors) {
+        //     set.status = 400;
+        //     return {
+        //       type,
+        //       message,
+        //       summary,
+        //       errors,
+        //     };
+        //   }
+        // },
       })
-      .delete(':collection/:id', insta.collection().delete(), {
-        query: SyncMutationQueryCustomSchema,
-        params: SyncMutationParamsSchema,
-        headers: SyncHeadersCustomSchema,
+      .delete(':collection/:id', insta.collection.delete(), {
+        // already supports bearer token auth validation out of the box
+        // uncomment the following to add custom validation
+        // query: SyncMutationQueryCustomSchema,
+        // params: SyncMutationParamsSchema,
+        // headers: SyncHeadersCustomSchema,
         // custom logic to validate request before it's handled
-        beforeHandle({ headers, params, body }) {
-          // console.log('params', params);
-          // console.log('headers', headers);
-        },
+        // beforeHandle({ headers, params, body }) {
+        //   // console.log('params', params);
+        //   // console.log('headers', headers);
+        // },
       })
       .ws('live', {
-        ...insta.live(),
+        ...insta.live,
         // custom query schema
         query: SyncLiveQueryOrgSchema,
         // custom logic to validate request before it's handled
@@ -289,6 +312,18 @@ api
           // throw new Error('custom error');
         },
       })
+  )
+  // add custom cloud endpoints
+  .group('cloud', (endpoint) =>
+    // already supports bearer token auth and public endpoints out of the box
+    endpoint.post(':function', insta.cloud.post(), {
+      // custom logic to validate request before it's handled
+      beforeHandle({ headers, params }) {
+        // @todo validate headers
+        // console.log('params', params);
+        // console.log('headers', headers);
+      },
+    })
   )
 
   // start the server

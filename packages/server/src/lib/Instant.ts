@@ -73,16 +73,21 @@ export type iQL<T extends SchemaType, K extends keyof T = keyof T> = {
   [P in K]?: iQL<T, K> & iQLDirectives<z.infer<T[P]>>;
 };
 
-export type iQLDirectives<TSchema> = {
+export type iQLDirectives<CollectionSchema> = {
   $limit?: number;
   $skip?: number;
   $sort?: Sort;
-  $or?: Array<{ [K in keyof TSchema]?: Filter<TSchema> | TSchema }>;
+  $or?: Array<{
+    [K in keyof CollectionSchema]?: Filter<CollectionSchema> | CollectionSchema;
+  }>;
   $by?: string;
   $include?: string[];
   $options?: AggregateOptions;
 } & (
-  | { $filter?: { [K in keyof TSchema]?: Filter<TSchema> }; $aggregate?: never }
+  | {
+      $filter?: { [K in keyof CollectionSchema]?: Filter<CollectionSchema> };
+      $aggregate?: never;
+    }
   | {
       $aggregate?: Document[];
       $filter?: never;
@@ -106,6 +111,11 @@ export interface SyncConstraint {
 const SyncParamsSchema = <T extends string>(collections: readonly T[]) =>
   t.Object({
     collection: t.Union(collections.map((c) => t.Literal(c))),
+  });
+
+const CloudParamsSchema = <T extends string>(functions: readonly T[]) =>
+  t.Object({
+    function: t.Union(functions.map((f) => t.Literal(f))),
   });
 
 const SyncMutationParamsSchema = <T extends string>(
@@ -135,17 +145,33 @@ const SyncLiveQuery = {
 
 const SyncLiveQuerySchema = t.Object(SyncLiveQuery);
 
-export class Instant<TSchema extends SchemaType> {
+export class Instant<
+  CollectionSchema extends SchemaType,
+  CloudSchema extends {
+    headers: SchemaType;
+    body: SchemaType;
+    response: SchemaType;
+  } = {
+    headers: Record<string, never>;
+    body: Record<string, never>;
+    response: Record<string, never>;
+  }
+> {
   #size = 1_000;
   #inspect = false;
   #connection = new Map<string, { clients: ElysiaWS<object, object>[] }>();
   #constraints: SyncConstraint[] = [];
-  #schema!: TSchema;
+  #schema!: CollectionSchema;
   #pendingTasks: Subscription | undefined;
   #pendingPointersBusy = false;
-  #db!: Db;
-  #collections: string[] = []; // collections to sync
   #mongoURI: string;
+  #db!: Db;
+  #collections: string[] = [];
+  #functions: string[] = [];
+  #cloud: Record<string, (args: any) => Promise<any>> = {};
+  #cloudSchema!: CloudSchema['body'];
+  #cloudHeaders!: CloudSchema['headers'];
+  #cloudResponse!: CloudSchema['response'];
 
   static SyncBatchQuery = SyncBatchQuery;
   static SyncBatchQuerySchema = SyncBatchQuerySchema;
@@ -155,6 +181,8 @@ export class Instant<TSchema extends SchemaType> {
   static SyncHeadersSchema = SyncHeadersSchema;
   static SyncParamsSchema = SyncParamsSchema;
   static SyncMutationParamsSchema = SyncMutationParamsSchema;
+
+  static CloudParamsSchema = CloudParamsSchema;
 
   get db() {
     if (!this.#db) {
@@ -167,23 +195,36 @@ export class Instant<TSchema extends SchemaType> {
     return this.#collections;
   }
 
+  get functions() {
+    return this.#functions;
+  }
+
   constructor({
     size,
     inspect,
     constraints,
     schema,
+    cloud,
     db,
     mongoURI,
   }: {
     size?: number | undefined;
     inspect?: boolean | undefined;
     constraints?: SyncConstraint[];
-    schema: TSchema;
+    schema: CollectionSchema;
+    cloud?: CloudSchema;
     db?: Db;
     mongoURI?: string;
   }) {
     if (!schema) {
       throw new Error('a data schema is required');
+    }
+
+    if (cloud) {
+      this.#cloudSchema = cloud.body;
+      this.#cloudHeaders = cloud.headers;
+      this.#cloudResponse = cloud.response;
+      this.#functions = Object.keys(cloud.body);
     }
 
     if (db) {
@@ -199,9 +240,9 @@ export class Instant<TSchema extends SchemaType> {
     this.#collections = Object.keys(schema).filter((key) => {
       try {
         const { sync } = JSON.parse(
-          schema[key as keyof TSchema]?.description || '{}'
+          schema[key as keyof CollectionSchema]?.description || '{}'
         );
-        return schema[key as keyof TSchema] && sync;
+        return schema[key as keyof CollectionSchema] && sync;
       } catch (err) {
         return false;
       }
@@ -549,26 +590,29 @@ export class Instant<TSchema extends SchemaType> {
       prefix: 'sync',
     });
 
-    rest
-      .get(':collection', this.collection(), {
-        query: Instant.SyncBatchQuerySchema,
-        params: Instant.SyncParamsSchema(this.#collections),
-        headers: Instant.SyncHeadersSchema,
-        // @todo default logic to validate request before it's handled
-        beforeHandle({ headers, params }) {
-          // console.log('params', params);
-          // console.log('headers', headers);
-        },
-      })
-      .ws('live', {
-        ...this.live(),
-        query: Instant.SyncLiveQuerySchema,
-        // @todo default logic to validate request before it's handled
-        beforeHandle(ws) {
-          // console.log('url', ws.url);
-          // throw new Error('custom error');
-        },
-      });
+    // @todo add default sync endpoints with basic validation and security
+    // rest
+    //   .get(':collection', this.collection(), {
+    //     query: Instant.SyncBatchQuerySchema,
+    //     params: Instant.SyncParamsSchema(this.#collections),
+    //     headers: Instant.SyncHeadersSchema,
+    //     // @todo default logic to validate request before it's handled
+    //     beforeHandle({ headers, params }) {
+    //       // console.log('params', params);
+    //       // console.log('headers', headers);
+    //     },
+    //   })
+    //   .ws('live', {
+    //     ...this.live(),
+    //     query: Instant.SyncLiveQuerySchema,
+    //     // @todo default logic to validate request before it's handled
+    //     beforeHandle(ws) {
+    //       // console.log('url', ws.url);
+    //       // throw new Error('custom error');
+    //     },
+    //   });
+
+    // @todo add default cloud functions with basic validation and security
 
     return rest;
   }
@@ -581,174 +625,327 @@ export class Instant<TSchema extends SchemaType> {
 
   /**
    * collection sync handler
-   * @returns Elysia handler
    */
-  public collection() {
-    return {
-      get: () => {
-        const ParamsSchema = Instant.SyncParamsSchema(this.#collections);
+  public collection = {
+    get: () => {
+      const ParamsSchema = Instant.SyncParamsSchema(this.#collections);
 
-        return ({
-          headers,
-          params,
-          query,
-          set,
-        }: {
-          headers: Record<string, string | undefined>;
-          params: typeof ParamsSchema;
-          query: Static<typeof Instant.SyncBatchQuerySchema>;
-          set: SetOptions;
-        }) => this.#getData({ headers, params, query, set });
-      },
-      post: () => {
-        const ParamsSchema = Instant.SyncParamsSchema(this.#collections);
+      return ({
+        headers,
+        params,
+        query,
+        set,
+      }: {
+        headers: Record<string, string | undefined>;
+        params: typeof ParamsSchema;
+        query: Static<typeof Instant.SyncBatchQuerySchema>;
+        set: SetOptions;
+      }) => this.#getData({ headers, params, query, set });
+    },
+    post: () => {
+      const ParamsSchema = Instant.SyncParamsSchema(this.#collections);
 
-        return ({
-          headers,
-          params,
-          query,
-          set,
-          body,
-        }: {
-          headers: Record<string, string | undefined>;
-          params: typeof ParamsSchema;
-          query: Static<typeof Instant.SyncBatchQuerySchema>;
-          set: SetOptions;
-          body: Document;
-        }) => this.#postData({ headers, params, query, set, body });
-      },
-      put: () => {
-        const ParamsSchema = Instant.SyncMutationParamsSchema(
-          this.#collections
-        );
-        return ({
-          params,
-          set,
-          body,
-          query,
-          headers,
-        }: {
-          headers: Record<string, string | undefined>;
-          params: typeof ParamsSchema;
-          query: Static<typeof Instant.SyncBatchQuerySchema>;
-          set: SetOptions;
-          body: Document;
-        }) => this.#putData({ params, set, body, query, headers });
-      },
-      delete: () => {
-        const ParamsSchema = Instant.SyncMutationParamsSchema(
-          this.#collections
-        );
+      return ({
+        headers,
+        params,
+        query,
+        set,
+        body,
+      }: {
+        headers: Record<string, string | undefined>;
+        params: typeof ParamsSchema;
+        query: Static<typeof Instant.SyncBatchQuerySchema>;
+        set: SetOptions;
+        body: Document;
+      }) => this.#postData({ headers, params, query, set, body });
+    },
+    put: () => {
+      const ParamsSchema = Instant.SyncMutationParamsSchema(this.#collections);
+      return ({
+        params,
+        set,
+        body,
+        query,
+        headers,
+      }: {
+        headers: Record<string, string | undefined>;
+        params: typeof ParamsSchema;
+        query: Static<typeof Instant.SyncBatchQuerySchema>;
+        set: SetOptions;
+        body: Document;
+      }) => this.#putData({ params, set, body, query, headers });
+    },
+    delete: () => {
+      const ParamsSchema = Instant.SyncMutationParamsSchema(this.#collections);
 
-        return ({
-          headers,
-          params,
-          query,
-          set,
-        }: {
-          headers: Record<string, string | undefined>;
-          params: typeof ParamsSchema;
-          query: Static<typeof Instant.SyncBatchQuerySchema>;
-          set: SetOptions;
-        }) => this.#deleteData({ headers, params, query, set });
-      },
-    };
-  }
+      return ({
+        headers,
+        params,
+        query,
+        set,
+      }: {
+        headers: Record<string, string | undefined>;
+        params: typeof ParamsSchema;
+        query: Static<typeof Instant.SyncBatchQuerySchema>;
+        set: SetOptions;
+      }) => this.#deleteData({ headers, params, query, set });
+    },
+  };
+
+  /**
+   * cloud functions handler
+   */
+  public cloud = {
+    addFunction: <K extends keyof CloudSchema['body']>(
+      name: K,
+      fn: (args: {
+        body: z.infer<CloudSchema['body'][K]>;
+        headers: z.infer<CloudSchema['headers'][K]>;
+        set: SetOptions;
+      }) => Promise<z.infer<CloudSchema['response'][K]>>
+    ) => {
+      this.#functions.push(name as string);
+      this.#cloud[name as string] = fn;
+    },
+    removeFunction: (name: string) => {
+      this.#functions = this.#functions.filter((fn) => fn !== name);
+      delete this.#cloud[name];
+    },
+    // function execution is only possible via elysia post
+    // this is to ensure the function is properly validated and executed one way client -> server
+    post: () => {
+      return async ({
+        headers,
+        params,
+        set,
+        body,
+      }: {
+        headers: Record<string, string | undefined>;
+        params: Record<string, string>;
+        set: SetOptions;
+        body: Document;
+      }) => {
+        try {
+          const token = (headers['Authorization'] || 'Bearer ').split(' ')[1];
+          const fn = this.#functions.find((fn) => fn === params['function']);
+
+          if (!fn || !this.#cloud[fn]) {
+            set.status = 404;
+            return {
+              type: 'not_found',
+              message: 'Function not found',
+              summary: 'The function you are trying to call does not exist',
+            };
+          }
+
+          const fnSchema = this.#cloudSchema[fn];
+
+          if (!fnSchema) {
+            set.status = 400;
+            return {
+              type: 'bad_request',
+              message: 'Function schema not found',
+              summary: 'The function you are trying to call is not valid',
+            };
+          }
+
+          // validate headers
+          const headersSchema = this.#cloudHeaders[fn];
+          if (headersSchema) {
+            const validation = this.validadeHeaders(fn, headers, headersSchema);
+            if (validation.type) {
+              set.status = 400;
+              return validation;
+            }
+          }
+
+          // validate token if not public
+          const { public: isPublic } = JSON.parse(fnSchema.description || '{}');
+          if (!isPublic && !token) {
+            set.status = 401;
+            return {
+              type: 'unauthorized',
+              message: 'Unauthorized',
+              summary: 'You are not authorized to call this function',
+            };
+          }
+
+          if (!isPublic && token) {
+            // @todo validate token against cache (5min) and db
+            // grab a session and pass down to the function
+          }
+
+          // validate body
+          let validation = this.validateFunctionBody(fn, body, fnSchema);
+
+          if (validation.type) {
+            set.status = 400;
+            return validation;
+          }
+
+          const result = await this.#cloud[fn]({
+            headers,
+            params,
+            set,
+            body,
+            // session // @todo pass the session here
+          });
+
+          // validate response
+          const responseSchema = this.#cloudResponse[fn];
+          if (responseSchema) {
+            validation = this.validateFunctionResponse(
+              fn,
+              result,
+              responseSchema
+            );
+
+            if (validation.type) {
+              set.status = 400;
+              return validation;
+            }
+          }
+
+          return result;
+        } catch (err: any) {
+          set.status = 500;
+
+          return {
+            type: 'internal_server_error',
+            message: 'Function execution failed',
+            summary: err.message || 'There was an error executing the function',
+            errors: err.errors || [],
+          };
+        }
+      };
+    },
+  };
 
   /**
    * live sync handler
    * @returns Elysia handler
    */
-  public live() {
-    return {
-      query: Instant.SyncLiveQuerySchema,
-      open: (
-        // eslint-disable-next-line  @typescript-eslint/no-explicit-any
-        ws: ElysiaWS<any, any, any>
-      ) => {
-        const id = ws.id;
-        const query = ws.data['query'];
-        const constraints = this.#constraints || [];
-        const identifiers = this.#buildIdentifiers({ query, constraints });
+  public live = {
+    query: Instant.SyncLiveQuerySchema,
+    open: (
+      // eslint-disable-next-line  @typescript-eslint/no-explicit-any
+      ws: ElysiaWS<any, any, any>
+    ) => {
+      const id = ws.id;
+      const query = ws.data['query'];
+      const constraints = this.#constraints || [];
+      const identifiers = this.#buildIdentifiers({ query, constraints });
 
-        if (identifiers.length <= 0 || identifiers[0] === 'broadcast') {
-          if (this.#inspect) {
-            console.log(
-              '🚨 no constraints found. the sync will be broadcast to everyone.'
-            );
-          }
+      if (identifiers.length <= 0 || identifiers[0] === 'broadcast') {
+        if (this.#inspect) {
+          console.log(
+            '🚨 no constraints found. the sync will be broadcast to everyone.'
+          );
         }
+      }
 
-        // in case the identifier
+      // in case the identifier
+      for (const identifier of identifiers) {
+        this.#connection.set(identifier, {
+          clients: [...(this.#connection.get(identifier)?.clients || []), ws],
+        });
+      }
+
+      if (this.#inspect) {
+        console.log('sync open connection:', id, identifiers);
+        console.log('sync open connection pool:', this.#connection.size);
         for (const identifier of identifiers) {
-          this.#connection.set(identifier, {
-            clients: [...(this.#connection.get(identifier)?.clients || []), ws],
-          });
+          console.log(
+            'sync open connection clients for',
+            identifier,
+            this.#connection.get(identifier)?.clients.length
+          );
         }
+      }
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    close: (ws: ElysiaWS<any, any, any>) => {
+      const id = ws.id;
+      const query = ws.data['query'];
+      const constraints = this.#constraints || [];
 
-        if (this.#inspect) {
-          console.log('sync open connection:', id, identifiers);
-          console.log('sync open connection pool:', this.#connection.size);
-          for (const identifier of identifiers) {
-            console.log(
-              'sync open connection clients for',
-              identifier,
-              this.#connection.get(identifier)?.clients.length
-            );
+      const identifiers = this.#buildIdentifiers({ query, constraints });
+
+      for (const identifier of identifiers) {
+        const connection = this.#connection.get(identifier);
+        if (connection) {
+          connection.clients = connection.clients.filter(
+            (client) => client.id !== id
+          );
+          if (connection.clients.length === 0) {
+            this.#connection.delete(identifier);
           }
         }
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      close: (ws: ElysiaWS<any, any, any>) => {
-        const id = ws.id;
-        const query = ws.data['query'];
-        const constraints = this.#constraints || [];
+      }
 
-        const identifiers = this.#buildIdentifiers({ query, constraints });
-
+      if (this.#inspect) {
+        console.log('sync closed connection:', id);
+        console.log('sync open connection pool:', this.#connection.size);
         for (const identifier of identifiers) {
-          const connection = this.#connection.get(identifier);
-          if (connection) {
-            connection.clients = connection.clients.filter(
-              (client) => client.id !== id
-            );
-            if (connection.clients.length === 0) {
-              this.#connection.delete(identifier);
-            }
-          }
+          console.log(
+            'sync open connection clients:',
+            this.#connection.get(identifier)?.clients.length
+          );
         }
+      }
+    },
+    error: (error: unknown) => {
+      if (this.#inspect) {
+        console.log('sync error', error);
+      }
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    message: (ws: ElysiaWS<any, any, any>, message: unknown) => {
+      if (this.#inspect) {
+        console.log('sync message', message);
+      }
+    },
+  };
 
-        if (this.#inspect) {
-          console.log('sync closed connection:', id);
-          console.log('sync open connection pool:', this.#connection.size);
-          for (const identifier of identifiers) {
-            console.log(
-              'sync open connection clients:',
-              this.#connection.get(identifier)?.clients.length
-            );
-          }
-        }
-      },
-      error: (error: unknown) => {
-        if (this.#inspect) {
-          console.log('sync error', error);
-        }
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      message: (ws: ElysiaWS<any, any, any>, message: unknown) => {
-        if (this.#inspect) {
-          console.log('sync message', message);
-        }
-      },
-    };
+  public validateQuery(query: unknown, schema: z.ZodType<any, any, any>) {
+    try {
+      (schema as z.ZodObject<any>).parse(query);
+    } catch (zodError) {
+      if (zodError instanceof z.ZodError) {
+        return {
+          type: 'validation_error',
+          message: 'Invalid query provided',
+          summary: 'The query provided is not valid.',
+          errors: zodError.errors.map((err) => ({
+            path: err.path.join('.'),
+            message: err.message,
+          })),
+        };
+      }
+      throw zodError;
+    }
+
+    return {};
   }
 
-  public validate(collection: string, data: unknown) {
+  public validateBody(
+    collection: string,
+    data: unknown,
+    {
+      strict = true,
+    }: {
+      strict?: boolean;
+    } = {}
+  ) {
     const schema = this.#schema[collection];
 
     try {
       // validate the body
-      schema.parse(data);
+      if (strict) {
+        (schema as z.ZodObject<any>).strict().parse(data);
+      } else {
+        (schema as z.ZodObject<any>).partial().parse(data);
+      }
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
         return {
@@ -765,6 +962,144 @@ export class Instant<TSchema extends SchemaType> {
     }
 
     return {};
+  }
+
+  public validateFunctionBody(
+    name: string,
+    body: unknown,
+    schema: z.ZodType<any, any, any>
+  ) {
+    try {
+      (schema as z.ZodObject<any>).strict().parse(body);
+    } catch (zodError) {
+      if (zodError instanceof z.ZodError) {
+        return {
+          type: 'validation_error',
+          message: 'Invalid data provided',
+          summary: `The data provided for the ${name} function is not valid.`,
+          errors: zodError.errors.map((err) => ({
+            path: err.path.join('.'),
+            message: err.message,
+          })),
+        };
+      }
+      throw zodError; // Re-throw if it's not a ZodError
+    }
+
+    return {};
+  }
+
+  public validateFunctionResponse(
+    name: string,
+    body: unknown,
+    schema: z.ZodType<any, any, any>
+  ) {
+    try {
+      (schema as z.ZodObject<any>).parse(body);
+    } catch (zodError) {
+      if (zodError instanceof z.ZodError) {
+        return {
+          type: 'cloud_error',
+          message: 'Invalid response',
+          summary: `The response for ${name} is not valid.`,
+          errors: zodError.errors.map((err) => ({
+            path: err.path.join('.'),
+            message: err.message,
+          })),
+        };
+      }
+      throw zodError; // Re-throw if it's not a ZodError
+    }
+
+    return {};
+  }
+
+  public validadeHeaders(
+    name: string,
+    headers: unknown,
+    schema: z.ZodType<any, any, any>
+  ) {
+    try {
+      (schema as z.ZodObject<any>).parse(headers);
+    } catch (zodError) {
+      if (zodError instanceof z.ZodError) {
+        return {
+          type: 'validation_error',
+          message: 'Invalid data provided',
+          summary: `The headers provided for the ${name} function is not valid.`,
+          errors: zodError.errors.map((err) => ({
+            path: err.path.join('.'),
+            message: err.message,
+          })),
+        };
+      }
+      throw zodError; // Re-throw if it's not a ZodError
+    }
+
+    return {};
+  }
+
+  private validateSync({
+    collection,
+    headers,
+    body,
+    strict = true,
+    query,
+  }: {
+    query?: Static<typeof Instant.SyncBatchQuerySchema>;
+    headers: Record<string, string | undefined>;
+    body?: Document;
+    collection: string;
+    strict?: boolean;
+  }) {
+    // validate collection
+    if (!this.collections.includes(collection)) {
+      return {
+        type: 'bad_request',
+        message: 'collection not found',
+        summary: 'the collection you are trying to retrieve was not found.',
+        errors: [],
+      };
+    }
+
+    // validate headers - sync requires session at a minimum
+    const headerSchema = z.object({
+      authorization: z.string().regex(/^Bearer /),
+    });
+
+    let validation = this.validadeHeaders('sync', headers, headerSchema);
+
+    if (validation.type && validation.errors) {
+      return validation;
+    }
+
+    // validate query
+    if (query) {
+      const querySchema = z.object({
+        synced: z.string().optional(),
+        activity: z.enum(['recent', 'oldest']).optional(),
+      });
+      validation = this.validateQuery(query, querySchema);
+      if (validation.type && validation.errors) {
+        return validation;
+      }
+    }
+
+    // validate the body
+    if (body) {
+      validation = this.validateBody(collection, body, { strict });
+    }
+
+    if (validation.type && validation.errors) {
+      return validation;
+    }
+
+    return {} as {
+      type: string;
+      message: string;
+      summary: string;
+      errors: any[];
+    };
   }
 
   async #createIndexes() {
@@ -808,6 +1143,17 @@ export class Instant<TSchema extends SchemaType> {
     try {
       const { collection } = params;
       const { activity, synced } = query;
+
+      const validation = this.validateSync({
+        collection,
+        headers,
+        query,
+      });
+
+      if (validation.type && validation.errors) {
+        set.status = 400;
+        return validation;
+      }
 
       const operator = activity === 'oldest' ? '$lt' : '$gt';
       const constraints = this.#constraints || [];
@@ -981,6 +1327,8 @@ export class Instant<TSchema extends SchemaType> {
     params,
     set,
     body,
+    headers,
+    query,
   }: {
     params: Record<string, string>;
     query: Static<typeof Instant.SyncBatchQuerySchema>;
@@ -991,7 +1339,23 @@ export class Instant<TSchema extends SchemaType> {
     try {
       const { collection } = params;
 
+      const validation = this.validateSync({
+        collection,
+        body,
+        headers,
+      });
+
+      if (validation.type && validation.errors) {
+        set.status = 400;
+        return validation;
+      }
+
       const data = omit(body, ['_id', '_created_at', '_updated_at']);
+      const now = new Date();
+
+      data['_id'] = newObjectId();
+      data['_created_at'] = now;
+      data['_updated_at'] = now;
 
       if (data['_sync']) {
         delete data['_sync'];
@@ -1001,7 +1365,12 @@ export class Instant<TSchema extends SchemaType> {
         data['_expires_at'] = new Date(data['_expires_at']);
       }
 
-      await this.db.collection(collection).insertOne({ ...data });
+      const result = await this.db.collection(collection).insertOne(
+        { ...data },
+        {
+          forceServerObjectId: false,
+        }
+      );
 
       return {
         _id: body['_id'], // which can also be an uuid generated locally. so we need to match it so that the client can mark as synced
@@ -1034,6 +1403,19 @@ export class Instant<TSchema extends SchemaType> {
   }) {
     try {
       const { collection, id } = params;
+
+      const validation = this.validateSync({
+        collection,
+        body,
+        headers,
+        strict: false,
+      });
+
+      if (validation.type && validation.errors) {
+        set.status = 400;
+        return validation;
+      }
+
       const data = omit(body, ['_id', '_created_at', '_updated_at']);
 
       if (data['_sync']) {
@@ -1055,6 +1437,8 @@ export class Instant<TSchema extends SchemaType> {
         });
       }
 
+      data['_updated_at'] = new Date();
+
       await this.db.collection(collection).updateOne(
         {
           $or: [{ _id: id as unknown as ObjectId }, { _uuid: id }],
@@ -1063,14 +1447,13 @@ export class Instant<TSchema extends SchemaType> {
         { upsert: false }
       );
 
-      const now = new Date();
-
       // cleanup value props with sync: false according to the schema
       const value = this.#cleanValue(collection, data);
 
       return {
         ...value,
-        _updated_at: now.toISOString(),
+        _updated_at: data['_updated_at'].toISOString(),
+        _id: id,
       };
     } catch (error) {
       console.error('sync error', error);
@@ -1095,6 +1478,25 @@ export class Instant<TSchema extends SchemaType> {
   }) {
     try {
       const { collection, id } = params;
+
+      if (!this.collections.includes(collection)) {
+        set.status = 400;
+        return {
+          type: 'bad_request',
+          message: 'collection not found',
+          summary: 'the collection you are trying to delete is not found.',
+        };
+      }
+
+      if (!id) {
+        set.status = 400;
+        return {
+          type: 'bad_request',
+          message: 'id is required',
+          summary: 'the id you are trying to delete is required.',
+        };
+      }
+
       const now = new Date();
       const in1year = new Date(
         new Date().setFullYear(new Date().getFullYear() + 1)
@@ -1257,17 +1659,17 @@ export class Instant<TSchema extends SchemaType> {
    * //   ]
    * // }
    */
-  public async query<Q extends iQL<TSchema>>(
+  public async query<Q extends iQL<CollectionSchema>>(
     iql: Q
   ): Promise<{
-    [K in keyof Q]: z.infer<TSchema[K & keyof TSchema]>[];
+    [K in keyof Q]: z.infer<CollectionSchema[K & keyof CollectionSchema]>[];
   }> {
     return this.#executeQuery(iql);
   }
 
-  public mutate<C extends keyof TSchema>(collection: C) {
+  public mutate<C extends keyof CollectionSchema>(collection: C) {
     return {
-      add: async (value: Partial<z.infer<TSchema[C]>>) => {
+      add: async (value: Partial<z.infer<CollectionSchema[C]>>) => {
         const now = new Date();
         const doc = {
           ...(value as unknown as any),
@@ -1280,7 +1682,10 @@ export class Instant<TSchema extends SchemaType> {
           .insertOne(doc);
         return doc;
       },
-      update: async (id: string, value: Partial<z.infer<TSchema[C]>>) => {
+      update: async (
+        id: string,
+        value: Partial<z.infer<CollectionSchema[C]>>
+      ) => {
         const doc = await this.db
           .collection(collection as unknown as string)
           .findOne({ _id: id as unknown as ObjectId });
@@ -1318,12 +1723,14 @@ export class Instant<TSchema extends SchemaType> {
     };
   }
 
-  async #executeQuery<TQuery extends iQL<TSchema>>(
+  async #executeQuery<TQuery extends iQL<CollectionSchema>>(
     iql: TQuery,
-    parentCollection?: keyof TSchema,
+    parentCollection?: keyof CollectionSchema,
     parentId?: string
   ): Promise<{
-    [K in keyof TQuery]: z.infer<TSchema[K & keyof TSchema]>[];
+    [K in keyof TQuery]: z.infer<
+      CollectionSchema[K & keyof CollectionSchema]
+    >[];
   }> {
     const cache: Map<string, any> = new Map();
     let result: any = {};
@@ -1418,7 +1825,9 @@ export class Instant<TSchema extends SchemaType> {
     }
 
     return result as {
-      [K in keyof TQuery]: z.infer<TSchema[K & keyof TSchema]>[];
+      [K in keyof TQuery]: z.infer<
+        CollectionSchema[K & keyof CollectionSchema]
+      >[];
     };
   }
 

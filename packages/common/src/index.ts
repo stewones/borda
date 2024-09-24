@@ -40,7 +40,7 @@ export const UserSchema = withOptions(
   createSchema('users', {
     _p_org: z.string(),
     org: OrgSchema.optional(), // injected by the client
-    name: z.string(),
+    name: z.string().min(3, 'Name must have a minimum length of 3 chars'),
     email: z.string().email(),
     password: withOptions(z.string().optional(), {
       sync: false,
@@ -70,9 +70,60 @@ export const CommentSchema = createSchema('comments', {
   content: z.string(),
 });
 
-export const schema = {
+export const SyncSchema = {
   orgs: OrgSchema,
   users: UserSchema,
   posts: PostSchema,
   comments: CommentSchema,
 };
+
+export const CloudSchema = {
+  headers: {
+    logout: z.object({
+      authorization: z.string().regex(/^Bearer /),
+    }),
+  },
+  body: {
+    login: withOptions(
+      z.object({
+        email: z.string().email(),
+        password: z
+          .string()
+          .min(8, 'Password must have a minimum length of 8 chars')
+          .max(64, 'Password must have a maximum length of 64 chars')
+          .regex(
+            /[!@#$%^&*(),.?":{}|<>]/,
+            'Password should have at least one symbol'
+          )
+          .regex(/[A-Z]/, 'Password should have uppercase letters')
+          .regex(/[a-z]/, 'Password should have lowercase letters')
+          .regex(/\d{2,}/, 'Password must have at least 2 numbers')
+          .refine((value) => !/\s/.test(value), 'Password must not have spaces')
+          .refine(
+            (value) => !['Passw0rd', 'Password123'].includes(value),
+            'Password cannot be a common password'
+          ),
+      }),
+      {
+        public: true,
+        description: 'cloud login - public endpoint which does not need auth.',
+      }
+    ),
+    logout: withOptions(
+      z.object({
+        token: z.string(),
+      }),
+      {
+        public: true,
+        description: 'cloud logout - public endpoint which does not need auth.',
+      }
+    ),
+  },
+  response: {
+    login: z.object({
+      token: z.string(),
+    }),
+  },
+};
+
+
