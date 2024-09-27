@@ -8,6 +8,9 @@ import {
   createObjectIdSchema,
   createPointer,
   createSchema,
+  InstaUserEmailSchema,
+  InstaUserPasswordSchema,
+  InstaUserSchema,
   withOptions,
 } from '@borda/client';
 
@@ -37,12 +40,10 @@ export const OrgSchema = createSchema('orgs', {
 });
 
 export const UserSchema = withOptions(
-  createSchema('users', {
-    _p_org: z.string(),
-    org: OrgSchema.optional(), // injected by the client
-    name: z.string().min(3, 'Name must have a minimum length of 3 chars'),
-    email: z.string().email(),
-    password: withOptions(z.string().optional(), {
+  InstaUserSchema.extend({
+    org: OrgSchema.optional(), // for client runtime type safety (not obligatory)
+    _p_org: z.string().optional(), // pointer to the org
+    _password: withOptions(z.string().optional(), {
       sync: false,
       description: 'the user password is never synced',
     }),
@@ -86,42 +87,39 @@ export const CloudSchema = {
   body: {
     login: withOptions(
       z.object({
-        email: z.string().email(),
-        password: z
-          .string()
-          .min(8, 'Password must have a minimum length of 8 chars')
-          .max(64, 'Password must have a maximum length of 64 chars')
-          .regex(
-            /[!@#$%^&*(),.?":{}|<>]/,
-            'Password should have at least one symbol'
-          )
-          .regex(/[A-Z]/, 'Password should have uppercase letters')
-          .regex(/[a-z]/, 'Password should have lowercase letters')
-          .regex(/\d{2,}/, 'Password must have at least 2 numbers')
-          .refine((value) => !/\s/.test(value), 'Password must not have spaces')
-          .refine(
-            (value) => !['Passw0rd', 'Password123'].includes(value),
-            'Password cannot be a common password'
-          ),
+        email: InstaUserEmailSchema,
+        password: InstaUserPasswordSchema,
       }),
       {
         public: true,
         description: 'cloud login - public endpoint which does not need auth.',
       }
     ),
-    logout: withOptions(
+    logout: withOptions(z.object({}), {
+      public: true,
+      description: 'cloud logout - public endpoint which does not need auth.',
+    }),
+    'sign-up': withOptions(
       z.object({
-        token: z.string(),
+        name: z.string(),
+        email: InstaUserEmailSchema,
+        password: InstaUserPasswordSchema,
       }),
       {
         public: true,
-        description: 'cloud logout - public endpoint which does not need auth.',
+        description:
+          'cloud create account - public endpoint which does not need auth.',
       }
     ),
   },
   response: {
     login: z.object({
       token: z.string(),
+      user: InstaUserSchema,
+    }),
+    'sign-up': z.object({
+      token: z.string(),
+      user: InstaUserSchema,
     }),
   },
 };

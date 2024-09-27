@@ -5,12 +5,14 @@ import {
 } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
+import { HlmToasterComponent } from '@spartan-ng/ui-sonner-helm';
+
 import { insta } from './borda';
 
 @Component({
   standalone: true,
   selector: 'borda-app',
-  imports: [RouterModule],
+  imports: [RouterModule, HlmToasterComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
   styles: `
@@ -32,7 +34,10 @@ import { insta } from './borda';
       width: 100%;
     }
   `,
-  template: `<router-outlet></router-outlet>`,
+  template: `
+    <router-outlet></router-outlet>
+    <hlm-toaster [theme]="'dark'" />
+  `,
 })
 export class AppComponent {
   async ngOnInit() {
@@ -41,13 +46,13 @@ export class AppComponent {
     /**
      * starts the sync process
      */
-    insta.sync({
-      session: 'the-token',
-      user: 'the-user-id',
-      params: {
-        // org: 'YwkJYEdhgh,HnPHIL7PKx,r24qXJr9nh,LNcx7jlL7P',
-        // something: 'else',
-      },
-    });
+    // insta.sync({
+    //   session: 'the-token',
+    //   user: 'the-user-id',
+    //   params: {
+    //     // org: 'YwkJYEdhgh,HnPHIL7PKx,r24qXJr9nh,LNcx7jlL7P',
+    //     // something: 'else',
+    //   },
+    // });
   }
 }

@@ -1,7 +1,16 @@
-import { Action, Borda, createAction, createReducer } from '@borda/browser';
-import { Instant, isEqual, Record, Session, User } from '@borda/client';
+import { z } from 'zod';
 
-import { SyncSchema } from '@/common';
+import { Action, Borda, createAction, createReducer } from '@borda/browser';
+import {
+  Instant,
+  InstaUserSchema,
+  isEqual,
+  Record,
+  Session,
+  User,
+} from '@borda/client';
+
+import { CloudSchema, SyncSchema } from '@/common';
 
 import { environment } from '../environment';
 
@@ -109,8 +118,17 @@ const borda = new Borda({
 
 const insta = new Instant({
   schema: SyncSchema,
-  // cloud: CloudSchema, // @todo
-  // cloudHeaders: CloudHeadersSchema, // @todo
+  cloud: CloudSchema,
+  cache: {
+    session: z.object({
+      token: z.string().default(''),
+      user: InstaUserSchema.default({
+        _id: '',
+        name: '',
+        email: '',
+      }),
+    }),
+  },
   name: 'InstantTest',
   inspect: true,
   // @todo transfer to the schema itself as an option

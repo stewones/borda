@@ -29,9 +29,16 @@ import {
 import { z } from 'zod';
 
 import {
+  createError,
   createPointer,
   ejectPointerCollection,
   ejectPointerId,
+  InstaError,
+  InstaSession,
+  InstaSessionSchema,
+  InstaUser,
+  InstaUserEmailSchema,
+  InstaUserSchema,
   isArrayPointer,
   isEmpty,
   isPointer,
@@ -42,7 +49,12 @@ import {
   SyncStatus,
 } from '@borda/client';
 
-import { newObjectId } from '../utils';
+import {
+  compare,
+  hash,
+  newObjectId,
+  newToken,
+} from '../utils';
 
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
 
@@ -98,6 +110,14 @@ export type iQLDirectives<CollectionSchema> = {
     }
 );
 
+export type CloudHookAction =
+  | 'beforeSave'
+  | 'afterSave'
+  | 'beforeDelete'
+  | 'afterDelete';
+
+export type DBHookAction = 'afterUpdate' | 'afterInsert' | 'afterDelete';
+
 export interface SetOptions {
   headers: HTTPHeaders;
   status?: number | keyof StatusMap;
@@ -108,6 +128,7 @@ export interface SyncConstraint {
   collection: string;
 }
 
+// @todo needs to replace typebox with zod and validate it internally
 const SyncParamsSchema = <T extends string>(collections: readonly T[]) =>
   t.Object({
     collection: t.Union(collections.map((c) => t.Literal(c))),
@@ -166,12 +187,30 @@ export class Instant<
   #pendingPointersBusy = false;
   #mongoURI: string;
   #db!: Db;
+  #dbHooks?: Record<
+    keyof CollectionSchema,
+    Record<
+      DBHookAction,
+      (data: { doc: CollectionSchema[keyof CollectionSchema] }) => Promise<void>
+    >
+  >;
   #collections: string[] = [];
   #functions: string[] = [];
   #cloud: Record<string, (args: any) => Promise<any>> = {};
   #cloudSchema!: CloudSchema['body'];
   #cloudHeaders!: CloudSchema['headers'];
   #cloudResponse!: CloudSchema['response'];
+  #cloudHooks?: Record<
+    keyof CollectionSchema,
+    Record<
+      CloudHookAction,
+      (data: {
+        session?: string | undefined; // @todo session should be an object
+        before?: CollectionSchema[keyof CollectionSchema] | undefined;
+        doc: CollectionSchema[keyof CollectionSchema];
+      }) => Promise<CollectionSchema[keyof CollectionSchema]>
+    >
+  >;
 
   static SyncBatchQuery = SyncBatchQuery;
   static SyncBatchQuerySchema = SyncBatchQuerySchema;
@@ -188,7 +227,19 @@ export class Instant<
     if (!this.#db) {
       throw new Error('MongoDB is not initialized');
     }
-    return this.#db;
+    return this.#db as Db & {
+      addHook: <C extends keyof CollectionSchema>(
+        action: DBHookAction,
+        collection: C,
+        fn: (data: {
+          doc: CollectionSchema[keyof CollectionSchema];
+        }) => Promise<void>
+      ) => void;
+      removeHook: <C extends keyof CollectionSchema>(
+        action: DBHookAction,
+        collection: C
+      ) => void;
+    };
   }
 
   get collections() {
@@ -231,7 +282,12 @@ export class Instant<
       this.#db = db;
     }
 
-    this.#schema = schema;
+    this.#schema = {
+      users: InstaUserSchema,
+      sessions: InstaSessionSchema,
+      ...schema,
+    };
+
     this.#size = size || this.#size;
     this.#inspect = inspect || this.#inspect;
     this.#constraints = constraints || [];
@@ -247,6 +303,37 @@ export class Instant<
         return false;
       }
     });
+
+    this.#dbAttachHandlers();
+  }
+
+  #dbAttachHandlers() {
+    if (!this.#db) {
+      return;
+    }
+    // @ts-ignore
+    this.#db.addHook = (
+      action: DBHookAction,
+      collection: string,
+      fn: (data: any) => Promise<void>
+    ) => {
+      if (!this.#dbHooks) {
+        this.#dbHooks = {} as any;
+      }
+      if (!this.#dbHooks?.[collection]) {
+        // @ts-ignore
+        this.#dbHooks![collection] = {} as any;
+      }
+      if (!this.#dbHooks?.[collection]?.[action]) {
+        this.#dbHooks![collection][action] = fn as any;
+      }
+    };
+    // @ts-ignore
+    this.#db.removeHook = (action: DBHookAction, collection: string) => {
+      if (this.#dbHooks?.[collection]?.[action]) {
+        delete this.#dbHooks![collection][action];
+      }
+    };
   }
 
   #buildIdentifiers({
@@ -354,7 +441,7 @@ export class Instant<
 
           const broadcast: Record<'update' | 'insert' | 'delete', () => void> =
             {
-              update: () => {
+              update: async () => {
                 const { fullDocument, updateDescription } =
                   change as ChangeStreamUpdateDocument;
 
@@ -411,8 +498,15 @@ export class Instant<
                     client.send(JSON.stringify(response));
                   }
                 }
+
+                // run db hooks
+                if (this.#dbHooks?.[collection]?.['afterUpdate']) {
+                  await this.#dbHooks?.[collection]?.['afterUpdate']({
+                    doc: fullDocument as CollectionSchema[keyof CollectionSchema],
+                  });
+                }
               },
-              insert: () => {
+              insert: async () => {
                 const { fullDocument } = change as ChangeStreamInsertDocument;
                 if (!fullDocument) {
                   return;
@@ -457,8 +551,15 @@ export class Instant<
                     client.send(JSON.stringify(response));
                   }
                 }
+
+                // run db hooks
+                if (this.#dbHooks?.[collection]?.['afterInsert']) {
+                  await this.#dbHooks?.[collection]?.['afterInsert']({
+                    doc: fullDocument as CollectionSchema[keyof CollectionSchema],
+                  });
+                }
               },
-              delete: () => {
+              delete: async () => {
                 const { fullDocument, fullDocumentBeforeChange } =
                   change as ChangeStreamDeleteDocument & {
                     fullDocument: Document;
@@ -508,6 +609,13 @@ export class Instant<
                     client.send(JSON.stringify(response));
                   }
                 }
+
+                // run db hooks
+                if (this.#dbHooks?.[collection]?.['afterDelete']) {
+                  await this.#dbHooks?.[collection]?.['afterDelete']({
+                    doc: doc as CollectionSchema[keyof CollectionSchema],
+                  });
+                }
               },
             };
 
@@ -549,6 +657,7 @@ export class Instant<
         const client = new MongoClient(this.#mongoURI);
         await client.connect();
         this.#db = client.db();
+        this.#dbAttachHandlers();
       }
 
       /**
@@ -591,27 +700,6 @@ export class Instant<
     });
 
     // @todo add default sync endpoints with basic validation and security
-    // rest
-    //   .get(':collection', this.collection(), {
-    //     query: Instant.SyncBatchQuerySchema,
-    //     params: Instant.SyncParamsSchema(this.#collections),
-    //     headers: Instant.SyncHeadersSchema,
-    //     // @todo default logic to validate request before it's handled
-    //     beforeHandle({ headers, params }) {
-    //       // console.log('params', params);
-    //       // console.log('headers', headers);
-    //     },
-    //   })
-    //   .ws('live', {
-    //     ...this.live(),
-    //     query: Instant.SyncLiveQuerySchema,
-    //     // @todo default logic to validate request before it's handled
-    //     beforeHandle(ws) {
-    //       // console.log('url', ws.url);
-    //       // throw new Error('custom error');
-    //     },
-    //   });
-
     // @todo add default cloud functions with basic validation and security
 
     return rest;
@@ -707,10 +795,41 @@ export class Instant<
       this.#functions.push(name as string);
       this.#cloud[name as string] = fn;
     },
-    removeFunction: (name: string) => {
+
+    removeFunction: <K extends keyof CollectionSchema>(name: K) => {
       this.#functions = this.#functions.filter((fn) => fn !== name);
-      delete this.#cloud[name];
+      delete this.#cloud[name as string];
     },
+
+    addHook: <A extends CloudHookAction, C extends keyof CollectionSchema>(
+      action: A,
+      collection: C,
+      fn: (data: {
+        session?: string | undefined; // @todo
+        before?: CollectionSchema[keyof CollectionSchema] | undefined;
+        doc: CollectionSchema[keyof CollectionSchema];
+      }) => A extends 'beforeSave'
+        ? Promise<CollectionSchema[keyof CollectionSchema]>
+        : Promise<void>
+    ) => {
+      if (!this.#cloudHooks) {
+        this.#cloudHooks = {} as any;
+      }
+      if (!this.#cloudHooks?.[collection]) {
+        this.#cloudHooks![collection] = {} as any;
+      }
+      if (!this.#cloudHooks?.[collection]?.[action]) {
+        this.#cloudHooks![collection][action] = fn as any;
+      }
+    },
+
+    removeHook: <Y extends CloudHookAction, K extends keyof CollectionSchema>(
+      name: Y,
+      collection: K
+    ) => {
+      delete this.#cloudHooks![collection][name];
+    },
+
     // function execution is only possible via elysia post
     // this is to ensure the function is properly validated and executed one way client -> server
     post: () => {
@@ -730,31 +849,47 @@ export class Instant<
           const fn = this.#functions.find((fn) => fn === params['function']);
 
           if (!fn || !this.#cloud[fn]) {
-            set.status = 404;
-            return {
-              type: 'not_found',
-              message: 'Function not found',
-              summary: 'The function you are trying to call does not exist',
-            };
+            const { status, ...rest } = createError(
+              404,
+              'not_found',
+              'Function not found',
+              'The function you are trying to call does not exist',
+              [],
+              {
+                fn: params['function'],
+              }
+            );
+            set.status = status;
+            return { ...rest, status, fn: params['function'] };
           }
 
           const fnSchema = this.#cloudSchema[fn];
 
           if (!fnSchema) {
-            set.status = 400;
-            return {
-              type: 'bad_request',
-              message: 'Function schema not found',
-              summary: 'The function you are trying to call is not valid',
-            };
+            const { status, ...rest } = createError(
+              400,
+              'bad_request',
+              'Function schema not found',
+              'The function you are trying to call is not valid',
+              [],
+              {
+                fn: params['function'],
+              }
+            );
+            set.status = status;
+            return { ...rest, status, fn: params['function'] };
           }
 
           // validate headers
           const headersSchema = this.#cloudHeaders[fn];
           if (headersSchema) {
-            const validation = this.validadeHeaders(fn, headers, headersSchema);
+            const validation = await this.validateHeaders(
+              fn,
+              headers,
+              headersSchema
+            );
             if (validation.type) {
-              set.status = 400;
+              set.status = validation.status;
               return validation;
             }
           }
@@ -762,12 +897,18 @@ export class Instant<
           // validate token if not public
           const { public: isPublic } = JSON.parse(fnSchema.description || '{}');
           if (!isPublic && !token) {
-            set.status = 401;
-            return {
-              type: 'unauthorized',
-              message: 'Unauthorized',
-              summary: 'You are not authorized to call this function',
-            };
+            const { status, ...rest } = createError(
+              401,
+              'unauthorized',
+              'Unauthorized',
+              'You are not authorized to call this function',
+              [],
+              {
+                fn: params['function'],
+              }
+            );
+            set.status = status;
+            return { ...rest, status, fn: params['function'] };
           }
 
           if (!isPublic && token) {
@@ -776,10 +917,10 @@ export class Instant<
           }
 
           // validate body
-          let validation = this.validateFunctionBody(fn, body, fnSchema);
+          let validation = await this.validateFunctionBody(fn, body, fnSchema);
 
           if (validation.type) {
-            set.status = 400;
+            set.status = validation.status;
             return validation;
           }
 
@@ -794,28 +935,41 @@ export class Instant<
           // validate response
           const responseSchema = this.#cloudResponse[fn];
           if (responseSchema) {
-            validation = this.validateFunctionResponse(
+            validation = await this.validateFunctionResponse(
               fn,
               result,
               responseSchema
             );
 
             if (validation.type) {
-              set.status = 400;
+              set.status = validation.status;
               return validation;
             }
           }
 
           return result;
         } catch (err: any) {
-          set.status = 500;
+          if (err instanceof Error) {
+            set.status = 500;
+            return err;
+          }
 
-          return {
-            type: 'internal_server_error',
-            message: 'Function execution failed',
-            summary: err.message || 'There was an error executing the function',
-            errors: err.errors || [],
-          };
+          if (err?.type) {
+            set.status = err.status;
+            return { ...err, fn: params['function'] };
+          }
+
+          set.status = 500;
+          return createError(
+            500,
+            'internal_server_error',
+            'Function execution failed',
+            'There was an error while executing this function. Please contact support.',
+            [],
+            {
+              fn: params['function'],
+            }
+          );
         }
       };
     },
@@ -907,28 +1061,146 @@ export class Instant<
     },
   };
 
-  public validateQuery(query: unknown, schema: z.ZodType<any, any, any>) {
+  public auth = {
+    signIn: async ({
+      email,
+      password,
+    }: {
+      email: z.infer<typeof InstaUserEmailSchema>;
+      password: string;
+    }) => {
+      const user = await this.db
+        .collection('users')
+        .findOne({ email: email.toLowerCase() });
+      if (!user) {
+        return Promise.reject(
+          createError(
+            401,
+            'unauthorized',
+            'Unauthorized',
+            'The email or password is incorrect'
+          )
+        );
+      }
+
+      const passwordMatch = await compare(password, user['_password']);
+
+      if (!passwordMatch) {
+        return Promise.reject(
+          createError(
+            401,
+            'unauthorized',
+            'Unauthorized',
+            'The email or password is incorrect'
+          )
+        );
+      }
+
+      return await this.auth.createSession({
+        user: user as unknown as InstaUser,
+      });
+    },
+    signUp: async ({
+      name,
+      email,
+      password,
+    }: {
+      name: string;
+      email: z.infer<typeof InstaUserEmailSchema>;
+      password: string;
+    }) => {
+      const user = await this.db
+        .collection('users')
+        .findOne({ email: email.toLowerCase() });
+      if (user) {
+        return Promise.reject(
+          createError(
+            400,
+            'validation_error',
+            'Email already exists',
+            'The email provided already exists.'
+          )
+        );
+      }
+      const now = new Date();
+      const newUser = {
+        _id: newObjectId(),
+        name,
+        email: email.toLowerCase(),
+        _password: await hash(password),
+        _created_at: now,
+        _updated_at: now,
+      };
+
+      await this.db.collection('users').insertOne(newUser as Document, {
+        forceServerObjectId: false,
+      });
+
+      return await this.auth.createSession({
+        user: newUser as unknown as InstaUser,
+      });
+    },
+    signOut: async ({ token }: { token: string }) => {
+      await this.db.collection('sessions').deleteOne({ token });
+      // @todo invalidate session cache
+    },
+    createSession: async ({ user }: { user: InstaUser }) => {
+      /**
+       * expires in 1 year
+       * @todo make this an option ?
+       */
+      const expiresAt = new Date();
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+      /**
+       * generate a new session token
+       */
+      const now = new Date();
+      const token = `i:${newToken()}`;
+
+      const session = {
+        _id: newObjectId(),
+        _p_user: pointer('users', user._id),
+        token: token,
+        _expires_at: expiresAt,
+        _created_at: now,
+        _updated_at: now,
+      };
+
+      await this.db.collection('sessions').insertOne(session as Document, {
+        forceServerObjectId: false,
+      });
+
+      return {
+        ...this.#cleanValue('sessions', session),
+        user: this.#cleanValue('users', user),
+      } as unknown as InstaSession;
+    },
+  };
+
+  public async validateQuery(query: unknown, schema: z.ZodType<any, any, any>) {
     try {
-      (schema as z.ZodObject<any>).parse(query);
+      await (schema as z.ZodObject<any>).parseAsync(query);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return {
-          type: 'validation_error',
-          message: 'Invalid query provided',
-          summary: 'The query provided is not valid.',
-          errors: zodError.errors.map((err) => ({
+        return createError(
+          400,
+          'validation_error',
+          'Invalid query',
+          'The query provided is not valid.',
+          zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
-          })),
-        };
+          }))
+        );
       }
       throw zodError;
     }
 
-    return {};
+    return {} as InstaError;
   }
 
-  public validateBody(
+  public async validateBody(
     collection: string,
     data: unknown,
     {
@@ -942,104 +1214,117 @@ export class Instant<
     try {
       // validate the body
       if (strict) {
-        (schema as z.ZodObject<any>).strict().parse(data);
+        await (schema as z.ZodObject<any>).strict().parseAsync(data);
       } else {
-        (schema as z.ZodObject<any>).partial().parse(data);
+        await (schema as z.ZodObject<any>).partial().parseAsync(data);
       }
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return {
-          type: 'validation_error',
-          message: 'Invalid data provided',
-          summary: `The data provided for ${collection} is not valid.`,
-          errors: zodError.errors.map((err) => ({
+        return createError(
+          400,
+          'validation_error',
+          'Invalid data',
+          `The data provided for ${collection} is not valid.`,
+          zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
-          })),
-        };
+          }))
+        );
       }
       throw zodError; // Re-throw if it's not a ZodError
     }
 
-    return {};
+    return {} as InstaError;
   }
 
-  public validateFunctionBody(
+  public async validateFunctionBody(
     name: string,
     body: unknown,
     schema: z.ZodType<any, any, any>
   ) {
     try {
-      (schema as z.ZodObject<any>).strict().parse(body);
+      await (schema as z.ZodObject<any>).strict().parseAsync(body);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return {
-          type: 'validation_error',
-          message: 'Invalid data provided',
-          summary: `The data provided for the ${name} function is not valid.`,
-          errors: zodError.errors.map((err) => ({
+        return createError(
+          400,
+          'validation_error',
+          'Invalid data provided',
+          `The data provided for the ${name} function is not valid.`,
+          zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
           })),
-        };
+          {
+            fn: name,
+          }
+        );
       }
       throw zodError; // Re-throw if it's not a ZodError
     }
 
-    return {};
+    return {} as InstaError;
   }
 
-  public validateFunctionResponse(
+  public async validateFunctionResponse(
     name: string,
     body: unknown,
     schema: z.ZodType<any, any, any>
   ) {
     try {
-      (schema as z.ZodObject<any>).parse(body);
+      await (schema as z.ZodObject<any>).parseAsync(body);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return {
-          type: 'cloud_error',
-          message: 'Invalid response',
-          summary: `The response for ${name} is not valid.`,
-          errors: zodError.errors.map((err) => ({
+        return createError(
+          500,
+          'bad_response',
+          'Invalid response',
+          `Server generated an invalid response for the ${name} function. Please contact support.`,
+          zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
           })),
-        };
+          {
+            fn: name,
+          }
+        );
       }
       throw zodError; // Re-throw if it's not a ZodError
     }
 
-    return {};
+    return {} as InstaError;
   }
 
-  public validadeHeaders(
+  public async validateHeaders(
     name: string,
     headers: unknown,
     schema: z.ZodType<any, any, any>
   ) {
     try {
-      (schema as z.ZodObject<any>).parse(headers);
+      await (schema as z.ZodObject<any>).parseAsync(headers);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return {
-          type: 'validation_error',
-          message: 'Invalid data provided',
-          summary: `The headers provided for the ${name} function is not valid.`,
-          errors: zodError.errors.map((err) => ({
+        return createError(
+          400,
+          'bad_headers',
+          'Invalid headers provided',
+          `The headers provided for the ${name} function is not valid.`,
+          zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
           })),
-        };
+          {
+            fn: name,
+          }
+        );
       }
       throw zodError; // Re-throw if it's not a ZodError
     }
 
-    return {};
+    return {} as InstaError;
   }
 
-  private validateSync({
+  private async validateRequest({
     collection,
     headers,
     body,
@@ -1054,12 +1339,12 @@ export class Instant<
   }) {
     // validate collection
     if (!this.collections.includes(collection)) {
-      return {
-        type: 'bad_request',
-        message: 'collection not found',
-        summary: 'the collection you are trying to retrieve was not found.',
-        errors: [],
-      };
+      return createError(
+        400,
+        'bad_request',
+        'collection not found',
+        'the collection you are trying to retrieve was not found.'
+      );
     }
 
     // validate headers - sync requires session at a minimum
@@ -1067,7 +1352,7 @@ export class Instant<
       authorization: z.string().regex(/^Bearer /),
     });
 
-    let validation = this.validadeHeaders('sync', headers, headerSchema);
+    let validation = await this.validateHeaders('sync', headers, headerSchema);
 
     if (validation.type && validation.errors) {
       return validation;
@@ -1079,7 +1364,7 @@ export class Instant<
         synced: z.string().optional(),
         activity: z.enum(['recent', 'oldest']).optional(),
       });
-      validation = this.validateQuery(query, querySchema);
+      validation = await this.validateQuery(query, querySchema);
       if (validation.type && validation.errors) {
         return validation;
       }
@@ -1087,19 +1372,14 @@ export class Instant<
 
     // validate the body
     if (body) {
-      validation = this.validateBody(collection, body, { strict });
+      validation = await this.validateBody(collection, body, { strict });
     }
 
     if (validation.type && validation.errors) {
       return validation;
     }
 
-    return {} as {
-      type: string;
-      message: string;
-      summary: string;
-      errors: any[];
-    };
+    return {} as InstaError;
   }
 
   async #createIndexes() {
@@ -1144,7 +1424,7 @@ export class Instant<
       const { collection } = params;
       const { activity, synced } = query;
 
-      const validation = this.validateSync({
+      const validation = await this.validateRequest({
         collection,
         headers,
         query,
@@ -1193,12 +1473,12 @@ export class Instant<
       // throw if the constraints defined don't match the query
       if (Object.keys(constraintsQuery).length !== constraints.length) {
         set.status = 400;
-        return {
-          type: 'bad_request',
-          message: 'params/constraints mismatch',
-          summary:
-            'call the sync method using the same `params` defined as `constraints` in the server setup.',
-        };
+        return createError(
+          400,
+          'bad_request',
+          'Params mismatch',
+          'There is a mismatch between the params and constraints. Ensure that the params defined in the constraints are the same as the ones used in the sync method.'
+        );
       }
 
       // try to determine the collection _id field name
@@ -1314,12 +1594,13 @@ export class Instant<
     } catch (error) {
       console.error('sync error', error);
       set.status = 500;
-      return {
-        type: 'internal_server_error',
-        message: 'an error occurred while syncing',
-        summary:
-          'we were not able to process your request. please try again later.',
-      };
+
+      return createError(
+        500,
+        'internal_server_error',
+        'An error occurred while syncing',
+        'We were not able to process your request. Please try again later or contact support.'
+      );
     }
   }
 
@@ -1339,7 +1620,7 @@ export class Instant<
     try {
       const { collection } = params;
 
-      const validation = this.validateSync({
+      const validation = await this.validateRequest({
         collection,
         body,
         headers,
@@ -1350,10 +1631,21 @@ export class Instant<
         return validation;
       }
 
-      const data = omit(body, ['_id', '_created_at', '_updated_at']);
+      let data = omit(body, ['_id', '_created_at', '_updated_at']);
       const now = new Date();
 
       data['_id'] = newObjectId();
+
+      // run cloud hooks
+      if (this.#cloudHooks?.[collection]?.['beforeSave']) {
+        data = await this.#cloudHooks?.[collection]?.['beforeSave']({
+          before: undefined,
+          doc: data as CollectionSchema[keyof CollectionSchema],
+          session: undefined, // @todo add session
+        });
+      }
+
+      // enforce _updated_at by the server
       data['_created_at'] = now;
       data['_updated_at'] = now;
 
@@ -1365,12 +1657,21 @@ export class Instant<
         data['_expires_at'] = new Date(data['_expires_at']);
       }
 
-      const result = await this.db.collection(collection).insertOne(
+      await this.db.collection(collection).insertOne(
         { ...data },
         {
           forceServerObjectId: false,
         }
       );
+
+      // run cloud hooks
+      if (this.#cloudHooks?.[collection]?.['afterSave']) {
+        await this.#cloudHooks?.[collection]?.['afterSave']({
+          before: undefined,
+          doc: data as CollectionSchema[keyof CollectionSchema],
+          session: undefined, // @todo add session
+        });
+      }
 
       return {
         _id: body['_id'], // which can also be an uuid generated locally. so we need to match it so that the client can mark as synced
@@ -1379,12 +1680,13 @@ export class Instant<
     } catch (error) {
       console.error('sync error', error);
       set.status = 500;
-      return {
-        type: 'internal_server_error',
-        message: 'an error occurred while syncing',
-        summary:
-          'we were not able to process your request. please try again later.',
-      };
+
+      return createError(
+        500,
+        'internal_server_error',
+        'An error occurred while syncing',
+        'We were not able to process your request. Please try again later or contact support.'
+      );
     }
   }
 
@@ -1404,7 +1706,7 @@ export class Instant<
     try {
       const { collection, id } = params;
 
-      const validation = this.validateSync({
+      const validation = await this.validateRequest({
         collection,
         body,
         headers,
@@ -1416,7 +1718,7 @@ export class Instant<
         return validation;
       }
 
-      const data = omit(body, ['_id', '_created_at', '_updated_at']);
+      let data = omit(body, ['_id', '_created_at', '_updated_at']);
 
       if (data['_sync']) {
         delete data['_sync'];
@@ -1437,6 +1739,27 @@ export class Instant<
         });
       }
 
+      if (isEmpty(doc)) {
+        set.status = 404;
+
+        return createError(
+          404,
+          'not_found',
+          'Document not found',
+          'The document you are trying to update was not found.'
+        );
+      }
+
+      // run cloud hooks
+      if (this.#cloudHooks?.[collection]?.['beforeSave']) {
+        data = await this.#cloudHooks?.[collection]?.['beforeSave']({
+          before: doc as any,
+          doc: { ...doc, ...data } as any,
+          session: undefined, // @todo add session
+        });
+      }
+
+      // enforce _updated_at by the server
       data['_updated_at'] = new Date();
 
       await this.db.collection(collection).updateOne(
@@ -1446,6 +1769,15 @@ export class Instant<
         { $set: data },
         { upsert: false }
       );
+
+      // run cloud hooks
+      if (this.#cloudHooks?.[collection]?.['afterSave']) {
+        await this.#cloudHooks?.[collection]?.['afterSave']({
+          before: doc as any,
+          doc: { ...doc, ...data } as any,
+          session: undefined, // @todo add session
+        });
+      }
 
       // cleanup value props with sync: false according to the schema
       const value = this.#cleanValue(collection, data);
@@ -1458,12 +1790,13 @@ export class Instant<
     } catch (error) {
       console.error('sync error', error);
       set.status = 500;
-      return {
-        type: 'internal_server_error',
-        message: 'an error occurred while syncing',
-        summary:
-          'we were not able to process your request. please try again later.',
-      };
+
+      return createError(
+        500,
+        'internal_server_error',
+        'An error occurred while syncing',
+        'We were not able to process your request. Please try again later or contact support.'
+      );
     }
   }
 
@@ -1481,20 +1814,39 @@ export class Instant<
 
       if (!this.collections.includes(collection)) {
         set.status = 400;
-        return {
-          type: 'bad_request',
-          message: 'collection not found',
-          summary: 'the collection you are trying to delete is not found.',
-        };
+
+        return createError(
+          400,
+          'bad_request',
+          'Collection not found',
+          'The collection you are trying to delete is not found.'
+        );
       }
 
       if (!id) {
         set.status = 400;
-        return {
-          type: 'bad_request',
-          message: 'id is required',
-          summary: 'the id you are trying to delete is required.',
-        };
+
+        return createError(
+          400,
+          'bad_request',
+          'Document required',
+          'The document id you are trying to delete is required.'
+        );
+      }
+
+      const doc = await this.db.collection(collection).findOne({
+        $or: [{ _id: id as unknown as ObjectId }, { _uuid: id }],
+      });
+
+      if (isEmpty(doc)) {
+        set.status = 404;
+
+        return createError(
+          404,
+          'not_found',
+          'Document not found',
+          'The document you are trying to delete was not found.'
+        );
       }
 
       const now = new Date();
@@ -1502,17 +1854,37 @@ export class Instant<
         new Date().setFullYear(new Date().getFullYear() + 1)
       );
 
+      const data = {
+        _expires_at: in1year,
+      };
+
+      // run cloud hooks
+      if (this.#cloudHooks?.[collection]?.['beforeDelete']) {
+        await this.#cloudHooks?.[collection]?.['beforeDelete']({
+          before: doc as any,
+          doc: data as any,
+          session: undefined, // @todo add session
+        });
+      }
+
       await this.db.collection(collection).updateOne(
         {
           $or: [{ _id: id as unknown as ObjectId }, { _uuid: id }],
         },
         {
-          $set: {
-            _expires_at: in1year,
-          },
+          $set: data,
         },
         { upsert: false }
       );
+
+      // run cloud hooks
+      if (this.#cloudHooks?.[collection]?.['afterDelete']) {
+        await this.#cloudHooks?.[collection]?.['afterDelete']({
+          before: doc as any,
+          doc: { ...doc, ...data } as any,
+          session: undefined, // @todo add session
+        });
+      }
 
       return {
         _id: id,
@@ -1521,12 +1893,13 @@ export class Instant<
     } catch (error) {
       console.error('sync error', error);
       set.status = 500;
-      return {
-        type: 'internal_server_error',
-        message: 'an error occurred while syncing',
-        summary:
-          'we were not able to process your request. please try again later.',
-      };
+
+      return createError(
+        500,
+        'internal_server_error',
+        'An error occurred while syncing',
+        'We were not able to process your request. Please try again later or contact support.'
+      );
     }
   }
 
@@ -1671,33 +2044,64 @@ export class Instant<
     return {
       add: async (value: Partial<z.infer<CollectionSchema[C]>>) => {
         const now = new Date();
-        const doc = {
+        let doc = {
           ...(value as unknown as any),
           _created_at: now,
           _updated_at: now,
           _id: newObjectId(),
         };
+
+        // run beforeSave hooks
+        if (this.#cloudHooks?.[collection]?.beforeSave) {
+          doc = await this.#cloudHooks[collection].beforeSave({
+            doc,
+            before: undefined,
+            session: undefined,
+          });
+        }
+
         await this.db
           .collection(collection as unknown as string)
-          .insertOne(doc);
+          .insertOne(doc, {
+            forceServerObjectId: false,
+          });
+
+        // run afterSave hooks
+        if (this.#cloudHooks?.[collection]?.afterSave) {
+          await this.#cloudHooks[collection].afterSave({
+            before: undefined,
+            session: undefined,
+            doc,
+          });
+        }
+
         return doc;
       },
       update: async (
         id: string,
         value: Partial<z.infer<CollectionSchema[C]>>
       ) => {
-        const doc = await this.db
+        const beforeDoc: any = await this.db
           .collection(collection as unknown as string)
           .findOne({ _id: id as unknown as ObjectId });
 
-        if (!doc) {
+        if (!beforeDoc) {
           return Promise.reject('Document not found');
         }
 
-        const nextDoc = {
+        let nextDoc: any = {
           ...value,
           _updated_at: new Date(),
         };
+
+        // run beforeSave hooks
+        if (this.#cloudHooks?.[collection]?.beforeSave) {
+          nextDoc = await this.#cloudHooks[collection].beforeSave({
+            doc: nextDoc,
+            before: beforeDoc,
+            session: undefined,
+          });
+        }
 
         await this.db.collection(collection as string).updateOne(
           { _id: id as unknown as ObjectId },
@@ -1705,20 +2109,63 @@ export class Instant<
             $set: nextDoc,
           }
         );
+
+        // run afterSave hooks
+        if (this.#cloudHooks?.[collection]?.afterSave) {
+          await this.#cloudHooks[collection].afterSave({
+            before: beforeDoc,
+            doc: { ...beforeDoc, ...nextDoc } as any,
+            session: undefined,
+          });
+        }
+
+        return nextDoc;
       },
       delete: async (id: string) => {
+        const now = new Date();
         const in1year = new Date(
           new Date().setFullYear(new Date().getFullYear() + 1)
         );
+
+        const beforeDoc: any = await this.db
+          .collection(collection as unknown as string)
+          .findOne({ _id: id as unknown as ObjectId });
+
+        if (!beforeDoc) {
+          return Promise.reject('Document not found');
+        }
+
+        // run beforeDelete hooks
+        if (this.#cloudHooks?.[collection]?.beforeDelete) {
+          await this.#cloudHooks[collection].beforeDelete({
+            before: beforeDoc as any,
+            doc: { ...beforeDoc, _expires_at: in1year } as any,
+            session: undefined,
+          });
+        }
+
         await this.db.collection(collection as string).updateOne(
           { _id: id as unknown as ObjectId },
           {
             $set: {
-              _updated_at: new Date(),
+              _updated_at: now,
               _expires_at: in1year,
             },
           }
         );
+
+        // run afterDelete hooks
+        if (this.#cloudHooks?.[collection]?.afterDelete) {
+          await this.#cloudHooks[collection].afterDelete({
+            before: beforeDoc as any,
+            doc: {
+              ...beforeDoc,
+              _expires_at: in1year,
+              _updated_at: now,
+            } as any,
+            session: undefined,
+          });
+        }
       },
     };
   }

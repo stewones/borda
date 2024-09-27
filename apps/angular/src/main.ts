@@ -11,11 +11,11 @@ import {
 } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 
-import { BordaClient, isServer, Session } from '@borda/client';
+import { BordaClient, isServer } from '@borda/client';
 
 import { AppComponent } from './app/AppComponent';
 import { AppRoutes } from './app/AppRoutes';
-import { borda, insta, sessionSet } from './app/borda';
+import { borda, insta } from './app/borda';
 import { environment } from './environment';
 
 /**
@@ -30,16 +30,10 @@ const startup = [borda.browser(), insta.ready()];
 
 Promise.allSettled(startup)
   .then(async () => {
-    /**
-     * dispatch session before initializing angular app
-     */
-    const session = await borda.cache.get<Session>('session');
-
-    if (session) {
-      borda.dispatch(sessionSet(session));
-      borda.auth.become({
-        token: session.token,
-        validateSession: false,
+    const session = await insta.cache.get('session');
+    if (session.token) {
+      await insta.cloud.sync({
+        session,
       });
     }
 

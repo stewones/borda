@@ -1,3 +1,5 @@
+import { delay, of } from 'rxjs';
+
 import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -93,11 +95,15 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
       </div>
     </div>
     <div class="px-4 py-2.5">
-      <users-table #table></users-table>
+      <users-table #table [hidden]="!display()"></users-table>
     </div>
   `,
 })
 export class UsersPageComponent {
   syncing = toSignal(insta.syncing);
   online = toSignal(insta.online);
+
+  display = toSignal(of(true).pipe(delay(100)), {
+    initialValue: false,
+  });
 }

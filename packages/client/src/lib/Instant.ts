@@ -20,6 +20,7 @@ import {
   startWith,
   Subject,
   Subscription,
+  takeUntil,
   tap,
 } from 'rxjs';
 import { z } from 'zod';
@@ -34,6 +35,37 @@ import {
 import { WebSocketFactory } from './websocket';
 
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
+
+export interface InstaError<
+  CloudSchema extends {
+    headers: SchemaType;
+    body: SchemaType;
+    response: SchemaType;
+  } = {
+    headers: Record<string, never>;
+    body: Record<string, never>;
+    response: Record<string, never>;
+  }
+> {
+  status: number;
+  type: InstaErrorType;
+  message: string;
+  summary: string;
+  errors: {
+    path: string;
+    message: string;
+  }[];
+  fn?: keyof CloudSchema['body'];
+}
+
+export type InstaErrorType =
+  | 'validation_error'
+  | 'unauthorized'
+  | 'not_found'
+  | 'internal_server_error'
+  | 'bad_headers'
+  | 'bad_request'
+  | 'bad_response';
 
 /**
  * A subset of Dexie's query language, inspired by MongoDB query style.
@@ -128,16 +160,17 @@ export const createSchema = <S extends SchemaType>(
 ) =>
   z
     .object({
-      _id: createObjectIdSchema(collection),
+      // _id: createObjectIdSchema(collection),
+      _id: z.string(),
       _uuid: z.string().length(36).optional(),
-      _created_at: z.string().optional(),
-      _updated_at: z.string().optional(),
-      _expires_at: z.string().optional(),
+      _sync: z.number().optional(),
+      _created_at: z.union([z.string().optional(), z.date().optional()]),
+      _updated_at: z.union([z.string().optional(), z.date().optional()]),
+      _expires_at: z.union([z.string().optional(), z.date().optional()]),
       _created_by: z.string().optional(),
       _updated_by: z.string().optional(),
       _deleted_by: z.string().optional(),
       _updated_fields: z.record(z.any()).optional(),
-      _sync: z.number().optional(),
       ...schema,
     })
     .describe(
@@ -175,7 +208,29 @@ export const createPointer = (collection: string, id: string) => {
   return `${collection}$${id}`;
 };
 
-const SyncSchema = z.object({
+export const createError = (
+  status: number,
+  type: InstaError['type'],
+  message: InstaError['message'],
+  summary: InstaError['summary'],
+  errors: InstaError['errors'] = [],
+  {
+    fn = '',
+  }: {
+    fn?: InstaError['fn'];
+  } = {}
+) => {
+  return {
+    status,
+    type,
+    message,
+    summary,
+    errors,
+    fn,
+  } as InstaError;
+};
+
+const InstaSyncSchema = z.object({
   collection: z.string(),
   count: z.number(),
   synced: z.string(),
@@ -183,7 +238,62 @@ const SyncSchema = z.object({
   status: z.enum(['complete', 'incomplete']),
 });
 
-export class Instant<T extends SchemaType> {
+export const InstaCacheSchema = z.object({
+  key: z.string(),
+  value: z.any(),
+});
+
+export const InstaUserEmailSchema = z.string().email('Invalid email address');
+
+export const InstaUserPasswordSchema = z
+  .string()
+  .min(8, 'Password must have a minimum length of 8 chars')
+  .max(64, 'Password must have a maximum length of 64 chars')
+  .regex(/[!@#$%^&*(),.?":{}|<>]/, 'Password should have at least one symbol')
+  .regex(/[A-Z]/, 'Password should have uppercase letters')
+  .regex(/[a-z]/, 'Password should have lowercase letters')
+  .regex(/\d{2,}/, 'Password must have at least 2 numbers')
+  .refine((value) => !/\s/.test(value), 'Password must not have spaces')
+  .refine(
+    (value) => !['Passw0rd', 'Password123'].includes(value),
+    'Password cannot be a common password'
+  );
+
+export const InstaUserSchema = withOptions(
+  createSchema('users', {
+    name: z.string().min(3, 'Name must have a minimum length of 3 chars'),
+    email: InstaUserEmailSchema,
+    _password: withOptions(InstaUserPasswordSchema.optional(), {
+      sync: false,
+    }),
+  }),
+  {
+    sync: true,
+  }
+);
+
+export const InstaSessionSchema = createSchema('sessions', {
+  _p_user: z.string(),
+  token: z.string(),
+  user: InstaUserSchema, // runtime
+});
+
+export type InstaUser = z.infer<typeof InstaUserSchema>;
+export type InstaSession = z.infer<typeof InstaSessionSchema>;
+
+export class Instant<
+  CollectionSchema extends SchemaType,
+  CloudSchema extends {
+    headers: SchemaType;
+    body: SchemaType;
+    response: SchemaType;
+  } = {
+    headers: Record<string, never>;
+    body: Record<string, never>;
+    response: Record<string, never>;
+  },
+  CacheSchema extends SchemaType = Record<string, never>
+> {
   public online = merge(
     fromEvent(!isServer() ? window : new EventTarget(), 'online').pipe(
       map(() => true)
@@ -203,6 +313,8 @@ export class Instant<T extends SchemaType> {
     startWith(false)
   );
 
+  public errors = new Subject<InstaError<CloudSchema>>();
+
   protected wss: WebSocket | undefined;
 
   #size = 1_000;
@@ -212,31 +324,32 @@ export class Instant<T extends SchemaType> {
   #db!: Dexie;
   #worker!: Worker;
   #serverURL: string;
-  #schema: T;
+  #schema: CollectionSchema;
+  #cache!: CacheSchema;
   #collections: string[] = [];
-  #index!: Partial<Record<keyof T, string[]>>;
+  #index!: Partial<Record<keyof CollectionSchema, string[]>>;
   #inspect: boolean;
-  #token!: string;
-  #user!: string;
+  #session?: InstaSession;
   #headers!: Record<string, string>;
   #params!: Record<string, string>;
   #pendingTasks: Subscription | undefined;
   #pendingPointersBusy = false;
   #pendingMutationsBusy = false;
-  #batch = new Subject<{
+  #destroyed: Subject<void> = new Subject();
+  #batch!: Subject<{
     collection: string;
     synced: string;
     activity: SyncActivity;
     token: string;
     headers: Record<string, string>;
     params: Record<string, string>;
-  }>();
+  }>;
 
   #been_offline = false;
   #online = this.online
     .pipe(
       tap((isOnline) => {
-        if (isOnline && this.#been_offline && this.#token) {
+        if (isOnline && this.#been_offline && this.token) {
           this.syncBatch('recent');
           this.syncBatch('oldest');
           /* istanbul ignore next */
@@ -263,22 +376,21 @@ export class Instant<T extends SchemaType> {
   }
 
   get token() {
-    return this.#token;
+    return this.#session?.token || '';
   }
 
   get user() {
-    return this.#user;
+    return this.#session?.user?._id || '';
   }
 
   get collections() {
     return this.#collections;
   }
 
-  static cloudHeaders: Record<string, z.ZodType<any, any, any>> = {};
-
   constructor({
-    schema,
     name,
+    schema,
+    cache,
     version = 1,
     serverURL,
     inspect,
@@ -287,13 +399,13 @@ export class Instant<T extends SchemaType> {
     headers,
     params,
     index,
-    session,
-    user,
   }: {
     name: string;
     version?: number;
-    schema: T;
-    index?: Partial<Record<keyof T, string[]>>;
+    schema: CollectionSchema;
+    cloud?: CloudSchema;
+    cache?: CacheSchema;
+    index?: Partial<Record<keyof CollectionSchema, string[]>>;
     serverURL: string;
     inspect?: boolean | undefined;
     buffer?: number | undefined;
@@ -301,11 +413,10 @@ export class Instant<T extends SchemaType> {
     token?: string;
     headers?: Record<string, string>;
     params?: Record<string, string>;
-    session?: string;
-    user?: string;
   }) {
     this.#name = name;
     this.#schema = schema;
+    this.#cache = cache || ({} as CacheSchema);
     this.#version = version;
     this.#serverURL = serverURL;
     this.#inspect = inspect || false;
@@ -314,8 +425,6 @@ export class Instant<T extends SchemaType> {
     this.#headers = headers || {};
     this.#params = params || {};
     this.#index = index || {};
-    this.#token = session || '';
-    this.#user = user || '';
     this.#collections = Object.keys(schema).filter((key) => {
       try {
         const item = schema[key];
@@ -341,7 +450,7 @@ export class Instant<T extends SchemaType> {
       activity,
       synced: null,
       status: 'incomplete',
-    }) as z.infer<typeof SyncSchema>;
+    }) as z.infer<typeof InstaSyncSchema>;
   }
 
   async #setSync({
@@ -393,7 +502,7 @@ export class Instant<T extends SchemaType> {
       JSON.stringify({
         url,
         sync: 'batch',
-        token: this.#token,
+        token: this.token,
         headers: this.#headers,
         params: this.#params,
       })
@@ -540,7 +649,7 @@ export class Instant<T extends SchemaType> {
 
       for (const collection of collections) {
         const query = {
-          [collection as keyof T]: {
+          [collection as keyof CollectionSchema]: {
             $filter: {
               _sync: {
                 $eq: 1,
@@ -549,8 +658,10 @@ export class Instant<T extends SchemaType> {
           },
         };
 
-        const pending = await this.query(query as unknown as iQL<T>);
-        const data = pending[collection as keyof T];
+        const pending = await this.query(
+          query as unknown as iQL<CollectionSchema>
+        );
+        const data = pending[collection as keyof CollectionSchema];
 
         for (const item of data) {
           // check for validation, if fails, skip
@@ -575,7 +686,7 @@ export class Instant<T extends SchemaType> {
 
           let url = `${this.#serverURL}/sync/${collection}`;
 
-          const token = this.#token;
+          const token = this.token;
           const headers = this.#headers;
           const params = this.#params;
           const method = item['_expires_at']
@@ -604,6 +715,7 @@ export class Instant<T extends SchemaType> {
             token,
             headers,
             params,
+            id: item['_id'],
           });
 
           if (data.length > 0) {
@@ -615,6 +727,7 @@ export class Instant<T extends SchemaType> {
         }
       }
     } catch (error) {
+      this.errors.next(error as InstaError<CloudSchema>);
       /* istanbul ignore next */
       if (this.#inspect) {
         console.error('Error while running pending mutations', error);
@@ -636,7 +749,7 @@ export class Instant<T extends SchemaType> {
     for (const collection of collections) {
       // check for pointers using uuid
       const query = {
-        [collection as keyof T]: {
+        [collection as keyof CollectionSchema]: {
           $filter: (item: Document) => {
             // Check for fields starting with _p_ and containing a dash in their value
             return Object.entries(item).some(
@@ -650,8 +763,10 @@ export class Instant<T extends SchemaType> {
       };
 
       // replace any pending pointers with the actual data
-      const pending = await this.query(query as unknown as iQL<T>);
-      const data = pending[collection as keyof T];
+      const pending = await this.query(
+        query as unknown as iQL<CollectionSchema>
+      );
+      const data = pending[collection as keyof CollectionSchema];
 
       for (const item of data) {
         const pointers = Object.entries(item).filter(
@@ -675,7 +790,7 @@ export class Instant<T extends SchemaType> {
                 },
               },
             },
-          } as unknown as iQL<T>);
+          } as unknown as iQL<CollectionSchema>);
 
           const pointer = pointerData[pointerCollection][0];
 
@@ -787,6 +902,9 @@ export class Instant<T extends SchemaType> {
     // we skip this on mobile devices to avoid unecessary data consumption
     // !isMobile && (needs a more robust implementation, like set a max storage setting)
     if (localCount < remoteCount) {
+      if (!this.token) {
+        return {};
+      }
       /* istanbul ignore next */
       if (this.#inspect) {
         console.log(
@@ -1005,6 +1123,7 @@ export class Instant<T extends SchemaType> {
     headers,
     params,
     method,
+    id,
   }: {
     collection: string;
     url: string;
@@ -1013,6 +1132,7 @@ export class Instant<T extends SchemaType> {
     token?: string;
     headers?: Record<string, string>;
     params?: Record<string, string>;
+    id?: string;
   }) {
     if (!navigator.onLine) {
       /* istanbul ignore next */
@@ -1052,26 +1172,30 @@ export class Instant<T extends SchemaType> {
       });
 
       // mark record as synced since the network request was successful
-      await this.db.table(collection).update(_id, {
+      await this.db.table(collection).update(id, {
         _sync: 0,
       });
-    } catch (err) {
+    } catch (err: any) {
       /* istanbul ignore next */
       if (this.#inspect) {
         console.error('🔴 Error mutating document', collection, data, err);
+      }
+      if (id && err['type'] === 'not_found') {
+        // delete from local db
+        await this.db.table(collection).delete(id);
       }
     }
   }
 
   protected async syncLive() {
     const url = `${this.#serverURL.replace('http', 'ws')}/sync/live?session=${
-      this.#token
+      this.token
     }`;
     this.#worker.postMessage(
       JSON.stringify({
         url,
         sync: 'live',
-        token: this.#token,
+        token: this.token,
         headers: this.#headers,
         params: this.#params,
       })
@@ -1114,6 +1238,7 @@ export class Instant<T extends SchemaType> {
         }
       }
     } catch (err) {
+      this.errors.next(err as InstaError<CloudSchema>);
       /* istanbul ignore next */
       if (this.#inspect) {
         console.error('Error syncing', err);
@@ -1124,7 +1249,6 @@ export class Instant<T extends SchemaType> {
   public setWorker({ worker }: { worker: Worker }) {
     this.#worker = worker;
   }
-
   /**
    * The **ready** method is required in order to interact with the database.
    * It will generate a new Dexie schema based on the zod schema
@@ -1160,9 +1284,13 @@ export class Instant<T extends SchemaType> {
         dexieSchema[tableName] += `, ${customIndices}`;
       }
 
-      // add internal schema
+      // add internal schemas
       dexieSchema['_sync'] = `[collection+activity], ${Object.keys(
-        SyncSchema.shape
+        InstaSyncSchema.shape
+      ).join(', ')}`;
+
+      dexieSchema['_cache'] = `[key], ${Object.keys(
+        InstaCacheSchema.shape
       ).join(', ')}`;
 
       const db = new Dexie(this.#name);
@@ -1170,12 +1298,16 @@ export class Instant<T extends SchemaType> {
       db.version(this.#version).stores(dexieSchema);
 
       this.#db = db;
-      this.#db.on('ready', (db) => {
+      this.#db.on('ready', async (db) => {
         /* istanbul ignore next */
         if (this.#inspect && !isServer()) {
           // @ts-ignore
           window['insta'] = this;
         }
+
+        // pre populate cache with default values
+        await this.cache.populate();
+
         Promise.resolve(db);
       });
 
@@ -1196,56 +1328,9 @@ export class Instant<T extends SchemaType> {
           .subscribe();
 
         /**
-         * batch sync scheduler
+         * batch scheduler
          */
-        this.#batch
-          .pipe(
-            bufferTime(this.#buffer),
-            tap(async (collections) => {
-              for (const {
-                collection,
-                activity,
-                synced,
-                token,
-                headers,
-                params,
-              } of collections) {
-                try {
-                  /* istanbul ignore next */
-                  const perf = performance.now();
-                  const url = `${
-                    this.#serverURL
-                  }/sync/${collection}?activity=${activity}&synced=${synced}`;
-
-                  await this.runBatchWorker({
-                    url,
-                    token,
-                    headers,
-                    params,
-                  });
-
-                  /* istanbul ignore next */
-                  if (this.inspect) {
-                    const syncDuration = performance.now() - perf;
-                    const usage = await this.usage(collection);
-                    console.log(
-                      `💨 sync ${syncDuration.toFixed(2)}ms`,
-                      collection,
-                      activity,
-                      synced
-                    );
-                    console.log('💾 estimated usage for', collection, usage);
-                  }
-                } catch (err) {
-                  /* istanbul ignore next */
-                  if (this.#inspect) {
-                    console.error('Error scheduling sync', err);
-                  }
-                }
-              }
-            })
-          )
-          .subscribe();
+        this.#createSyncBatch();
       }
     } catch (error) {
       /* istanbul ignore next */
@@ -1275,76 +1360,34 @@ export class Instant<T extends SchemaType> {
       const estimatedTotalSize = averageSize * count;
       const estimatedTotalMB = estimatedTotalSize / (1024 * 1024);
 
-      return `${(estimatedTotalMB * 1.8).toFixed(2)} MB`;
+      return `${((estimatedTotalMB || 0) * 1.8).toFixed(2)} MB`;
     }
 
-    // Original overall usage estimation
-    const estimate = ((await navigator.storage.estimate()) || {}) as {
-      quota: number;
-      usage: number;
-      usageDetails: {
-        file: number;
-        indexedDB: number;
-        sqlite: number;
-      };
-    };
+    //  calculate overall for all collections
+    const collections = Object.keys(this.#schema);
+    let totalSize = 0;
+    
+    for (const collection of collections) {
+      const count = await this.db.table(collection).count();
+      const sampleSize = Math.min(100, count);
+      let totalSampleSize = 0;
+      const samples = await this.db
+        .table(collection)
+        .limit(sampleSize)
+        .toArray();
 
-    const { usageDetails } = estimate;
-    const { indexedDB } = usageDetails || { indexedDB: 0 };
-    const total = indexedDB / (1024 * 1024);
+      for (const sample of samples) {
+        totalSampleSize += new Blob([JSON.stringify(sample)])?.size;
+      }
 
-    return `${total.toFixed(2)} MB`;
-  }
+      const averageSize = totalSampleSize / sampleSize;
+      const estimatedTotalSize = averageSize * count;
+      const estimatedTotalMB = estimatedTotalSize / (1024 * 1024);
 
-  /**
-   * Starts the sync process
-   */
-  public async sync({
-    /**
-     * session token used to authenticate the requests on the server
-     */
-    session,
-    /**
-     * user id used to create pointers when mutating data
-     */
-    user,
-    /**
-     * custom headers to send to the server
-     */
-    headers,
-    /**
-     * custom query params to send to the server
-     */
-    params,
-  }: {
-    session?: string;
-    user?: string;
-    headers?: Record<string, string>;
-    params?: Record<string, string>;
-  } = {}) {
-    if (!this.#db) {
-      throw new Error(
-        'Database not initialized. Try awaiting `ready()` first.'
-      );
+      totalSize += estimatedTotalMB * 1.8;
     }
 
-    if (!this.#worker) {
-      throw new Error(
-        // @todo add documentation and links
-        'Worker not initialized. Try instantiating a worker and adding it to Instant.setWorker({ worker })'
-      );
-    }
-
-    this.#token = session || this.#token;
-    this.#user = user || this.#user;
-    this.#headers = headers || {};
-    this.#params = params || {};
-
-    await Promise.allSettled([
-      this.syncLive(),
-      this.syncBatch('oldest'),
-      this.syncBatch('recent'),
-    ]);
+    return `${(totalSize || 0).toFixed(2)} MB`;
   }
 
   /* istanbul ignore next */
@@ -1415,11 +1458,22 @@ export class Instant<T extends SchemaType> {
           params = {},
         } = JSON.parse(data);
 
+        if (sync === 'unsync') {
+          await this.cloud.unsync();
+          return;
+        }
+
         if (!token) {
           return Promise.reject('No token provided');
         }
 
-        this.#token = token;
+        if (token && !this.#session?.token) {
+          this.#session = {
+            ...this.#session,
+            token,
+          } as InstaSession;
+        }
+
         this.#headers = headers;
         this.#params = params;
 
@@ -1441,6 +1495,9 @@ export class Instant<T extends SchemaType> {
             headers,
             params,
           });
+          if (!collection) {
+            return;
+          }
 
           /* istanbul ignore next */
           if (this.inspect) {
@@ -1468,6 +1525,181 @@ export class Instant<T extends SchemaType> {
     };
   }
 
+  public cloud = {
+    run: async <K extends keyof CloudSchema['body']>(
+      name: K,
+      body?: z.infer<CloudSchema['body'][K]>,
+      options?: {
+        headers?: z.infer<CloudSchema['headers'][K]>;
+      }
+    ): Promise<z.infer<CloudSchema['response'][K]>> => {
+      try {
+        const res = await fetcher(
+          `${this.#serverURL}/cloud/${name as string}`,
+          {
+            direct: true,
+            method: 'POST',
+            body,
+            headers: {
+              authorization: `Bearer ${this.token}`,
+              ...this.#headers,
+              ...(options?.headers || {}),
+            },
+          }
+        );
+        return res;
+      } catch (error) {
+        this.errors.next(error as InstaError<CloudSchema>);
+        return Promise.reject(error);
+      }
+    },
+    /**
+     * Starts the sync process
+     */
+    sync: async ({
+      /**
+       * session containing token and user info
+       */
+      session,
+      /**
+       * custom headers to send to the server
+       */
+      headers,
+      /**
+       * custom query params to send to the server
+       */
+      params,
+    }: {
+      session?: Partial<InstaSession>;
+      headers?: Record<string, string>;
+      params?: Record<string, string>;
+    } = {}) => {
+      if (!this.#db) {
+        throw new Error(
+          'Database not initialized. Try awaiting `ready()` first.'
+        );
+      }
+
+      if (!this.#worker) {
+        throw new Error(
+          // @todo add documentation and links
+          'Worker not initialized. Try instantiating a worker and adding it to Instant.setWorker({ worker })'
+        );
+      }
+      this.#session = (session as InstaSession) || this.#session;
+      this.#headers = headers || {};
+      this.#params = params || {};
+
+      await Promise.allSettled([
+        this.syncLive(),
+        this.syncBatch('oldest'),
+        this.syncBatch('recent'),
+      ]);
+    },
+    /**
+     * clear the sync state
+     * and all collections
+     */
+    unsync: async () => {
+      if (!isServer()) {
+        this.#worker.postMessage(
+          JSON.stringify({
+            sync: 'unsync',
+          })
+        );
+      }
+
+      this.#session = undefined;
+      this.#destroyed.next();
+
+      if (this.#batch.observed) {
+        this.#batch.complete();
+      }
+
+      await this.#db.transaction('rw!', this.#db.table('_sync'), async () => {
+        await this.#db.table('_sync').clear();
+      });
+
+      for (const collection of Object.keys(this.#schema)) {
+        await this.#db.transaction(
+          'rw!',
+          this.#db.table(collection),
+          async () => {
+            await this.#db.table(collection).clear();
+          }
+        );
+      }
+    },
+    become: async (session: Partial<InstaSession>) => {
+      this.#session = session as InstaSession;
+    },
+  };
+
+  public cache = {
+    get: async <CacheKey extends keyof CacheSchema>(
+      key: CacheKey
+    ): Promise<NonNullable<z.infer<CacheSchema[CacheKey]>>> => {
+      const { value } =
+        (await this.db
+          .table('_cache')
+          .where('key')
+          .equals(key as string)
+          .first()) || {};
+
+      return value as NonNullable<z.infer<CacheSchema[CacheKey]>>;
+    },
+    set: async <CacheKey extends keyof CacheSchema>(
+      key: CacheKey,
+      value: NonNullable<z.infer<CacheSchema[CacheKey]>>
+    ) => {
+      await this.db.transaction('rw', this.db.table('_cache'), async () => {
+        await this.db.table('_cache').put({ key, value });
+      });
+    },
+    del: async <CacheKey extends keyof CacheSchema>(key: CacheKey) => {
+      await this.db.transaction('rw', this.db.table('_cache'), async () => {
+        await this.db
+          .table('_cache')
+          .where('key')
+          .equals(key as string)
+          .delete();
+      });
+    },
+    default: <CacheKey extends keyof CacheSchema>(key: CacheKey) => {
+      // Pre-populate with default values based on the zod schema
+      const schema = this.#cache[key as keyof CacheSchema];
+      const defaultValues = {} as NonNullable<z.infer<CacheSchema[CacheKey]>>;
+      for (const [k, v] of Object.entries(
+        (schema as unknown as z.ZodObject<any, any, any>).shape
+      )) {
+        defaultValues[k as keyof z.infer<CacheSchema[CacheKey]>] =
+          v instanceof z.ZodDefault
+            ? v._def.defaultValue()
+            : (undefined as never); // Ensure this is never assigned
+      }
+      return defaultValues;
+    },
+    populate: async () => {
+      const cache = await this.db.table('_cache').toArray();
+      for (const key in this.#cache) {
+        let { value } = cache.find((c) => c.key === key) || {};
+        if (!value) {
+          value = this.cache.default(key);
+          await this.db.table('_cache').add({
+            key,
+            value,
+          });
+        }
+      }
+    },
+    clear: async () => {
+      await this.db.transaction('rw', this.db.table('_cache'), async () => {
+        await this.db.table('_cache').clear();
+        await this.cache.populate();
+      });
+    },
+  };
+
   /**
    * Mutate data locally and synchronize with the server
    *
@@ -1490,22 +1722,24 @@ export class Instant<T extends SchemaType> {
    * // while _uuid is the local generated id used to reference the object before syncing
    * @returns void
    */
-  public mutate<C extends keyof T>(collection: C) {
-    if (!this.#user) {
+  public mutate<C extends keyof CollectionSchema>(collection: C) {
+    if (!this.user) {
       throw new Error(
         'User id not set. Try to pass the user id as `user` to the Instant constructor or `sync` method.'
       );
     }
-    if (!this.#token) {
+    if (!this.token) {
       throw new Error(
         'Token not set. Try to pass the session token as `session` to the Instant constructor or `sync` method.'
       );
     }
     return {
-      add: async (value: Partial<z.infer<T[keyof T]>>) => {
+      add: async (
+        value: Partial<z.infer<CollectionSchema[keyof CollectionSchema]>>
+      ) => {
         const now = new Date().toISOString();
         const valueWithMetadata = { ...value } as Partial<
-          z.infer<T[keyof T]>
+          z.infer<CollectionSchema[keyof CollectionSchema]>
         > & {
           _id: string;
           _uuid: string;
@@ -1523,8 +1757,8 @@ export class Instant<T extends SchemaType> {
         valueWithMetadata._updated_at = now;
         valueWithMetadata._id = guid();
         valueWithMetadata._uuid = valueWithMetadata._id;
-        valueWithMetadata._created_by = createPointer('users', this.#user);
-        valueWithMetadata._updated_by = createPointer('users', this.#user);
+        valueWithMetadata._created_by = createPointer('users', this.user);
+        valueWithMetadata._updated_by = createPointer('users', this.user);
 
         await this.db.transaction(
           'rw!',
@@ -1536,7 +1770,10 @@ export class Instant<T extends SchemaType> {
 
         return valueWithMetadata;
       },
-      update: async (id: string, value: Partial<z.infer<T[keyof T]>>) => {
+      update: async (
+        id: string,
+        value: Partial<z.infer<CollectionSchema[keyof CollectionSchema]>>
+      ) => {
         const currentDoc = await this.db.table(collection as string).get(id);
         if (!currentDoc) {
           throw new Error('Document not found');
@@ -1558,7 +1795,7 @@ export class Instant<T extends SchemaType> {
               ...value,
               _sync: 1,
               _updated_at: new Date().toISOString(),
-              _updated_by: createPointer('users', this.#user),
+              _updated_by: createPointer('users', this.user),
               _updated_fields: updatedFields,
             });
           }
@@ -1573,7 +1810,7 @@ export class Instant<T extends SchemaType> {
               _sync: 1,
               _updated_at: new Date().toISOString(),
               _expires_at: new Date().toISOString(),
-              _deleted_by: createPointer('users', this.#user),
+              _deleted_by: createPointer('users', this.user),
             });
           }
         );
@@ -1588,19 +1825,20 @@ export class Instant<T extends SchemaType> {
       (schema as z.ZodObject<any>).strict().parse(data);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return {
-          type: 'validation_error',
-          message: 'Invalid data provided',
-          summary: `The data provided for ${collection} is not valid.`,
-          errors: zodError.errors.map((err) => ({
+        return createError(
+          400,
+          'validation_error',
+          'Invalid data provided',
+          `The data provided for ${collection} is not valid.`,
+          zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
-          })),
-        };
+          }))
+        );
       }
     }
 
-    return {};
+    return {} as InstaError;
   }
 
   /**
@@ -1628,17 +1866,22 @@ export class Instant<T extends SchemaType> {
    * // console.log(count)
    * // 5
    */
-  public async count<C extends keyof T>(
+  public async count<C extends keyof CollectionSchema>(
     collectionName: C,
-    query: Exclude<iQLDirectives<z.infer<T[C]>>, '$by'> & iQL<T>
+    query: Exclude<iQLDirectives<z.infer<CollectionSchema[C]>>, '$by'> &
+      iQL<CollectionSchema>
   ): Promise<number> {
     let table = this.db.table(collectionName as string);
-    const tableQuery = query as iQLDirectives<z.infer<T[C]>> & iQL<T>;
+    const tableQuery = query as iQLDirectives<z.infer<CollectionSchema[C]>> &
+      iQL<CollectionSchema>;
 
     let queryCollection: Collection<
-      z.infer<T[C]>,
+      z.infer<CollectionSchema[C]>,
       IndexableType
-    > = table as unknown as Collection<z.infer<T[C]>, IndexableType>;
+    > = table as unknown as Collection<
+      z.infer<CollectionSchema[C]>,
+      IndexableType
+    >;
 
     // Apply $filter
     if (tableQuery.$filter) {
@@ -1776,23 +2019,30 @@ export class Instant<T extends SchemaType> {
    *   },
    * }
    */
-  public async query<Q extends iQL<T>>(
+  public async query<Q extends iQL<CollectionSchema>>(
     iql: Q
   ): Promise<{
-    [K in keyof Q]: z.infer<T[K & keyof T]>[];
+    [K in keyof Q]: z.infer<CollectionSchema[K & keyof CollectionSchema]>[];
   }> {
     return this.#executeQuery(iql);
   }
 
-  async #executeQuery<Q extends iQL<T>>(
+  public async sync({ token, user }: { token: string; user: InstaUser }) {
+    this.#createSyncBatch();
+    await this.cache.set('session', { token, user });
+    await this.cloud.become({ token, user });
+    await this.cloud.sync();
+  }
+
+  async #executeQuery<Q extends iQL<CollectionSchema>>(
     queryObject: Q,
-    parentTable?: keyof T,
+    parentTable?: keyof CollectionSchema,
     parentId?: string
   ): Promise<{
-    [K in keyof Q]: z.infer<T[K & keyof T]>[];
+    [K in keyof Q]: z.infer<CollectionSchema[K & keyof CollectionSchema]>[];
   }> {
     const result = {} as {
-      [K in keyof Q]: z.infer<T[K & keyof T]>[];
+      [K in keyof Q]: z.infer<CollectionSchema[K & keyof CollectionSchema]>[];
     };
 
     for (const tableName in queryObject) {
@@ -1802,26 +2052,36 @@ export class Instant<T extends SchemaType> {
       ) {
         const table = this.db.table(tableName);
         const tableQuery = queryObject[tableName] as iQLDirectives<
-          z.infer<T[keyof T]>
+          z.infer<CollectionSchema[keyof CollectionSchema]>
         > &
-          iQL<T>;
+          iQL<CollectionSchema>;
 
         let collection: Collection<
-          z.infer<T[keyof T]>,
+          z.infer<CollectionSchema[keyof CollectionSchema]>,
           IndexableType
-        > = table as unknown as Collection<z.infer<T[keyof T]>, IndexableType>;
+        > = table as unknown as Collection<
+          z.infer<CollectionSchema[keyof CollectionSchema]>,
+          IndexableType
+        >;
 
         // Handle parent relationship
         if (parentTable && parentId) {
           const by = queryObject[tableName]!['$by'];
           const pointerField =
-            by || this.#getPointerField(tableName as keyof T, parentTable);
+            by ||
+            this.#getPointerField(
+              tableName as keyof CollectionSchema,
+              parentTable
+            );
 
           if (pointerField) {
             collection = collection.filter(
               (item) =>
-                item[pointerField as keyof z.infer<T[keyof T]>] ===
-                `${parentTable as string}$${parentId}`
+                item[
+                  pointerField as keyof z.infer<
+                    CollectionSchema[keyof CollectionSchema]
+                  >
+                ] === `${parentTable as string}$${parentId}`
             );
           }
         }
@@ -1841,7 +2101,10 @@ export class Instant<T extends SchemaType> {
 
           // Apply the sort
           collection = (
-            collection as unknown as Table<z.infer<T[keyof T]>, IndexableType>
+            collection as unknown as Table<
+              z.infer<CollectionSchema[keyof CollectionSchema]>,
+              IndexableType
+            >
           ).orderBy(indexString);
 
           // Apply reverse for descending order if needed
@@ -1959,13 +2222,13 @@ export class Instant<T extends SchemaType> {
               !nestedTableName.startsWith('$')
             ) {
               const nestedQuery = tableQuery[nestedTableName] as iQLDirectives<
-                z.infer<T[keyof T]>
+                z.infer<CollectionSchema[keyof CollectionSchema]>
               > &
-                iQL<T>;
+                iQL<CollectionSchema>;
 
               const nestedResult = await this.#executeQuery(
                 { [nestedTableName]: nestedQuery } as Q,
-                tableName as keyof T,
+                tableName as keyof CollectionSchema,
                 item._id
               );
               item[nestedTableName] = nestedResult[nestedTableName];
@@ -2027,8 +2290,8 @@ export class Instant<T extends SchemaType> {
   }
 
   #getPointerField(
-    childTable: keyof T,
-    parentTable: keyof T
+    childTable: keyof CollectionSchema,
+    parentTable: keyof CollectionSchema
   ): string | undefined {
     const childSchema = this.#schema[childTable];
 
@@ -2061,7 +2324,10 @@ export class Instant<T extends SchemaType> {
     return undefined;
   }
 
-  #updatedFields(currentDoc: Document, newDoc: Partial<z.infer<T[keyof T]>>) {
+  #updatedFields(
+    currentDoc: Document,
+    newDoc: Partial<z.infer<CollectionSchema[keyof CollectionSchema]>>
+  ) {
     return Object.keys(newDoc).reduce((acc, key) => {
       if (
         !['_updated_at', '_created_at', '_sync'].includes(key) &&
@@ -2071,5 +2337,70 @@ export class Instant<T extends SchemaType> {
       }
       return acc;
     }, {} as Record<string, any>);
+  }
+
+  #createSyncBatch() {
+    this.#batch = new Subject<{
+      collection: string;
+      synced: string;
+      activity: SyncActivity;
+      token: string;
+      headers: Record<string, string>;
+      params: Record<string, string>;
+    }>();
+    this.#batch
+      .pipe(
+        takeUntil(this.#destroyed),
+        bufferTime(this.#buffer),
+        tap(async (collections) => {
+          for (const {
+            collection,
+            activity,
+            synced,
+            token,
+            headers,
+            params,
+          } of collections) {
+            try {
+              /* istanbul ignore next */
+              const perf = performance.now();
+              const url = `${
+                this.#serverURL
+              }/sync/${collection}?activity=${activity}&synced=${synced}`;
+
+              await this.runBatchWorker({
+                url,
+                token,
+                headers,
+                params,
+              });
+
+              /* istanbul ignore next */
+              if (this.inspect) {
+                const syncDuration = performance.now() - perf;
+                const usage = await this.usage(collection);
+                console.log(
+                  `💨 sync ${syncDuration.toFixed(2)}ms`,
+                  collection,
+                  activity,
+                  synced
+                );
+                console.log('💾 estimated usage for', collection, usage);
+              }
+
+              // maybe they logged out
+              if (!this.token) {
+                await this.cloud.unsync();
+              }
+            } catch (err) {
+              /* istanbul ignore next */
+              if (this.#inspect) {
+                console.error('Error scheduling sync', err);
+              }
+            }
+          }
+        })
+      )
+      .subscribe();
   }
 }

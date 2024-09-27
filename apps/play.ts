@@ -41,7 +41,7 @@ async function addOneUser() {
   await borda.query('users').insert({
     _id,
     name: faker.person.fullName(),
-    email: faker.internet.email(),
+    email: faker.internet.email().toLowerCase(),
     _p_org: pointer('orgs', org['objectId']),
     _created_at: _date.toISOString(),
     _updated_at: _date.toISOString(),
@@ -93,7 +93,7 @@ async function addManyOrgsUsersPostsComments() {
       users.push({
         _id,
         name: faker.person.fullName(),
-        email: faker.internet.email(),
+        email: faker.internet.email().toLowerCase(),
         _p_org: pointer('orgs', org._id),
         _created_at: _date.toISOString(),
         _updated_at: _date.toISOString(),

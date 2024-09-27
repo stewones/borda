@@ -45,7 +45,6 @@ import { BrnMenuTriggerDirective } from '@spartan-ng/ui-menu-brain';
 import { HlmMenuModule } from '@spartan-ng/ui-menu-helm';
 import { BrnSelectModule } from '@spartan-ng/ui-select-brain';
 import { HlmSelectModule } from '@spartan-ng/ui-select-helm';
-import { HlmToasterComponent } from '@spartan-ng/ui-sonner-helm';
 import {
   BrnTableModule,
   PaginatorState,
@@ -77,7 +76,6 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
     HlmInputDirective,
     HlmCheckboxCheckIconComponent,
     HlmCheckboxComponent,
-    HlmToasterComponent,
     HlmButtonDirective,
     BrnSelectModule,
     HlmSelectModule,
@@ -102,6 +100,7 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
   }
   `,
   template: `
+    <!-- <hlm-icon size="sm" name="lucideLoader" class="animate-spin-slow" /> -->
     <div class="flex flex-col justify-between gap-4 sm:flex-row">
       <div class="flex flex-col sm:flex-row gap-4">
         <input
@@ -383,7 +382,6 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
       </div>
     </div>
 
-    <hlm-toaster [theme]="'dark'" />
     <delete-dialog #deleteDialog></delete-dialog>
     <users-dialog
       [open]="showUsersDialog()"
@@ -436,6 +434,13 @@ export class UsersTableComponent {
 
       // for each user, get the org
       for (const user of users) {
+        if (!user._p_org) {
+          user.org = {
+            name: 'No organization',
+            _id: 'no-org-' + user._id,
+          } as unknown as Org;
+          continue;
+        }
         const org = await insta
           .query({
             orgs: {

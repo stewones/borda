@@ -161,22 +161,16 @@ export class UsersDialogComponent {
 
   ngOnChanges() {
     const orgId = this.entry()._p_org
-      ? ejectPointerId(this.entry()._p_org)
-      : '';
-    const formValue = this.form.getRawValue();
-    if (!formValue.id) {
-      this.form.patchValue({
-        id: this.entry()._id,
-        name: this.entry().name,
-        email: this.entry().email,
-        orgId,
-      });
-    } else {
-      this.form.patchValue({
-        name: this.entry().name,
-        email: this.entry().email,
-      });
-    }
+      ? ejectPointerId(this.entry()._p_org as string)
+      : 'no-org-' + this.entry()._id;
+
+    this.form.patchValue({
+      id: this.entry()._id,
+      name: this.entry().name,
+      email: this.entry().email,
+      orgId,
+    });
+    
     this.form.updateValueAndValidity();
   }
 
