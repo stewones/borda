@@ -1246,9 +1246,18 @@ export class Instant<
     }
   }
 
+  protected async syncScheduler() {
+    this.#worker.postMessage(
+      JSON.stringify({
+        sync: 'scheduler',
+      })
+    );
+  }
+
   public setWorker({ worker }: { worker: Worker }) {
     this.#worker = worker;
   }
+
   /**
    * The **ready** method is required in order to interact with the database.
    * It will generate a new Dexie schema based on the zod schema
@@ -1310,28 +1319,6 @@ export class Instant<
 
         Promise.resolve(db);
       });
-
-      if (isServer()) {
-        /**
-         * task scheduler
-         */
-        this.#pendingTasks = interval(1000)
-          .pipe(
-            tap(
-              async () =>
-                await Promise.allSettled([
-                  this.runPendingMutations(),
-                  this.runPendingPointers(),
-                ])
-            )
-          )
-          .subscribe();
-
-        /**
-         * batch scheduler
-         */
-        this.#createSyncBatch();
-      }
     } catch (error) {
       /* istanbul ignore next */
       if (this.#inspect) {
@@ -1360,13 +1347,13 @@ export class Instant<
       const estimatedTotalSize = averageSize * count;
       const estimatedTotalMB = estimatedTotalSize / (1024 * 1024);
 
-      return `${((estimatedTotalMB || 0) * 1.8).toFixed(2)} MB`;
+      return `${(estimatedTotalMB || 0).toFixed(2)} MB`;
     }
 
     //  calculate overall for all collections
     const collections = Object.keys(this.#schema);
     let totalSize = 0;
-    
+
     for (const collection of collections) {
       const count = await this.db.table(collection).count();
       const sampleSize = Math.min(100, count);
@@ -1384,7 +1371,7 @@ export class Instant<
       const estimatedTotalSize = averageSize * count;
       const estimatedTotalMB = estimatedTotalSize / (1024 * 1024);
 
-      totalSize += estimatedTotalMB * 1.8;
+      totalSize += estimatedTotalMB;
     }
 
     return `${(totalSize || 0).toFixed(2)} MB`;
@@ -1392,7 +1379,7 @@ export class Instant<
 
   /* istanbul ignore next */
   public async destroy({ db = true }: { db?: boolean } = {}) {
-    this.#batch.complete();
+    this.#batch?.complete();
     this.#online.unsubscribe();
 
     if (this.#worker && 'terminate' in this.#worker) {
@@ -1452,7 +1439,7 @@ export class Instant<
       try {
         const {
           url,
-          sync = 'batch',
+          sync = 'batch', // batch|live|unsync|scheduler
           token = '',
           headers = {},
           params = {},
@@ -1463,8 +1450,31 @@ export class Instant<
           return;
         }
 
+        if (sync === 'scheduler') {
+          /**
+           * task scheduler
+           */
+          this.#pendingTasks = interval(1000)
+            .pipe(
+              tap(
+                async () =>
+                  await Promise.allSettled([
+                    this.runPendingMutations(),
+                    this.runPendingPointers(),
+                  ])
+              )
+            )
+            .subscribe();
+
+          /**
+           * batch scheduler
+           */
+          this.#createSyncBatch();
+          return;
+        }
+
         if (!token) {
-          return Promise.reject('No token provided');
+          return Promise.resolve();
         }
 
         if (token && !this.#session?.token) {
@@ -1519,13 +1529,16 @@ export class Instant<
       } catch (err) {
         /* istanbul ignore next */
         if (this.inspect) {
-          console.error('Error running worker', err);
+          console.error('Error running worker', err, data);
         }
       }
     };
   }
 
   public cloud = {
+    /**
+     * Run custom cloud code
+     */
     run: async <K extends keyof CloudSchema['body']>(
       name: K,
       body?: z.infer<CloudSchema['body'][K]>,
@@ -1553,8 +1566,9 @@ export class Instant<
         return Promise.reject(error);
       }
     },
+
     /**
-     * Starts the sync process
+     * Starts the sync process for known collections
      */
     sync: async ({
       /**
@@ -1594,11 +1608,12 @@ export class Instant<
         this.syncLive(),
         this.syncBatch('oldest'),
         this.syncBatch('recent'),
+        this.syncScheduler(),
       ]);
     },
+
     /**
-     * clear the sync state
-     * and all collections
+     * clear the sync state and all collections
      */
     unsync: async () => {
       if (!isServer()) {
@@ -1611,27 +1626,31 @@ export class Instant<
 
       this.#session = undefined;
       this.#destroyed.next();
+      this.wss?.close(1000, 'Unsynced');
 
       if (this.#batch.observed) {
         this.#batch.complete();
       }
 
-      await this.#db.transaction('rw!', this.#db.table('_sync'), async () => {
-        await this.#db.table('_sync').clear();
-      });
-
       for (const collection of Object.keys(this.#schema)) {
         await this.#db.transaction(
-          'rw!',
+          'rw?',
           this.#db.table(collection),
           async () => {
             await this.#db.table(collection).clear();
           }
         );
       }
+
+      await this.#db.table('_sync').clear();
     },
+
+    /**
+     * Become a specific user by setting the session
+     */
     become: async (session: Partial<InstaSession>) => {
       this.#session = session as InstaSession;
+      await this.cache.set('session', session);
     },
   };
 
@@ -1725,7 +1744,7 @@ export class Instant<
   public mutate<C extends keyof CollectionSchema>(collection: C) {
     if (!this.user) {
       throw new Error(
-        'User id not set. Try to pass the user id as `user` to the Instant constructor or `sync` method.'
+        'User not set. Try to pass a session to the `sync` method before using mutate.'
       );
     }
     if (!this.token) {
@@ -2025,13 +2044,6 @@ export class Instant<
     [K in keyof Q]: z.infer<CollectionSchema[K & keyof CollectionSchema]>[];
   }> {
     return this.#executeQuery(iql);
-  }
-
-  public async sync({ token, user }: { token: string; user: InstaUser }) {
-    this.#createSyncBatch();
-    await this.cache.set('session', { token, user });
-    await this.cloud.become({ token, user });
-    await this.cloud.sync();
   }
 
   async #executeQuery<Q extends iQL<CollectionSchema>>(

@@ -159,10 +159,8 @@ export class LoginFormComponent {
         email: email?.toLowerCase() ?? '',
         password: password ?? '',
       });
-      await insta.sync({
-        token,
-        user,
-      });
+      await insta.cloud.become({ token, user });
+      await insta.cloud.sync();
     } catch (err) {
       console.error('error', err);
     }
@@ -174,17 +172,14 @@ export class LoginFormComponent {
     }
     try {
       const { name, email, password } = this.signupForm.value;
-
       const { token, user } = await insta.cloud.run('sign-up', {
         name: name ?? '',
         email: email?.toLowerCase() ?? '',
         password: password ?? '',
       });
 
-      await insta.sync({
-        token,
-        user,
-      });
+      await insta.cloud.become({ token, user });
+      await insta.cloud.sync();
     } catch (error) {
       console.error('error', error);
     }
