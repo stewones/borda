@@ -1,7 +1,7 @@
 {
-  "name": "elysia",
+  "name": "demo-server",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "apps/elysia/src",
+  "sourceRoot": "apps/demo-server/src",
   "projectType": "application",
   "targets": {
     "build": {
@@ -15,7 +15,7 @@
       "options": {
         "commands": [
           "nx types server",
-          "bun run --env-file apps/elysia/.env --watch apps/elysia/src/main.ts"
+          "bun run --env-file apps/demo-server/.env --watch apps/demo-server/src/main.ts"
         ]
       }
     },
@@ -23,7 +23,7 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "tsc --noEmit --skipLibCheck --showConfig -p apps/elysia/tsconfig.lib.json"
+          "tsc --noEmit --skipLibCheck --showConfig -p apps/demo-server/tsconfig.lib.json"
         ]
       }
     },
@@ -32,7 +32,7 @@
       "options": {
         "commands": [
           "nx types server",
-          "bun build --compile --minify --sourcemap ./apps/elysia/index.ts --outfile server"
+          "bun build --compile --minify --sourcemap ./apps/demo-server/index.ts --outfile server"
         ]
       }
     },

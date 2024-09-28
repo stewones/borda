@@ -1,8 +1,8 @@
 {
-  "name": "angular",
+  "name": "demo-client",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "sourceRoot": "apps/angular/src",
+  "sourceRoot": "apps/demo-client/src",
   "prefix": "borda",
   "tags": ["consumer"],
   "targets": {
@@ -10,24 +10,27 @@
       "executor": "@nx/angular:browser-esbuild",
       "outputs": ["{options.outputPath}"],
       "options": {
-        "outputPath": "dist/apps/angular",
-        "index": "apps/angular/src/index.html",
-        "main": "apps/angular/src/main.ts",
-        "tsConfig": "apps/angular/tsconfig.app.json",
+        "outputPath": "dist/apps/demo-client",
+        "index": "apps/demo-client/src/index.html",
+        "main": "apps/demo-client/src/main.ts",
+        "tsConfig": "apps/demo-client/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
-        "assets": ["apps/angular/src/favicon.ico", "apps/angular/src/assets"],
-        "styles": ["apps/angular/src/styles.css"],
+        "assets": [
+          "apps/demo-client/src/favicon.ico",
+          "apps/demo-client/src/assets"
+        ],
+        "styles": ["apps/demo-client/src/styles.css"],
         "scripts": [],
-        "webWorkerTsConfig": "apps/angular/tsconfig.worker.json",
+        "webWorkerTsConfig": "apps/demo-client/tsconfig.worker.json",
         "serviceWorker": true,
-        "ngswConfigPath": "apps/angular/ngsw-config.json"
+        "ngswConfigPath": "apps/demo-client/ngsw-config.json"
       },
       "configurations": {
         "production": {
           "fileReplacements": [
             {
-              "replace": "apps/angular/src/environment/index.ts",
-              "with": "apps/angular/src/environment/production.ts"
+              "replace": "apps/demo-client/src/environment/index.ts",
+              "with": "apps/demo-client/src/environment/production.ts"
             }
           ],
           "budgets": [
@@ -59,10 +62,10 @@
       "executor": "@nx/angular:dev-server",
       "configurations": {
         "production": {
-          "buildTarget": "angular:build:production"
+          "buildTarget": "demo-client:build:production"
         },
         "development": {
-          "buildTarget": "angular:build:development"
+          "buildTarget": "demo-client:build:development"
         }
       },
       "defaultConfiguration": "development"
@@ -70,21 +73,21 @@
     "extract-i18n": {
       "executor": "@nx/angular:extract-i18n",
       "options": {
-        "buildTarget": "angular:build"
+        "buildTarget": "demo-client:build"
       }
     },
     "test": {
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "apps/angular/jest.config.ts",
-        "webWorkerTsConfig": "apps/angular/tsconfig.worker.json"
+        "jestConfig": "apps/demo-client/jest.config.ts",
+        "webWorkerTsConfig": "apps/demo-client/tsconfig.worker.json"
       }
     },
     "preview": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bunx angular-http-server --path dist/apps/angular -p 4220"
+        "command": "bunx angular-http-server --path dist/apps/demo-client -p 4220"
       }
     }
   }
