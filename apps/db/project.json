@@ -1,20 +1,20 @@
 {
-  "name": "demo-db",
+  "name": "db",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "apps/demo-db",
+  "sourceRoot": "apps/db",
   "projectType": "application",
   "targets": {
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["docker build -f ./Dockerfile -t insta-db-demo ."]
+        "commands": ["docker build -f ./apps/db/Dockerfile -t insta-db-demo ."]
       }
     },
     "preview": {
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "docker run -d --name insta-mongo -p 27018:27017 -v ./db:/data/db -v ./config:/data/config --restart always insta-db-demo"
+          "docker run -d --name insta-mongo -p 27018:27017 -v ./apps/db/data:/data/db -v ./apps/db/config:/config --restart always insta-db-demo"
         ]
       }
     }

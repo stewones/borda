@@ -14,4 +14,4 @@ RUN bun install --production
 EXPOSE 80
 
 # Run the web service on container startup.
-CMD [ "bun", "apps/demo-server/src/main.ts"]
+CMD [ "bun", "apps/api/src/main.ts"]

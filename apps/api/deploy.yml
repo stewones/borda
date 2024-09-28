@@ -37,8 +37,8 @@ registry:
 # Configure builder setup.
 builder:
   arch: amd64
-  dockerfile: ./config/server-docker
-  context: ".."
+  dockerfile: ./Dockerfile
+  context: "../../"
 
 # Inject ENV variables into containers (secrets come from .kamal/secrets).
 #

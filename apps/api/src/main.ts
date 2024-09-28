@@ -70,7 +70,7 @@ const insta = new Instant({
   schema: SyncSchema,
   cloud: CloudSchema,
   // live: LiveSchema, // @todo migrate from Typebox
-  size: parseInt(process.env['INSTANT_SIZE'] || '1_000'),
+  size: parseInt(process.env['INSTA_BATCH_SIZE'] || '1_000'),
   // set constraints to restrict broadcast and filtered data
   // constraints: [
   //   {
