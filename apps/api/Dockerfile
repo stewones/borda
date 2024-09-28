@@ -7,11 +7,13 @@ WORKDIR /usr/src/app
 
 # Copy local code to the container image.
 COPY ./ ./
+COPY ./apps/api/config/startup.sh /usr/src/app/startup.sh
+RUN chmod +x /usr/src/app/startup.sh
 
 # Install 
 RUN bun install --production
 
 EXPOSE 80
 
-# Run the web service on container startup.
-CMD [ "bun", "apps/api/src/main.ts"]
+# Run the seed and then the web service on container startup.
+CMD ["/usr/src/app/startup.sh"]

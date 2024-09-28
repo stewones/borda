@@ -7,15 +7,17 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["docker build -f ./apps/db/Dockerfile -t insta-db-demo ."]
+        "commands": ["docker build -f ./apps/db/Dockerfile -t insta-db ."]
       }
     },
     "preview": {
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "docker run -d --name insta-mongo -p 27018:27017 -v ./apps/db/data:/data/db -v ./apps/db/config:/config --restart always insta-db-demo"
-        ]
+          "docker rm -f insta-db || true",
+          "docker run -d --name insta-db -p 27018:27017 --network insta-cloud -v ./apps/db/data:/data/db -v ./apps/db/config:/config --restart always insta-db"
+        ],
+        "parallel": false
       }
     }
   },

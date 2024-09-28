@@ -4,7 +4,7 @@ env:
       - KAMAL_REGISTRY_PASSWORD
 
 # Name of your application. Used to uniquely configure containers.
-service: insta-server-demo
+service: insta-api
 
 # Name of the container image.
 image: instante/server-demo
@@ -22,7 +22,7 @@ servers:
 # Set ssl: false if using something like Cloudflare to terminate SSL (but keep host!).
 proxy:
   ssl: true
-  host: insta-server-demo.stewan.io
+  host: insta-api.stewan.io
 
 # Credentials for your image host.
 registry:
@@ -37,8 +37,8 @@ registry:
 # Configure builder setup.
 builder:
   arch: amd64
-  dockerfile: ./config/server-docker
-  context: ".."
+  dockerfile: ./Dockerfile
+  context: "../../"
 
 # Inject ENV variables into containers (secrets come from .kamal/secrets).
 #

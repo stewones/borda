@@ -8,9 +8,11 @@ import type { HTTPHeaders } from 'elysia/dist/types';
 import { ElysiaWS } from 'elysia/dist/ws';
 import type {
   AggregateOptions,
+  CreateIndexesOptions,
   Db,
   Document,
   Filter,
+  IndexSpecification,
   ObjectId,
   Sort,
 } from 'mongodb';
@@ -128,6 +130,36 @@ export interface SyncConstraint {
   collection: string;
 }
 
+export type IndexDictionary<CollectionSchema> = Partial<
+  Record<
+    keyof CollectionSchema,
+    Record<
+      string,
+      {
+        definition: IndexSpecification;
+        options?: CreateIndexesOptions;
+      }
+    >
+  >
+>;
+
+// {
+//   [key: keyof CollectionSchema]: Record<
+//     string,
+//     {
+//       definition: IndexSpecification;
+//       options?: CreateIndexesOptions;
+//     }
+//   >;
+
+//   // {
+//   //   [key: string]: {
+//   //     definition: IndexSpecification;
+//   //     options?: CreateIndexesOptions;
+//   //   };
+//   // };
+// };
+
 // @todo needs to replace typebox with zod and validate it internally
 const SyncParamsSchema = <T extends string>(collections: readonly T[]) =>
   t.Object({
@@ -181,6 +213,7 @@ export class Instant<
   #size = 1_000;
   #inspect = false;
   #connection = new Map<string, { clients: ElysiaWS<object, object>[] }>();
+  #index!: IndexDictionary<CollectionSchema>;
   #constraints: SyncConstraint[] = [];
   #schema!: CollectionSchema;
   #pendingTasks: Subscription | undefined;
@@ -258,6 +291,7 @@ export class Instant<
     cloud,
     db,
     mongoURI,
+    index,
   }: {
     size?: number | undefined;
     inspect?: boolean | undefined;
@@ -266,6 +300,7 @@ export class Instant<
     cloud?: CloudSchema;
     db?: Db;
     mongoURI?: string;
+    index?: IndexDictionary<CollectionSchema>;
   }) {
     if (!schema) {
       throw new Error('a data schema is required');
@@ -288,10 +323,11 @@ export class Instant<
       ...schema,
     };
 
-    this.#size = size || this.#size;
+    this.#size = size || parseInt(process.env['INSTA_BATCH_SIZE'] || '1_000');
     this.#inspect = inspect || this.#inspect;
     this.#constraints = constraints || [];
     this.#mongoURI = mongoURI || process.env['INSTA_MONGO_URI'] || '';
+    this.#index = index || {};
 
     this.#collections = Object.keys(schema).filter((key) => {
       try {
@@ -685,7 +721,7 @@ export class Instant<
         console.log('🦊 Instant Server is ready');
       }
     } catch (error) {
-      console.error('🚨 Instant Server failed to start', error);
+      console.error('🚨 Instant Server failed to start', this.#mongoURI, error);
     }
   }
 
@@ -1384,28 +1420,74 @@ export class Instant<
 
   async #createIndexes() {
     const collections = Object.keys(this.#schema);
+    const mongoCollections = await this.db.listCollections().toArray();
     for (const collection of collections) {
-      /**
-       * Create `_expires_at` index used for soft deletes.
-       * We don't actually delete a document right away, we update its _expires_at field with a `Date` so that clients can be aware of the delete.
-       * Then mongo will automatically delete this document once the date is reached.
-       * Another reasoning is due to hooks like `afterDelete` where we need the document to be available for linking it back to the consumer.
-       */
-
-      // check if index exists first
-      const indexes = await this.db.collection(collection).indexes();
-      const indexExists = indexes.find(
-        (index) => index['name'] === '_expires_at_1'
-      );
-      if (indexExists) {
+      // if the collections doesn't in mongo, skip
+      if (!mongoCollections.find((c) => c.name === collection)) {
         continue;
       }
 
-      const indexResult = await this.db
-        .collection(collection)
-        .createIndex({ _expires_at: 1 }, { expireAfterSeconds: 0 });
+      const existingIndexes = await this.db.collection(collection).indexes();
 
-      console.log(`💽 Index created for collection ${collection}`, indexResult);
+      // delete all indexes first (make this an option?)
+      // await this.db.collection(collection).dropIndexes();
+
+      const commonPatterns = {
+        [collection as any]: {
+          most_recent: {
+            definition: {
+              _updated_at: -1,
+            },
+          },
+          least_recent: {
+            definition: {
+              _updated_at: 1,
+            },
+          },
+          /**
+           * Create `_expires_at` index used for soft deletes.
+           * We don't actually delete a document right away, we update its _expires_at field with a `Date` so that clients can be aware of the delete.
+           * Then mongo will automatically delete this document once the date is reached.
+           * Another reasoning is due to hooks like `afterDelete` where we need the document to be available for linking it back to the consumer.
+           */
+          soft_delete: {
+            definition: {
+              _expires_at: 1,
+            },
+            options: {
+              expireAfterSeconds: 0,
+            },
+          },
+          ...this.#index[collection]
+        },
+      } as IndexDictionary<CollectionSchema>;
+
+      // create indexes
+      for (const [indexName, indexSpec] of Object.entries(
+        commonPatterns[collection] ?? {}
+      )) {
+        try {
+          // Check if index exists
+          const indexExists = existingIndexes.some(
+            (index) => index.name === indexName
+          );
+
+          if (!indexExists) {
+            await this.db
+              .collection(collection)
+              .createIndex(indexSpec.definition, {
+                name: indexName,
+                ...indexSpec.options,
+              });
+            console.log(`🔎 Created index ${indexName} for ${collection}`);
+          }
+        } catch (error) {
+          console.error(
+            `❌ Failed to create index ${indexName} for ${collection}:`,
+            error
+          );
+        }
+      }
     }
   }
 

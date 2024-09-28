@@ -7,24 +7,27 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": [
-          "docker build -f ./apps/api/Dockerfile -t insta-server-demo ."
-        ]
+        "commands": ["docker build -f ./apps/api/Dockerfile -t insta-api ."]
       }
     },
     "preview": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["docker run --env-file ./apps/api/.env insta-server-demo"]
+        "commands": [
+          "docker rm -f insta-api || true",
+          "docker run -p 1337:1337 -d --network insta-cloud --name insta-api --env-file ./apps/api/.env insta-api"
+        ],
+        "parallel": false
       }
     },
     "serve": {
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "nx types server",
+          "nx types api",
           "bun run --env-file apps/api/.env --watch apps/api/src/main.ts"
-        ]
+        ],
+        "parallel": false
       }
     },
     "types": {

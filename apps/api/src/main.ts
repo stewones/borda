@@ -6,8 +6,6 @@ import { CloudSchema, SyncSchema } from '@/common';
 import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
 
-console.log('INSTA_MONGO_URI', process.env['INSTA_MONGO_URI']);
-
 /**
  * instantiate and export the borda server
  * its instance is the client you should use
@@ -69,8 +67,18 @@ console.log('INSTA_MONGO_URI', process.env['INSTA_MONGO_URI']);
 const insta = new Instant({
   schema: SyncSchema,
   cloud: CloudSchema,
+  index: {
+    users: {
+      // compound indexes example
+      mostRecentByNameAsc: {
+        definition: {
+          _updated_at: -1,
+          name: 1,
+        },
+      },
+    },
+  },
   // live: LiveSchema, // @todo migrate from Typebox
-  size: parseInt(process.env['INSTA_BATCH_SIZE'] || '1_000'),
   // set constraints to restrict broadcast and filtered data
   // constraints: [
   //   {

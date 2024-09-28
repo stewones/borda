@@ -28,7 +28,6 @@
     "@angular/service-worker": "18.2.0",
     "@clack/core": "^0.2.1",
     "@clack/prompts": "^0.5.1",
-    "@faker-js/faker": "^8.4.1",
     "@inrupt/jest-jsdom-polyfills": "^1.5.3",
     "@ng-icons/core": "^25.1.0",
     "@ng-icons/lucide": "^29.5.0",
@@ -133,6 +132,7 @@
     "elysia": "^1.1.9",
     "mongodb": "^6.9.0",
     "tslib": "^2.6.2",
-    "typescript": "5.4.5"
+    "typescript": "5.4.5",
+    "@faker-js/faker": "^8.4.1"
   }
 }
