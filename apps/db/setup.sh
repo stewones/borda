@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CONFIG_FILE="/config/db"
+CONFIG_FILE="/config/access"
 LOG_FILE="/config/log.txt"
 
 echo "🛠️ Starting mongo setup..." >> "$LOG_FILE"
