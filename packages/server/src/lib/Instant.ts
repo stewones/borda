@@ -291,7 +291,7 @@ export class Instant<
     this.#size = size || this.#size;
     this.#inspect = inspect || this.#inspect;
     this.#constraints = constraints || [];
-    this.#mongoURI = mongoURI || process.env['INSTANT_MONGO_URI'] || '';
+    this.#mongoURI = mongoURI || process.env['INSTA_MONGO_URI'] || '';
 
     this.#collections = Object.keys(schema).filter((key) => {
       try {

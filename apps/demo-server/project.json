@@ -7,7 +7,17 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": []
+        "commands": [
+          "docker build -f ./config/server-docker -t insta-server-demo ."
+        ]
+      }
+    },
+    "preview": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "docker run --env-file ./apps/demo-server/.env insta-server-demo"
+        ]
       }
     },
     "serve": {
@@ -48,10 +58,6 @@
     "lint": {
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"]
-    },
-    "docker": {
-      "dependsOn": ["build"],
-      "command": "docker build -f apps/server/Dockerfile . -t server"
     }
   },
   "tags": []

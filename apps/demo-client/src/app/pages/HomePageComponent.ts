@@ -32,15 +32,22 @@ import { HlmButtonDirective } from '@spartan-ng/ui-button-helm';
 import { HlmIconComponent } from '@spartan-ng/ui-icon-helm';
 import { BrnSeparatorComponent } from '@spartan-ng/ui-separator-brain';
 import { HlmSeparatorDirective } from '@spartan-ng/ui-separator-helm';
+import { BrnTooltipContentDirective } from '@spartan-ng/ui-tooltip-brain';
+import {
+  HlmTooltipComponent,
+  HlmTooltipTriggerDirective,
+} from '@spartan-ng/ui-tooltip-helm';
 
 import { insta } from '../borda';
 import { LoginFormComponent } from '../components/LoginFormComponent';
+import { PulsingDot } from '../components/PulsingDot';
 
 @Component({
   standalone: true,
   selector: 'app-home-page',
   imports: [
     RouterLink,
+    PulsingDot,
     HlmAlertTitleDirective,
     HlmAlertIconDirective,
     HlmAlertDescriptionDirective,
@@ -52,6 +59,9 @@ import { LoginFormComponent } from '../components/LoginFormComponent';
     BrnSeparatorComponent,
     HlmButtonDirective,
     LoginFormComponent,
+    BrnTooltipContentDirective,
+    HlmTooltipTriggerDirective,
+    HlmTooltipComponent,
   ],
   providers: [provideIcons({ lucideCloudLightning, lucideLoader })],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -115,7 +125,24 @@ import { LoginFormComponent } from '../components/LoginFormComponent';
             variant="link"
             class="w-full px-0 inline-block text-right"
           >
-            Manage Orgs <br />
+            <div class="inline-flex items-center">
+              @if (syncingOrgs()) {
+              <div class="mr-2">
+                <hlm-tooltip>
+                  <span hlmTooltipTrigger>
+                    <pulsing-dot></pulsing-dot>
+                  </span>
+                  <span
+                    *brnTooltipContent
+                    class="text-xs text-muted-foreground"
+                  >
+                    Syncronizing for the first time...
+                  </span>
+                </hlm-tooltip>
+              </div>
+              } Manage Orgs
+            </div>
+            <br />
             <span class="text-muted-foreground text-xs">
               {{ totalOrgs() }}
             </span>
@@ -128,7 +155,24 @@ import { LoginFormComponent } from '../components/LoginFormComponent';
             variant="link"
             class="w-full px-0 inline-block text-right"
           >
-            Manage Users<br />
+            <div class="inline-flex items-center">
+              @if (syncingUsers()) {
+              <div class="mr-2">
+                <hlm-tooltip>
+                  <span hlmTooltipTrigger>
+                    <pulsing-dot></pulsing-dot>
+                  </span>
+                  <span
+                    *brnTooltipContent
+                    class="text-xs text-muted-foreground"
+                  >
+                    Syncronizing for the first time...
+                  </span>
+                </hlm-tooltip>
+              </div>
+              } Manage Users
+            </div>
+            <br />
             <span class="text-muted-foreground text-xs">
               {{ totalUsers() }}
             </span>
@@ -141,7 +185,24 @@ import { LoginFormComponent } from '../components/LoginFormComponent';
             variant="link"
             class="w-full px-0 inline-block text-left"
           >
-            Manage Posts<br />
+            <div class="inline-flex items-center">
+              Manage Posts @if (syncingPosts()) {
+              <div class="ml-2">
+                <hlm-tooltip>
+                  <span hlmTooltipTrigger>
+                    <pulsing-dot></pulsing-dot>
+                  </span>
+                  <span
+                    *brnTooltipContent
+                    class="text-xs text-muted-foreground"
+                  >
+                    Syncronizing for the first time...
+                  </span>
+                </hlm-tooltip>
+              </div>
+              }
+            </div>
+            <br />
             <span class="text-muted-foreground text-xs">
               {{ totalPosts() }}
             </span>
@@ -154,7 +215,25 @@ import { LoginFormComponent } from '../components/LoginFormComponent';
             variant="link"
             class="w-full px-0 inline-block text-right"
           >
-            Manage Comments<br />
+            <div class="inline-flex items-center">
+              @if (syncingPosts()) {
+              <div class="mr-2">
+                <hlm-tooltip>
+                  <span hlmTooltipTrigger>
+                    <pulsing-dot></pulsing-dot>
+                  </span>
+                  <span
+                    *brnTooltipContent
+                    class="text-xs text-muted-foreground"
+                  >
+                    Syncronizing for the first time...
+                  </span>
+                </hlm-tooltip>
+              </div>
+              } Manage Comments
+            </div>
+
+            <br />
             <span class="text-muted-foreground text-xs">
               {{ totalComments() }}
             </span>
@@ -170,6 +249,10 @@ import { LoginFormComponent } from '../components/LoginFormComponent';
 export class HomePageComponent {
   display = toSignal(of(true).pipe(delay(100)), {
     initialValue: false,
+  });
+
+  session = toSignal(from(liveQuery(() => insta.cache.get('session'))), {
+    initialValue: insta.cache.default('session'),
   });
 
   totalUsers = toSignal(from(liveQuery(() => insta.count('users', {}))), {
@@ -188,9 +271,10 @@ export class HomePageComponent {
     initialValue: 0,
   });
 
-  session = toSignal(from(liveQuery(() => insta.cache.get('session'))), {
-    initialValue: insta.cache.default('session'),
-  });
+  syncingOrgs = toSignal(insta.syncing('orgs'));
+  syncingUsers = toSignal(insta.syncing('users'));
+  syncingPosts = toSignal(insta.syncing('posts'));
+  syncingComments = toSignal(insta.syncing('comments'));
 
   nameInitials = computed(() => {
     const { name } = this.session().user;

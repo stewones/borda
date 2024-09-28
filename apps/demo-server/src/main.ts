@@ -1,27 +1,12 @@
-/**
- * This is a compreehensive example of how to use Borda on an Elysia server
- * Checkout the `quick.ts` file for a minimal example
- *
- * It includes:
- *
- * - a borda server
- * - some database hooks
- * - some server functions
- * - some custom routes (reset User's password)
- * - some query tests for both client and server instances
- * - a custom email provider plugin
- * - a custom email password reset template plugin
- */
-import {
-  Elysia,
-  t,
-} from 'elysia';
+import { Elysia, t } from 'elysia';
 
 import { Instant } from '@borda/server';
 
 import { CloudSchema, SyncSchema } from '@/common';
 import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
+
+console.log('INSTA_MONGO_URI', process.env['INSTA_MONGO_URI']);
 
 /**
  * instantiate and export the borda server

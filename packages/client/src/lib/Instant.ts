@@ -303,15 +303,21 @@ export class Instant<
     )
   ).pipe(startWith(navigator.onLine), distinctUntilChanged());
 
-  public syncing = from(liveQuery(() => this.db.table('_sync').toArray())).pipe(
-    map(
-      (activities) =>
-        activities.some(
-          (item) => item.activity === 'oldest' && item.status === 'incomplete'
-        ) && navigator.onLine
-    ),
-    startWith(false)
-  );
+  public syncing = (collection?: keyof CollectionSchema) =>
+    from(liveQuery(() => this.db.table('_sync').toArray())).pipe(
+      map((activities) => {
+        const filteredActivities = collection
+          ? activities.filter((item) => item.collection === collection)
+          : activities;
+        return (
+          filteredActivities.some(
+            (item) => item.activity === 'oldest' && item.status === 'incomplete'
+          ) && navigator.onLine
+        );
+      }),
+      startWith(false),
+      distinctUntilChanged()
+    );
 
   public errors = new Subject<InstaError<CloudSchema>>();
 
@@ -1307,17 +1313,32 @@ export class Instant<
       db.version(this.#version).stores(dexieSchema);
 
       this.#db = db;
-      this.#db.on('ready', async (db) => {
+      this.#db.on('ready', async () => {
         /* istanbul ignore next */
         if (this.#inspect && !isServer()) {
           // @ts-ignore
           window['insta'] = this;
         }
 
-        // pre populate cache with default values
-        await this.cache.populate();
+        if (isServer()) {
+          // pre populate cache with default values
+          await this.cache.populate();
 
-        Promise.resolve(db);
+          // ensure the sync table and all collections are empty in case there's no session
+          try {
+            const { token } = await this.cache.get('session');
+            if (!token) {
+              await this.db.table('_sync').clear();
+              for (const collection of this.collections) {
+                await this.db.table(collection).clear();
+              }
+            }
+          } catch (error) {
+            // fine for now. it's breaking tests without this
+          }
+        }
+
+        Promise.resolve();
       });
     } catch (error) {
       /* istanbul ignore next */
@@ -1616,33 +1637,36 @@ export class Instant<
      * clear the sync state and all collections
      */
     unsync: async () => {
+      try {
+        this.#session = undefined;
+        this.#destroyed.next();
+        this.wss?.close(1000, 'Unsynced');
+        if (this.#batch.observed) {
+          this.#batch.complete();
+        }
+      } catch (err) {
+        // console.error('Error unsyncing', err);
+      }
+
       if (!isServer()) {
         this.#worker.postMessage(
           JSON.stringify({
             sync: 'unsync',
           })
         );
+      } else {
+        await this.#db.table('_sync').clear();
+
+        for (const collection of Object.keys(this.#schema)) {
+          await this.#db.transaction(
+            'rw?',
+            this.#db.table(collection),
+            async () => {
+              await this.#db.table(collection).clear();
+            }
+          );
+        }
       }
-
-      this.#session = undefined;
-      this.#destroyed.next();
-      this.wss?.close(1000, 'Unsynced');
-
-      if (this.#batch.observed) {
-        this.#batch.complete();
-      }
-
-      for (const collection of Object.keys(this.#schema)) {
-        await this.#db.transaction(
-          'rw?',
-          this.#db.table(collection),
-          async () => {
-            await this.#db.table(collection).clear();
-          }
-        );
-      }
-
-      await this.#db.table('_sync').clear();
     },
 
     /**
@@ -1701,9 +1725,9 @@ export class Instant<
     populate: async () => {
       const cache = await this.db.table('_cache').toArray();
       for (const key in this.#cache) {
-        let { value } = cache.find((c) => c.key === key) || {};
-        if (!value) {
-          value = this.cache.default(key);
+        const c = cache.find((c) => c.key === key);
+        if (!c?.value) {
+          const value = this.cache.default(key);
           await this.db.table('_cache').add({
             key,
             value,

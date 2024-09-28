@@ -1385,7 +1385,7 @@ describe('Instant Client', () => {
   test('syncing stream should emit true when there is an incomplete oldest sync activity', async () => {
     const syncHistory: boolean[] = [];
 
-    insta.syncing.subscribe((syncing) => {
+    insta.syncing().subscribe((syncing) => {
       console.log('syncing', syncing);
       syncHistory.push(syncing);
     });
@@ -1405,7 +1405,7 @@ describe('Instant Client', () => {
   test('syncing stream should emit false when all sync activities are complete', async () => {
     const syncHistory: boolean[] = [];
 
-    insta.syncing.subscribe((syncing) => {
+    insta.syncing('users').subscribe((syncing) => {
       syncHistory.push(syncing);
     });
 
@@ -1418,11 +1418,12 @@ describe('Instant Client', () => {
     });
 
     await delay(100);
-    expect(syncHistory).toEqual([false, false]);
+
+    expect(syncHistory).toEqual([false]);
   });
 
   test('syncing stream should emit false when no sync activities are present', async () => {
-    const syncingValue = await firstValueFrom(insta.syncing);
+    const syncingValue = await firstValueFrom(insta.syncing());
     expect(syncingValue).toBe(false);
   });
 
