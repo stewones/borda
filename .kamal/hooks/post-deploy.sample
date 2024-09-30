@@ -1,7 +1,5 @@
 #!/bin/sh
 
-# A sample post-deploy hook
-#
 # These environment variables are available:
 # KAMAL_RECORDED_AT
 # KAMAL_PERFORMER

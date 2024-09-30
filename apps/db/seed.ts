@@ -18,7 +18,7 @@ await insta.ready();
     //addOneUser();
     await addManyOrgsUsersPostsComments();
   }
-  process.exit(0);
+  // process.exit(0);
 })();
 
 ////////////////////////////////////////
@@ -148,4 +148,6 @@ async function addManyOrgsUsersPostsComments() {
   });
 
   console.timeEnd(key);
+
+  process.exit(0);
 }

@@ -1,0 +1,9 @@
+node_modules
+coverage
+dist
+docs
+test
+tools
+.nx
+.vscode
+cli

@@ -15,7 +15,7 @@
       "options": {
         "commands": [
           "docker rm -f insta-api || true",
-          "docker run -p 1337:1337 -d --network insta-cloud --name insta-api --env-file ./apps/api/.env insta-api"
+          "docker run -p 1337:1337 -d --network insta-cloud --name insta-api --env-file ./.env insta-api"
         ],
         "parallel": false
       }
@@ -25,7 +25,7 @@
       "options": {
         "commands": [
           "nx types api",
-          "bun run --env-file apps/api/.env --watch apps/api/src/main.ts"
+          "bun run --env-file .env --watch apps/api/src/main.ts"
         ],
         "parallel": false
       }
