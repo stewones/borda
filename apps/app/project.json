@@ -15,7 +15,12 @@
         "main": "apps/app/src/main.ts",
         "tsConfig": "apps/app/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
-        "assets": ["apps/app/src/favicon.ico", "apps/app/src/assets"],
+        "assets": [
+          "apps/app/src/favicon.ico",
+          "apps/app/src/assets",
+          "apps/app/src/server.ts",
+          "apps/app/src/manifest.json"
+        ],
         "styles": ["apps/app/src/styles.css"],
         "scripts": [],
         "webWorkerTsConfig": "apps/app/tsconfig.worker.json",
@@ -81,10 +86,51 @@
         "webWorkerTsConfig": "apps/app/tsconfig.worker.json"
       }
     },
+    "bundle": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx build app --configuration=production",
+          "docker build -f ./apps/app/Dockerfile -t insta-app ./dist/apps/app"
+        ],
+        "parallel": false
+      }
+    },
     "preview": {
       "executor": "nx:run-commands",
       "options": {
+        "commands": [
+          "docker network create insta-net || true",
+          "docker rm -f insta-app || true",
+          "docker run -p 4201:3000 -d --network insta-net --name insta-app insta-app"
+        ],
+        "parallel": false
+      }
+    },
+    "preview.dev": {
+      "executor": "nx:run-commands",
+      "options": {
         "command": "bunx angular-http-server --path dist/apps/app -p 4220"
+      }
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx build app --prod",
+          "kamal deploy -c apps/app/deploy.yml"
+        ],
+        "parallel": false
+      }
+    },
+    "redeploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx build app --prod",
+          "kamal redeploy -c apps/app/deploy.yml"
+        ],
+        "parallel": false
       }
     }
   }

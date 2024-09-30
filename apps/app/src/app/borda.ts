@@ -59,12 +59,13 @@ export const sessionReset = createAction('session/reset');
  */
 
 /**
+ * @deprecated
  * export borda instance with browser capabilities
  */
 const borda = new Borda({
   inspect: !environment.production,
-  serverURL: environment.serverURL,
-  serverKey: environment.serverKey,
+  // serverURL: environment.serverURL,
+  // serverKey: environment.serverKey,
   reducers: {
     session: createReducer<Session>(
       // preload state
@@ -117,6 +118,9 @@ const borda = new Borda({
 });
 
 const insta = new Instant({
+  name: 'insta-app',
+  serverURL: environment.serverURL,
+  inspect: !environment.production,
   schema: SyncSchema,
   cloud: CloudSchema,
   cache: {
@@ -129,17 +133,11 @@ const insta = new Instant({
       }),
     }),
   },
-  name: 'InstantTest',
-  inspect: true,
-  // @todo transfer to the schema itself as an option
-  // and implement server side auto index generation
+  // @todo make this an option to the schema fields?
   index: {
     users: ['_updated_at', '_expires_at', 'name', 'email'],
     orgs: ['_updated_at', 'name'],
   },
-  size: environment.instantSize,
-  buffer: environment.instantBuffer,
-  serverURL: environment.serverURL,
 });
 
 export { borda, insta };

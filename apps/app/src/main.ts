@@ -1,5 +1,5 @@
 import {
-  isDevMode,
+  enableProdMode,
   provideExperimentalZonelessChangeDetection,
 } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
@@ -18,6 +18,10 @@ import { AppRoutes } from './app/AppRoutes';
 import { borda, insta } from './app/borda';
 import { environment } from './environment';
 
+if (environment.production) {
+  enableProdMode();
+}
+
 /**
  * Setup Instant Worker
  */
@@ -30,7 +34,7 @@ const startup = [borda.browser(), insta.ready()];
 
 Promise.allSettled(startup)
   .then(async () => {
-    const session = await insta.cache.get('session');
+    const session = (await insta.cache.get('session')) || {};
     if (session.token) {
       await insta.cloud.sync({
         session,
@@ -52,7 +56,7 @@ Promise.allSettled(startup)
           })
         ),
         provideServiceWorker('ngsw-worker.js', {
-          enabled: !isDevMode(),
+          enabled: environment.production,
           registrationStrategy: 'registerWhenStable:30000',
         }),
       ],

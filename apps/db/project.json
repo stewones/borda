@@ -4,7 +4,7 @@
   "sourceRoot": "apps/db",
   "projectType": "application",
   "targets": {
-    "build": {
+    "bundle": {
       "executor": "nx:run-commands",
       "options": {
         "commands": ["docker build -f ./apps/db/Dockerfile -t insta-db ."]
@@ -14,8 +14,26 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
+          "docker network create insta-net || true",
           "docker rm -f insta-db || true",
-          "docker run -d --name insta-db -p 27018:27017 --network insta-cloud -v ./apps/db/data:/data/db -v ./apps/db/config:/config --restart always insta-db"
+          "docker run -d --name insta-db -p 27018:27017 --network insta-net -v ./apps/db/data:/data/db -v ./apps/db/config:/config --restart always insta-db"
+        ],
+        "parallel": false
+      }
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["kamal accessory boot -c apps/db/deploy.yml"],
+        "parallel": false
+      }
+    },
+    "redeploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "kamal accessory remove db -c apps/db/deploy.yml",
+          "kamal accessory boot db -c apps/db/deploy.yml"
         ],
         "parallel": false
       }

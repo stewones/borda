@@ -37,7 +37,7 @@ function ping() {
   return fetch(`${environment.serverURL}/ping`, {
     headers: {
       'Content-Type': 'text/html',
-      'X-Borda-Api-Key': environment.serverKey,
+       // 'X-Borda-Api-Key': environment.serverKey,
     },
   });
 }

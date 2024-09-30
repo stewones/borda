@@ -7,11 +7,14 @@
       "installMode": "prefetch",
       "resources": {
         "files": [
+          "/",
           "/favicon.ico",
           "/index.html",
-          "/manifest.webmanifest",
+          "/manifest.json",
+          "/ngsw.json",
           "/*.css",
-          "/*.js"
+          "/*.js",
+          "/assets/icons/*"
         ]
       }
     },
@@ -25,5 +28,6 @@
         ]
       }
     }
-  ]
+  ],
+  "navigationUrls": ["/**", "!/**/*.{js,css,json,ico}"]
 }

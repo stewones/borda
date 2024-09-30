@@ -5,3 +5,5 @@
 docker exec -it insta-db /bin/sh -c "/docker-entrypoint-initdb.d/startup.sh"
 
 kamal app exec 'bun run apps/db/seed.ts' -c apps/api/config/deploy.yml
+
+ssh -i ~/.ssh/insta.pem super@ip

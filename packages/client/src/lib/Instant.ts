@@ -1682,12 +1682,11 @@ export class Instant<
     get: async <CacheKey extends keyof CacheSchema>(
       key: CacheKey
     ): Promise<NonNullable<z.infer<CacheSchema[CacheKey]>>> => {
-      const { value } =
-        (await this.db
-          .table('_cache')
-          .where('key')
-          .equals(key as string)
-          .first()) || {};
+      const { value } = (await this.db
+        .table('_cache')
+        .where('key')
+        .equals(key as string)
+        .first()) || { value: {} };
 
       return value as NonNullable<z.infer<CacheSchema[CacheKey]>>;
     },

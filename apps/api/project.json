@@ -4,7 +4,7 @@
   "sourceRoot": "apps/api/src",
   "projectType": "application",
   "targets": {
-    "build": {
+    "bundle": {
       "executor": "nx:run-commands",
       "options": {
         "commands": ["docker build -f ./apps/api/Dockerfile -t insta-api ."]
@@ -14,9 +14,24 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
+          "docker network create insta-net || true",
           "docker rm -f insta-api || true",
-          "docker run -p 1337:1337 -d --network insta-cloud --name insta-api --env-file ./.env insta-api"
+          "docker run -p 1337:1337 -d --network insta-net --name insta-api --env-file ./.env insta-api"
         ],
+        "parallel": false
+      }
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["kamal deploy -c apps/api/deploy.yml"],
+        "parallel": false
+      }
+    },
+    "redeploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["kamal redeploy -c apps/api/deploy.yml"],
         "parallel": false
       }
     },
