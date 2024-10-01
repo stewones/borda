@@ -79,6 +79,8 @@ async function addManyOrgsUsersPostsComments() {
   });
 
   const users = [];
+  const emailSet = new Set<string>();
+
   for (const org of orgs) {
     for (let i = 0; i < 250; i++) {
       const _id = newObjectId();
@@ -86,10 +88,16 @@ async function addManyOrgsUsersPostsComments() {
 
       await delay(1);
 
+      let email: string;
+      do {
+        email = faker.internet.email().toLowerCase();
+      } while (emailSet.has(email));
+      emailSet.add(email);
+
       users.push({
         _id,
         name: faker.person.fullName(),
-        email: faker.internet.email().toLowerCase(),
+        email,
         _p_org: pointer('orgs', org._id),
         _created_at: _date,
         _updated_at: _date,

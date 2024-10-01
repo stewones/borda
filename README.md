@@ -2,9 +2,12 @@
 
 # deploying accessory with kamal doesn't run the entrypoint.d scripts
 # so we need to exec into the container and run the script manually
-docker exec -it insta-db /bin/sh -c "/docker-entrypoint-initdb.d/startup.sh"
+ssh -t -i ~/.ssh/insta.pem super@172.206.58.38 'docker exec -it insta-mongo-db /bin/sh -c "/docker-entrypoint-initdb.d/startup.sh"'
 
-kamal app exec 'bun run apps/db/seed.ts' -c apps/api/config/deploy.yml
+# seed the database
+ssh -t -i ~/.ssh/insta.pem super@172.206.58.38 'docker exec -it insta-app-id /bin/sh -c "bun run apps/db/seed.ts"'
+# kamal way
+kamal app exec 'bun run apps/db/seed.ts' -c apps/api/deploy.yml
 
 
 # connect to insta server
