@@ -1,3 +1,6 @@
+import { toast } from 'ngx-sonner';
+import { filter } from 'rxjs';
+
 import {
   ChangeDetectionStrategy,
   Component,
@@ -40,6 +43,47 @@ import { insta } from './borda';
   `,
 })
 export class AppComponent {
+  errors$ = insta.errors
+    .pipe(
+      filter((err) =>
+        ['validation_error', 'bad_request'].includes(err.type ?? '')
+      )
+    )
+    .subscribe((err) => {
+      const { message, summary, errors } = err;
+      const niceMessage = errors
+        ?.map((e) => `- ${e.path}: ${e.message}`)
+        .join('<br />');
+
+      toast(message, {
+        description: `${summary}<br />${niceMessage}`,
+        duration: 8000,
+      });
+
+      setTimeout(() => {
+        // on next tick parse <br /> which is string to actual line break
+        const toasts = document.querySelectorAll(
+          'ngx-sonner-toaster li[data-sonner-toast]'
+        );
+        toasts.forEach((toast) => {
+          const description = toast.querySelector('[data-description]');
+          if (description && description instanceof HTMLElement) {
+            const content = description.textContent || '';
+            const fragment = document.createDocumentFragment();
+
+            content.split('<br />').forEach((text, index, array) => {
+              fragment.appendChild(document.createTextNode(text));
+              if (index < array.length - 1) {
+                fragment.appendChild(document.createElement('br'));
+              }
+            });
+
+            description.innerHTML = '';
+            description.appendChild(fragment);
+          }
+        });
+      }, 0);
+    });
   async ngOnInit() {
     const usage = await insta.usage();
     console.log(`💽 total indexeddb usage`, usage);

@@ -12,6 +12,7 @@ import { singular } from 'pluralize';
 import {
   bufferTime,
   distinctUntilChanged,
+  filter,
   from,
   fromEvent,
   interval,
@@ -133,7 +134,7 @@ export interface SyncResponseData {
 }
 
 export interface SyncResponse {
-  synced: string;
+  synced_at: string;
   collection: string;
   count: number;
   data: SyncResponseData[];
@@ -233,7 +234,7 @@ export const createError = (
 const InstaSyncSchema = z.object({
   collection: z.string(),
   count: z.number(),
-  synced: z.string(),
+  synced_at: z.string(),
   activity: z.enum(['recent', 'oldest']),
   status: z.enum(['complete', 'incomplete']),
 });
@@ -280,6 +281,11 @@ export const InstaSessionSchema = createSchema('sessions', {
 
 export type InstaUser = z.infer<typeof InstaUserSchema>;
 export type InstaSession = z.infer<typeof InstaSessionSchema>;
+
+const isMobile =
+  /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
 
 export class Instant<
   CollectionSchema extends SchemaType,
@@ -344,7 +350,7 @@ export class Instant<
   #destroyed: Subject<void> = new Subject();
   #batch!: Subject<{
     collection: string;
-    synced: string;
+    synced_at: string;
     activity: SyncActivity;
     token: string;
     headers: Record<string, string>;
@@ -358,6 +364,7 @@ export class Instant<
         if (isOnline && this.#been_offline && this.token) {
           this.syncBatch('recent');
           this.syncBatch('oldest');
+          this.recordActivity();
           /* istanbul ignore next */
           if (this.#inspect) {
             console.log('🟢 client is online');
@@ -367,6 +374,10 @@ export class Instant<
       tap((isOnline) => (this.#been_offline = !isOnline))
     )
     .subscribe();
+
+  private lastActivityTimestamp: number = Date.now();
+  private inactivityThreshold: number = 10 * 1000;
+  private schedulerSubscription: Subscription | null = null;
 
   get inspect() {
     return this.#inspect;
@@ -454,20 +465,20 @@ export class Instant<
       .where({ collection, activity })
       .first()) || {
       activity,
-      synced: null,
+      synced_at: null,
       status: 'incomplete',
     }) as z.infer<typeof InstaSyncSchema>;
   }
 
   async #setSync({
     collection,
-    synced,
+    synced_at,
     activity,
     count,
     status = 'incomplete',
   }: {
     collection: string;
-    synced?: string;
+    synced_at: string;
     activity: SyncActivity;
     count: number;
     status?: 'complete' | 'incomplete';
@@ -477,7 +488,7 @@ export class Instant<
       .where({ collection, activity })
       .first();
 
-    const payload = { collection, synced, count, status };
+    const payload = { collection, synced_at, count, status };
 
     if (sync) {
       return this.db
@@ -487,32 +498,6 @@ export class Instant<
     }
 
     return this.db.table('_sync').put({ ...payload, activity });
-  }
-
-  async #syncWorker({
-    collection,
-    synced,
-    activity,
-  }: {
-    collection: string;
-    synced: string;
-    activity: SyncActivity;
-  }) {
-    let url = `${this.#serverURL}/sync/${collection}?activity=${activity}`;
-
-    if (synced) {
-      url += `&synced=${synced}`;
-    }
-
-    await this.#worker.postMessage(
-      JSON.stringify({
-        url,
-        sync: 'batch',
-        token: this.token,
-        headers: this.#headers,
-        params: this.#params,
-      })
-    );
   }
 
   async #syncProcess({
@@ -618,16 +603,16 @@ export class Instant<
     };
   }
 
-  protected addBatch({
+  protected keepSyncing({
     collection,
-    synced,
+    synced_at,
     activity,
     token,
     headers,
     params,
   }: {
     collection: string;
-    synced: string;
+    synced_at: string;
     activity: SyncActivity;
     token: string;
     headers: Record<string, string>;
@@ -635,7 +620,7 @@ export class Instant<
   }) {
     this.#batch.next({
       collection,
-      synced,
+      synced_at,
       activity,
       token,
       headers,
@@ -644,102 +629,125 @@ export class Instant<
   }
 
   protected async runPendingMutations() {
-    if (this.#pendingMutationsBusy) {
-      return;
-    }
+    if (this.#pendingMutationsBusy) return;
 
+    this.#pendingMutationsBusy = true;
     try {
-      this.#pendingMutationsBusy = true;
-
       const collections = this.collections;
+      const batchSize = 100; // Adjust based on your needs
 
       for (const collection of collections) {
-        const query = {
-          [collection as keyof CollectionSchema]: {
-            $filter: {
-              _sync: {
-                $eq: 1,
-              },
+        let hasMore = true;
+        while (hasMore) {
+          const query = {
+            [collection as keyof CollectionSchema]: {
+              $filter: { _sync: { $eq: 1 } },
+              $limit: batchSize,
             },
-          },
-        };
+          };
 
-        const pending = await this.query(
-          query as unknown as iQL<CollectionSchema>
-        );
-        const data = pending[collection as keyof CollectionSchema];
-
-        for (const item of data) {
-          // check for validation, if fails, skip
-          const { type, message, summary, errors } = this.validate(
-            collection,
-            item
+          const pending = await this.query(
+            query as unknown as iQL<CollectionSchema>
           );
 
-          if (errors) {
-            /* istanbul ignore next */
+          const data = pending[collection as keyof CollectionSchema];
+
+          if (data.length === 0) {
             if (this.#inspect) {
-              console.error(
-                '❌ validation failed',
-                type,
-                message,
-                summary,
-                errors
-              );
+              console.log('👀 no mutations to sync', collection);
             }
+            hasMore = false;
             continue;
-          }
-
-          let url = `${this.#serverURL}/sync/${collection}`;
-
-          const token = this.token;
-          const headers = this.#headers;
-          const params = this.#params;
-          const method = item['_expires_at']
-            ? 'DELETE'
-            : item['_created_at'] !== item['_updated_at']
-            ? 'PUT'
-            : 'POST';
-
-          if (['DELETE', 'PUT'].includes(method)) {
-            url += `/${item['_id']}`;
-          }
-
-          // data should be only updated fields if updated
-          const data =
-            method === 'PUT'
-              ? item._updated_fields
-              : method === 'POST'
-              ? { ...item, _updated_fields: undefined }
-              : {};
-
-          await this.runMutationWorker({
-            collection,
-            url,
-            data,
-            method,
-            token,
-            headers,
-            params,
-            id: item['_id'],
-          });
-
-          if (data.length > 0) {
-            /* istanbul ignore next */
+          } else {
             if (this.#inspect) {
-              console.log('🔵 pending mutations', collection, method, data);
+              console.log('🔵 mutations to sync', collection, data.length);
             }
           }
+
+          // Process the batch
+          await Promise.all(
+            data.map((item) => this.processMutation(collection, item))
+          );
         }
       }
     } catch (error) {
       this.errors.next(error as InstaError<CloudSchema>);
-      /* istanbul ignore next */
-      if (this.#inspect) {
+      if (this.#inspect)
         console.error('Error while running pending mutations', error);
-      }
     } finally {
       this.#pendingMutationsBusy = false;
+    }
+  }
+
+  protected async processMutation(collection: string, item: Document) {
+    // check for validation, if fails, skip
+    const validation = this.validate(collection, item);
+    const { type, message, summary, errors } = validation;
+    if (errors) {
+      // skip from syncing
+      await this.db.table(collection).update(item['_id'], {
+        _sync: 0,
+      });
+
+      // post errors to the client
+      self.postMessage({
+        validation,
+      });
+
+      /* istanbul ignore next */
+      if (this.#inspect) {
+        console.error('❌ validation failed', type, message, summary, errors);
+      }
+      return;
+    }
+
+    let url = `${this.#serverURL}/sync/${collection}`;
+
+    const token = this.token;
+    const headers = this.#headers;
+    const params = this.#params;
+    const method = item['_expires_at']
+      ? 'DELETE'
+      : item['_created_at'] !== item['_updated_at']
+      ? 'PUT'
+      : 'POST';
+
+    if (['DELETE', 'PUT'].includes(method)) {
+      url += `/${item['_id']}`;
+    }
+
+    // data should be only updated fields if updated
+    const data =
+      method === 'PUT'
+        ? item['_updated_fields']
+        : method === 'POST'
+        ? { ...item, _updated_fields: undefined }
+        : {};
+
+    await this.runMutationWorker({
+      collection,
+      url,
+      data,
+      method,
+      token,
+      headers,
+      params,
+      id: item['_id'],
+    }).catch((err) => {
+      if (this.#inspect) {
+        console.error('❌ error while running mutation worker', err);
+      }
+      // post error to the client
+      self.postMessage({
+        validation: err,
+      });
+    });
+
+    if (data.length > 0) {
+      /* istanbul ignore next */
+      if (this.#inspect) {
+        console.log('🔵 pending mutations', collection, method, data);
+      }
     }
   }
 
@@ -844,20 +852,16 @@ export class Instant<
       url += `&${customParams}`;
     }
 
-    const { synced, collection, data, count, activity } =
+    const { synced_at, collection, data, count, activity } =
       await fetcher<SyncResponse>(url, {
         direct: true,
         method: 'GET',
         headers: {
           authorization: `Bearer ${token}`,
           ...headers,
+          // ['x-timezone']: Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
       });
-
-    // const isMobile =
-    //   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    //     navigator.userAgent
-    //   );
 
     await this.db.transaction('rw!', this.db.table(collection), async () => {
       for (const { status, value } of data) {
@@ -878,13 +882,13 @@ export class Instant<
       localCount = await this.db
         .table(collection)
         .where('_updated_at')
-        .belowOrEqual(synced)
+        .belowOrEqual(synced_at)
         .count();
     } else {
       localCount = await this.db
         .table(collection)
         .where('_created_at')
-        .aboveOrEqual(synced)
+        .aboveOrEqual(synced_at)
         .count();
     }
 
@@ -897,19 +901,21 @@ export class Instant<
         collection,
         activity,
         count,
-        synced,
+        synced_at,
         status: 'complete',
       });
     } else {
-      await this.#setSync({ collection, activity, count, synced });
+      await this.#setSync({ collection, activity, count, synced_at });
     }
 
     // schedule next sync
-    // we skip this on mobile devices to avoid unecessary data consumption
-    // !isMobile && (needs a more robust implementation, like set a max storage setting)
     if (localCount < remoteCount) {
       if (!this.token) {
-        return {};
+        return {
+          collection,
+          activity,
+          synced_at,
+        };
       }
       /* istanbul ignore next */
       if (this.#inspect) {
@@ -919,12 +925,13 @@ export class Instant<
           'for',
           collection,
           activity,
-          synced
+          synced_at
         );
       }
-      this.addBatch({
+
+      this.keepSyncing({
         collection,
-        synced,
+        synced_at,
         activity,
         token,
         headers,
@@ -935,7 +942,7 @@ export class Instant<
     return {
       collection,
       activity,
-      synced,
+      synced_at,
     };
   }
 
@@ -1060,11 +1067,11 @@ export class Instant<
           }
 
           // update last sync
-          const synced = value['_updated_at'];
+          const synced_at = value['_updated_at'];
           await this.#setSync({
             collection,
             activity: 'recent',
-            synced,
+            synced_at,
             count: 0,
           });
         } catch (err) {
@@ -1104,14 +1111,30 @@ export class Instant<
           }
         }
 
+        // Implement exponential backoff for reconnection
+        let retryDelay = 1000;
+        const maxRetryDelay = 30000;
+        const retry = () => {
+          if (this.#destroyed.isStopped) return;
+
+          retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
+          setTimeout(() => {
+            if (this.inspect) {
+              console.log('🟡 sync live worker on retry');
+            }
+            this.buildWebSocket(url)(webSocket);
+          }, retryDelay);
+        };
+        retry();
+
         // retry
-        setTimeout(() => {
-          /* istanbul ignore next */
-          if (this.inspect) {
-            console.log('🟡 sync live worker on retry');
-          }
-          this.buildWebSocket(url)(webSocket);
-        }, 1_000);
+        // setTimeout(() => {
+        //   /* istanbul ignore next */
+        //   if (this.inspect) {
+        //     console.log('🟡 sync live worker on retry');
+        //   }
+        //   this.buildWebSocket(url)(webSocket);
+        // }, 1_000);
       },
     };
 
@@ -1167,7 +1190,7 @@ export class Instant<
 
     try {
       // post to the server
-      const { _id } = await fetcher(url, {
+      await fetcher(url, {
         direct: true,
         method,
         body: data,
@@ -1186,76 +1209,49 @@ export class Instant<
       if (this.#inspect) {
         console.error('🔴 Error mutating document', collection, data, err);
       }
-      if (id && err['type'] === 'not_found') {
-        // delete from local db
-        await this.db.table(collection).delete(id);
-      }
+
+      // skip from syncing
+      await this.db.table(collection).update(id, {
+        _sync: 0,
+      });
+
+      // post error to the client
+      self.postMessage({
+        validation: err,
+      });
     }
   }
 
   protected async syncLive() {
-    const url = `${this.#serverURL.replace('http', 'ws')}/sync/live?session=${
-      this.token
-    }`;
     this.#worker.postMessage(
       JSON.stringify({
-        url,
         sync: 'live',
         token: this.token,
         headers: this.#headers,
         params: this.#params,
+        serverURL: this.#serverURL,
       })
     );
   }
 
   protected async syncBatch(activity: SyncActivity) {
-    try {
-      const collections = this.collections;
-
-      for (const collection of collections) {
-        const sync = await this.#useSync({
-          collection,
-          activity,
-        });
-
-        if (activity === 'recent' && !sync.synced) {
-          // try to get the most recent _updated_at from the local db
-          const mostRecentUpdatedAt = await this.db
-            .table(collection)
-            .orderBy('_updated_at')
-            .reverse()
-            .first()
-            .then((doc) => doc?._updated_at);
-
-          if (mostRecentUpdatedAt) {
-            sync.synced = mostRecentUpdatedAt;
-          } else {
-            // otherwise we default to current date
-            sync.synced = new Date().toISOString();
-          }
-        }
-
-        if (sync.status === 'incomplete') {
-          await this.#syncWorker({
-            collection,
-            synced: sync.synced,
-            activity,
-          });
-        }
-      }
-    } catch (err) {
-      this.errors.next(err as InstaError<CloudSchema>);
-      /* istanbul ignore next */
-      if (this.#inspect) {
-        console.error('Error syncing', err);
-      }
-    }
+    this.#worker.postMessage(
+      JSON.stringify({
+        sync: 'batch',
+        activity,
+        token: this.token,
+        headers: this.#headers,
+        params: this.#params,
+        serverURL: this.#serverURL,
+      })
+    );
   }
 
   protected async syncScheduler() {
     this.#worker.postMessage(
       JSON.stringify({
         sync: 'scheduler',
+        serverURL: this.#serverURL,
       })
     );
   }
@@ -1457,14 +1453,24 @@ export class Instant<
    */
   public worker() {
     return async ({ data }: { data: string }) => {
+      const {
+        sync = 'batch', // batch|live|unsync|scheduler|recordActivity
+        synced_at,
+        token = '',
+        headers = {},
+        params = {},
+        activity = 'recent', // recent|oldest
+        serverURL = '',
+      } = JSON.parse(data);
+
       try {
-        const {
-          url,
-          sync = 'batch', // batch|live|unsync|scheduler
-          token = '',
-          headers = {},
-          params = {},
-        } = JSON.parse(data);
+        if (!this.#db) {
+          await this.ready();
+        }
+
+        if (serverURL && !this.#serverURL) {
+          this.#serverURL = serverURL;
+        }
 
         if (sync === 'unsync') {
           await this.cloud.unsync();
@@ -1473,42 +1479,29 @@ export class Instant<
 
         if (sync === 'scheduler') {
           /**
-           * task scheduler
+           * task scheduler for
+           * - pending mutations
+           * - pending pointers
            */
-          this.#pendingTasks = interval(1000)
-            .pipe(
-              tap(
-                async () =>
-                  await Promise.allSettled([
-                    this.runPendingMutations(),
-                    this.runPendingPointers(),
-                  ])
-              )
-            )
-            .subscribe();
+          this.startTaskScheduler();
 
           /**
-           * batch scheduler
+           * batch scheduler for
+           * - fetching paginated data from the server
+           * - updating the local indexedDB
+           * - keeping syncing older and new data in background
            */
           this.#createSyncBatch();
           return;
         }
 
-        if (!token) {
-          return Promise.resolve();
+        if (sync === 'recordActivity') {
+          this.lastActivityTimestamp = Date.now();
+          if (!this.schedulerSubscription) {
+            this.startTaskScheduler();
+          }
+          return;
         }
-
-        if (token && !this.#session?.token) {
-          this.#session = {
-            ...this.#session,
-            token,
-          } as InstaSession;
-        }
-
-        this.#headers = headers;
-        this.#params = params;
-
-        const perf = performance.now();
 
         /**
          * run the worker, it should:
@@ -1519,32 +1512,96 @@ export class Instant<
          * now the ui can just query against the local db instead
          * including realtime updates via dexie livequery 🎉
          */
+
         if (sync === 'batch') {
-          const { collection, activity, synced } = await this.runBatchWorker({
-            url,
-            token,
-            headers,
-            params,
-          });
-          if (!collection) {
-            return;
+          if (!token) {
+            if (this.#inspect) {
+              console.warn('No token provided for batch sync');
+            }
+            return Promise.resolve();
           }
 
-          /* istanbul ignore next */
-          if (this.inspect) {
-            const syncDuration = performance.now() - perf;
-            const usage = await this.usage(collection);
-            console.log(
-              `💨 sync ${syncDuration.toFixed(2)}ms`,
-              collection,
-              activity,
-              synced
-            );
-            console.log('💾 estimated usage for', collection, usage);
+          if (token && !this.#session?.token) {
+            this.#session = {
+              ...this.#session,
+              token,
+            } as InstaSession;
+          }
+
+          this.#headers = headers;
+          this.#params = params;
+
+          const perf = performance.now();
+
+          const collections = this.collections;
+          const limit = isMobile ? 100 : 1000;
+
+          for (const collection of collections) {
+            try {
+              /* istanbul ignore next */
+              if (this.inspect) {
+                const syncDuration = performance.now() - perf;
+                const usage = await this.usage(collection);
+                console.log(
+                  `💨 sync ${syncDuration.toFixed(2)}ms`,
+                  collection,
+                  activity,
+                  synced_at
+                );
+                console.log('💾 estimated usage for', collection, usage);
+              }
+
+              const sync = await this.#useSync({
+                collection,
+                activity,
+              });
+
+              if (activity === 'recent' && !sync.synced_at) {
+                // try to get the most recent _updated_at from the local db
+                const mostRecentUpdatedAt = await this.db
+                  .table(collection)
+                  .orderBy('_updated_at')
+                  .reverse()
+                  .first()
+                  .then((doc) => doc?._updated_at);
+
+                if (mostRecentUpdatedAt) {
+                  sync.synced_at = mostRecentUpdatedAt;
+                } else {
+                  // otherwise we default to current date
+                  sync.synced_at = new Date().toISOString();
+                }
+              }
+
+              let url = `${
+                this.#serverURL
+              }/sync/${collection}?activity=${activity}`;
+
+              if (synced_at || sync.synced_at) {
+                url += `&synced_at=${synced_at || sync.synced_at}`;
+              }
+
+              await this.runBatchWorker({
+                url: url + `&limit=${limit}`,
+                token,
+                headers,
+                params,
+              });
+            } catch (err) {
+              this.errors.next(err as InstaError<CloudSchema>);
+              /* istanbul ignore next */
+              if (this.#inspect) {
+                console.error('Error syncing', err);
+              }
+            }
           }
         }
 
         if (sync === 'live') {
+          const url = `${this.#serverURL.replace(
+            'http',
+            'ws'
+          )}/sync/live?session=${this.token}`;
           this.runLiveWorker({ url, token, headers, params });
         }
       } catch (err) {
@@ -1621,15 +1678,25 @@ export class Instant<
           'Worker not initialized. Try instantiating a worker and adding it to Instant.setWorker({ worker })'
         );
       }
+
       this.#session = (session as InstaSession) || this.#session;
       this.#headers = headers || {};
       this.#params = params || {};
 
+      this.#worker.onmessage = (ev: MessageEvent) => {
+        const {
+          data: { validation },
+        } = ev;
+        if (validation) {
+          this.errors.next(validation);
+        }
+      };
+
       await Promise.allSettled([
         this.syncLive(),
+        this.syncScheduler(),
         this.syncBatch('oldest'),
         this.syncBatch('recent'),
-        this.syncScheduler(),
       ]);
     },
 
@@ -1644,6 +1711,7 @@ export class Instant<
         if (this.#batch.observed) {
           this.#batch.complete();
         }
+        this.stopTaskScheduler();
       } catch (err) {
         // console.error('Error unsyncing', err);
       }
@@ -1652,6 +1720,7 @@ export class Instant<
         this.#worker.postMessage(
           JSON.stringify({
             sync: 'unsync',
+            serverURL: this.#serverURL,
           })
         );
       } else {
@@ -1807,6 +1876,7 @@ export class Instant<
           this.db.table(collection as string),
           async () => {
             await this.db.table(collection as string).add(valueWithMetadata);
+            this.recordActivity();
           }
         );
 
@@ -1829,6 +1899,17 @@ export class Instant<
           return;
         }
 
+        // append required fields to updatedFields
+        const schemaFields = this.#schema[collection as keyof CollectionSchema];
+        const schema = schemaFields as unknown as z.ZodObject<any>;
+        const requiredFields = Object.keys(schema.shape).filter(
+          (key) => !schema.shape[key].isOptional()
+        );
+
+        requiredFields.forEach((field) => {
+          updatedFields[field] = value[field];
+        });
+
         await this.db.transaction(
           'rw!',
           this.db.table(collection as string),
@@ -1840,6 +1921,7 @@ export class Instant<
               _updated_by: createPointer('users', this.user),
               _updated_fields: updatedFields,
             });
+            this.recordActivity();
           }
         );
       },
@@ -1854,6 +1936,7 @@ export class Instant<
               _expires_at: new Date().toISOString(),
               _deleted_by: createPointer('users', this.user),
             });
+            this.recordActivity();
           }
         );
       },
@@ -1871,7 +1954,7 @@ export class Instant<
           400,
           'validation_error',
           'Invalid data provided',
-          `The data provided for ${collection} is not valid.`,
+          `The data provided for ${singular(collection)} is not valid.`,
           zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
@@ -2246,7 +2329,30 @@ export class Instant<
           });
         }
 
-        // Process nested queries
+        // Process nested queries in parallel @todo
+        // const processNestedQueries = async (item: any) => {
+        //   const nestedQueries = Object.entries(tableQuery)
+        //     .filter(
+        //       ([key, value]) =>
+        //         !key.startsWith('$') && typeof value === 'object'
+        //     )
+        //     .map(async ([nestedTableName, nestedQuery]) => {
+        //       const result = await this.#executeQuery(
+        //         { [nestedTableName]: nestedQuery } as Q,
+        //         tableName as keyof CollectionSchema,
+        //         item._id
+        //       );
+        //       return [nestedTableName, result[nestedTableName]];
+        //     });
+
+        //   const results = await Promise.all(nestedQueries);
+        //   results.forEach(([nestedTableName, result]) => {
+        //     item[nestedTableName as keyof typeof item] = result;
+        //   });
+        // };
+
+        // await Promise.all(tableData.map(processNestedQueries));
+
         for (const item of tableData) {
           for (const nestedTableName in tableQuery) {
             if (
@@ -2377,7 +2483,7 @@ export class Instant<
   #createSyncBatch() {
     this.#batch = new Subject<{
       collection: string;
-      synced: string;
+      synced_at: string;
       activity: SyncActivity;
       token: string;
       headers: Record<string, string>;
@@ -2387,11 +2493,12 @@ export class Instant<
       .pipe(
         takeUntil(this.#destroyed),
         bufferTime(this.#buffer),
+        filter((collections) => collections.length > 0),
         tap(async (collections) => {
           for (const {
             collection,
             activity,
-            synced,
+            synced_at,
             token,
             headers,
             params,
@@ -2399,9 +2506,10 @@ export class Instant<
             try {
               /* istanbul ignore next */
               const perf = performance.now();
+              const limit = isMobile ? 100 : 1000;
               const url = `${
                 this.#serverURL
-              }/sync/${collection}?activity=${activity}&synced=${synced}`;
+              }/sync/${collection}?activity=${activity}&synced_at=${synced_at}&limit=${limit}`;
 
               await this.runBatchWorker({
                 url,
@@ -2418,7 +2526,7 @@ export class Instant<
                   `💨 sync ${syncDuration.toFixed(2)}ms`,
                   collection,
                   activity,
-                  synced
+                  synced_at
                 );
                 console.log('💾 estimated usage for', collection, usage);
               }
@@ -2437,5 +2545,45 @@ export class Instant<
         })
       )
       .subscribe();
+  }
+
+  private startTaskScheduler() {
+    if (this.schedulerSubscription) {
+      this.schedulerSubscription.unsubscribe();
+    }
+
+    this.schedulerSubscription = interval(1000)
+      .pipe(
+        tap(async () => {
+          const currentTime = Date.now();
+          if (
+            currentTime - this.lastActivityTimestamp >
+            this.inactivityThreshold
+          ) {
+            this.stopTaskScheduler();
+            return;
+          }
+
+          await Promise.allSettled([
+            this.runPendingMutations(),
+            this.runPendingPointers(),
+          ]);
+        })
+      )
+      .subscribe();
+  }
+
+  private stopTaskScheduler() {
+    if (this.schedulerSubscription) {
+      this.schedulerSubscription.unsubscribe();
+      this.schedulerSubscription = null;
+    }
+  }
+
+  // Call this method whenever there's user activity
+  public recordActivity() {
+    this.#worker.postMessage(
+      JSON.stringify({ sync: 'recordActivity', serverURL: this.#serverURL })
+    );
   }
 }

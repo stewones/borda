@@ -50,6 +50,8 @@ async function addOneUser() {
  * 4. for each post, add some comments scopped to the post + user + org
  *
  * orgs, users, posts and comments should be related
+ *
+ * @todo make sure emails are unique and lowercase
  */
 async function addManyOrgsUsersPostsComments() {
   const key = '🗃️  seeding database...';

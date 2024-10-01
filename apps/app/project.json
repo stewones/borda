@@ -110,7 +110,11 @@
     "preview.dev": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "bunx angular-http-server --path dist/apps/app -p 4220"
+        "commands": [
+          "nx build app --configuration=development",
+          "bunx angular-http-server --path dist/apps/app -p 4220"
+        ],
+        "parallel": false
       }
     },
     "deploy": {
@@ -118,6 +122,7 @@
       "options": {
         "commands": [
           "nx build app --prod",
+          "nx env app",
           "kamal deploy -c apps/app/deploy.yml"
         ],
         "parallel": false
@@ -127,9 +132,18 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "nx build app --prod",
+          "nx build app --configuration=production",
+          "nx env app",
           "kamal redeploy -c apps/app/deploy.yml"
         ],
+        "parallel": false
+      }
+    },
+
+    "env": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["bun run apps/app/scripts/update-production-env.ts"],
         "parallel": false
       }
     }

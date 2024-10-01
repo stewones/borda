@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import Elysia, {
-  Static,
   StatusMap,
   t,
 } from 'elysia';
@@ -198,6 +197,15 @@ const SyncLiveQuery = {
 
 const SyncLiveQuerySchema = t.Object(SyncLiveQuery);
 
+export const InstaSyncHeadersSchema = z.object({
+  authorization: z.string().regex(/^Bearer /),
+  synced_at: z.optional(z.union([z.null(), z.date()])),
+  activity: z.union([z.literal('recent'), z.literal('oldest')]).optional(),
+  limit: z.number().optional(),
+});
+
+export type InstaSyncHeaders = z.infer<typeof InstaSyncHeadersSchema>;
+
 export class Instant<
   CollectionSchema extends SchemaType,
   CloudSchema extends {
@@ -210,7 +218,7 @@ export class Instant<
     response: Record<string, never>;
   }
 > {
-  #size = 1_000;
+  #maxBatchSize = 10_000;
   #inspect = false;
   #connection = new Map<string, { clients: ElysiaWS<object, object>[] }>();
   #index!: IndexDictionary<CollectionSchema>;
@@ -284,7 +292,6 @@ export class Instant<
   }
 
   constructor({
-    size,
     inspect,
     constraints,
     schema,
@@ -293,7 +300,6 @@ export class Instant<
     mongoURI,
     index,
   }: {
-    size?: number | undefined;
     inspect?: boolean | undefined;
     constraints?: SyncConstraint[];
     schema: CollectionSchema;
@@ -323,7 +329,6 @@ export class Instant<
       ...schema,
     };
 
-    this.#size = size || parseInt(process.env['INSTA_BATCH_SIZE'] || '1_000');
     this.#inspect = inspect || this.#inspect;
     this.#constraints = constraints || [];
     this.#mongoURI = mongoURI || process.env['INSTA_MONGO_URI'] || '';
@@ -762,7 +767,7 @@ export class Instant<
       }: {
         headers: Record<string, string | undefined>;
         params: typeof ParamsSchema;
-        query: Static<typeof Instant.SyncBatchQuerySchema>;
+        query: InstaSyncHeaders;
         set: SetOptions;
       }) => this.#getData({ headers, params, query, set });
     },
@@ -778,7 +783,7 @@ export class Instant<
       }: {
         headers: Record<string, string | undefined>;
         params: typeof ParamsSchema;
-        query: Static<typeof Instant.SyncBatchQuerySchema>;
+        query: InstaSyncHeaders;
         set: SetOptions;
         body: Document;
       }) => this.#postData({ headers, params, query, set, body });
@@ -794,7 +799,7 @@ export class Instant<
       }: {
         headers: Record<string, string | undefined>;
         params: typeof ParamsSchema;
-        query: Static<typeof Instant.SyncBatchQuerySchema>;
+        query: InstaSyncHeaders;
         set: SetOptions;
         body: Document;
       }) => this.#putData({ params, set, body, query, headers });
@@ -810,7 +815,7 @@ export class Instant<
       }: {
         headers: Record<string, string | undefined>;
         params: typeof ParamsSchema;
-        query: Static<typeof Instant.SyncBatchQuerySchema>;
+        query: InstaSyncHeaders;
         set: SetOptions;
       }) => this.#deleteData({ headers, params, query, set });
     },
@@ -1260,7 +1265,7 @@ export class Instant<
           400,
           'validation_error',
           'Invalid data',
-          `The data provided for ${collection} is not valid.`,
+          `The data provided for ${singular(collection)} is not valid.`,
           zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
@@ -1367,7 +1372,7 @@ export class Instant<
     strict = true,
     query,
   }: {
-    query?: Static<typeof Instant.SyncBatchQuerySchema>;
+    query?: InstaSyncHeaders;
     headers: Record<string, string | undefined>;
     body?: Document;
     collection: string;
@@ -1384,11 +1389,12 @@ export class Instant<
     }
 
     // validate headers - sync requires session at a minimum
-    const headerSchema = z.object({
-      authorization: z.string().regex(/^Bearer /),
-    });
 
-    let validation = await this.validateHeaders('sync', headers, headerSchema);
+    let validation = await this.validateHeaders(
+      'sync',
+      headers,
+      InstaSyncHeadersSchema
+    );
 
     if (validation.type && validation.errors) {
       return validation;
@@ -1421,6 +1427,33 @@ export class Instant<
   async #createIndexes() {
     const collections = Object.keys(this.#schema);
     const mongoCollections = await this.db.listCollections().toArray();
+
+    // this.#index = {
+    //   users: {
+    //     unique_email: {
+    //       definition: {
+    //         email: 1,
+    //       },
+    //       options: {
+    //         unique: true,
+    //       },
+    //     },
+    //     ...this.#index['users'],
+    //   },
+    //   ...this.#index,
+    // } as Partial<
+    //   Record<
+    //     keyof CollectionSchema,
+    //     Record<
+    //       string,
+    //       {
+    //         definition: IndexSpecification;
+    //         options?: CreateIndexesOptions | undefined;
+    //       }
+    //     >
+    //   >
+    // >;
+
     for (const collection of collections) {
       // if the collections doesn't in mongo, skip
       if (!mongoCollections.find((c) => c.name === collection)) {
@@ -1458,9 +1491,26 @@ export class Instant<
               expireAfterSeconds: 0,
             },
           },
-          ...this.#index[collection]
+          ...this.#index[collection],
         },
+        ...this.#index,
       } as IndexDictionary<CollectionSchema>;
+
+      // update the index
+      this.#index = {
+        ...commonPatterns,
+        users: {
+          unique_email: {
+            definition: {
+              email: 1,
+            },
+            options: {
+              unique: true,
+            },
+          },
+          ...commonPatterns['users'],
+        },
+      };
 
       // create indexes
       for (const [indexName, indexSpec] of Object.entries(
@@ -1498,13 +1548,15 @@ export class Instant<
     set,
   }: {
     params: Record<string, string>;
-    query: Static<typeof Instant.SyncBatchQuerySchema>;
+    query: InstaSyncHeaders;
     headers: Record<string, string | undefined>;
     set: SetOptions;
   }) {
     try {
       const { collection } = params;
-      const { activity, synced } = query;
+      const { activity, synced_at, limit = 100 } = query;
+
+      const maxLimit = Math.min(limit, this.#maxBatchSize);
 
       const validation = await this.validateRequest({
         collection,
@@ -1615,14 +1667,14 @@ export class Instant<
           ? {
               $or: [
                 {
-                  ...(synced
-                    ? { _updated_at: { [operator]: new Date(synced) } }
+                  ...(synced_at
+                    ? { _updated_at: { [operator]: new Date(synced_at) } }
                     : {}),
                   ...constraintsQuery,
                 },
                 {
-                  ...(synced
-                    ? { _updated_at: { [operator]: new Date(synced) } }
+                  ...(synced_at
+                    ? { _updated_at: { [operator]: new Date(synced_at) } }
                     : {}),
                   ...(constraintsQueryWithoutCollectionId || constraintsQuery),
                   _id: collectionIdFieldWithoutPointers,
@@ -1630,8 +1682,8 @@ export class Instant<
               ],
             }
           : {
-              ...(synced
-                ? { _updated_at: { [operator]: new Date(synced) } }
+              ...(synced_at
+                ? { _updated_at: { [operator]: new Date(synced_at) } }
                 : {}),
               ...constraintsQuery,
             }),
@@ -1643,7 +1695,7 @@ export class Instant<
         .collection(collection)
         .find(filter)
         .sort({ _updated_at: activity === 'oldest' ? -1 : 1 })
-        .limit(this.#size)
+        .limit(maxLimit)
         .toArray();
 
       const nextSynced = data[data.length - 1]?.['_updated_at'].toISOString();
@@ -1652,7 +1704,7 @@ export class Instant<
         collection,
         count,
         activity,
-        synced: nextSynced || synced || new Date().toISOString(),
+        synced_at: nextSynced || synced_at || new Date().toISOString(),
         data: data.map((entry) => {
           const expiresAt = entry['_expires_at']?.toISOString();
           const updatedAt = entry['_updated_at'].toISOString();
@@ -1694,7 +1746,7 @@ export class Instant<
     query,
   }: {
     params: Record<string, string>;
-    query: Static<typeof Instant.SyncBatchQuerySchema>;
+    query: InstaSyncHeaders;
     headers: Record<string, string | undefined>;
     set: SetOptions;
     body: Document;
@@ -1711,6 +1763,41 @@ export class Instant<
       if (validation.type && validation.errors) {
         set.status = 400;
         return validation;
+      }
+
+      // check for unique index fields so we can return a nice error
+      // in case the record already exists
+      const index = this.#index[collection] || {};
+
+      const indexedUniqueFields = Object.entries(index ?? {}).filter(
+        ([key, value]) => value.options?.unique
+      );
+
+      const extractedUniqueFields = indexedUniqueFields.map(([key, value]) => {
+        return Object.keys(value.definition)[0];
+      });
+
+      // make a query to check for existing records with the same unique fields
+      const existingRecord = await this.db.collection(collection).findOne({
+        $or: extractedUniqueFields.map((field) => ({
+          [field]: body[field],
+        })),
+      });
+
+      if (existingRecord) {
+        set.status = 400;
+        return createError(
+          400,
+          'bad_request',
+          'Document already exists',
+          `A ${collection} document already exists with the same fields.`,
+          [
+            ...extractedUniqueFields.map((field) => ({
+              path: field,
+              message: existingRecord[field],
+            })),
+          ]
+        );
       }
 
       let data = omit(body, ['_id', '_created_at', '_updated_at']);
@@ -1782,7 +1869,7 @@ export class Instant<
     params: Record<string, string>;
     set: SetOptions;
     body: Document;
-    query: Static<typeof Instant.SyncBatchQuerySchema>;
+    query: InstaSyncHeaders;
     headers: Record<string, string | undefined>;
   }) {
     try {
@@ -1805,7 +1892,6 @@ export class Instant<
       if (data['_sync']) {
         delete data['_sync'];
       }
-
       const doc = await this.db.collection(collection).findOne({
         $or: [{ _id: id as unknown as ObjectId }, { _uuid: id }],
       });
@@ -1829,6 +1915,41 @@ export class Instant<
           'not_found',
           'Document not found',
           'The document you are trying to update was not found.'
+        );
+      }
+
+      // check for unique index fields so we can return a nice error
+      // in case the record already exists
+      const index = this.#index[collection] || {};
+
+      const indexedUniqueFields = Object.entries(index ?? {}).filter(
+        ([key, value]) => value.options?.unique
+      );
+
+      const extractedUniqueFields = indexedUniqueFields.map(([key, value]) => {
+        return Object.keys(value.definition)[0];
+      });
+
+      // make a query to check for existing records with the same unique fields
+      const existingRecord = await this.db.collection(collection).findOne({
+        $or: extractedUniqueFields.map((field) => ({
+          [field]: body[field],
+        })),
+      });
+
+      if (existingRecord) {
+        set.status = 400;
+        return createError(
+          400,
+          'bad_request',
+          'Document already exists',
+          `A ${collection} document already exists with the same fields.`,
+          [
+            ...extractedUniqueFields.map((field) => ({
+              path: field,
+              message: existingRecord[field],
+            })),
+          ]
         );
       }
 
@@ -1887,7 +2008,7 @@ export class Instant<
     set,
   }: {
     params: Record<string, string>;
-    query: Static<typeof Instant.SyncBatchQuerySchema>;
+    query: InstaSyncHeaders;
     headers: Record<string, string | undefined>;
     set: SetOptions;
   }) {

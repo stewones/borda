@@ -190,6 +190,7 @@ export class UsersDialogComponent {
     try {
       if (this.form.value.id) {
         await insta.mutate('users').update(this.form.value.id as string, {
+          _id: this.form.value.id as string,
           name: this.form.value.name as string,
           email: this.form.value.email as string,
           _p_org: orgPointer(this.form.value.orgId as string),

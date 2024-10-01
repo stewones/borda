@@ -216,7 +216,7 @@ import { PulsingDot } from '../components/PulsingDot';
             class="w-full px-0 inline-block text-right"
           >
             <div class="inline-flex items-center">
-              @if (syncingPosts()) {
+              @if (syncingComments()) {
               <div class="mr-2">
                 <hlm-tooltip>
                   <span hlmTooltipTrigger>

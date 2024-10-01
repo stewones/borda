@@ -431,7 +431,7 @@ export class UsersTableComponent {
     async () => {
       this.reload(); // to trigger angular change detection
       const { users } = await insta.query(this.query());
-
+      console.log(users);
       // for each user, get the org
       for (const user of users) {
         if (!user._p_org) {
