@@ -10,13 +10,22 @@
         "commands": ["docker build -f ./apps/db/Dockerfile -t insta-db ."]
       }
     },
+    "push": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "docker tag insta-db intenseloop/insta-db:latest",
+          "docker push intenseloop/insta-db:latest"
+        ]
+      }
+    },
     "preview": {
       "executor": "nx:run-commands",
       "options": {
         "commands": [
           "docker network create insta-net || true",
-          "docker rm -f insta-db || true",
-          "docker run -d --name insta-db -p 27018:27017 --network insta-net -v ./apps/db/data:/data/db -v ./apps/db/config:/config --restart always insta-db"
+          "docker rm -f insta-mongo-db || true",
+          "docker run -d --name insta-mongo-db -p 27018:27017 --network insta-net -v ./apps/db/data:/data/db -v ./apps/db/config:/config --restart always insta-db"
         ],
         "parallel": false
       }

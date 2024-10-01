@@ -8,7 +8,7 @@ kamal app exec 'bun run apps/db/seed.ts' -c apps/api/config/deploy.yml
 
 
 # connect to insta server
-ssh -i ~/.ssh/insta.pem super@ip
+ssh -i ~/.ssh/insta.pem super@
 
 # see free dist and memory on host
 df -h

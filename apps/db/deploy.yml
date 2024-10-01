@@ -1,7 +1,7 @@
 <% require "dotenv"; Dotenv.load(".env") %>
 
 # Name of your application. Used to uniquely configure containers.
-service: insta
+service: insta-mongo
 
 # Name of the container image.
 image: intenseloop/insta-db
