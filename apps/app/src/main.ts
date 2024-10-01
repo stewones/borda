@@ -57,7 +57,7 @@ Promise.allSettled(startup)
         ),
         provideServiceWorker('ngsw-worker.js', {
           enabled: environment.production,
-          registrationStrategy: 'registerWhenStable:30000',
+          registrationStrategy: 'registerImmediately',
         }),
       ],
     });
