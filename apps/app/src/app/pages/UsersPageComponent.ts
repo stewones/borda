@@ -23,7 +23,7 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
 
 @Component({
   standalone: true,
-  selector: 'app-offline-page',
+  selector: 'users-page',
   imports: [
     RouterLink,
     HlmIconComponent,

@@ -121,8 +121,9 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
+          "nx env.lock app",
           "nx build app --prod",
-          "nx env app",
+          "nx env.unlock app",
           "kamal deploy -c apps/app/deploy.yml"
         ],
         "parallel": false
@@ -132,18 +133,32 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
+          "nx env.lock app",
           "nx build app --configuration=production",
-          "nx env app",
+          "nx env.unlock app",
           "kamal redeploy -c apps/app/deploy.yml"
         ],
         "parallel": false
       }
     },
 
-    "env": {
+    "env.lock": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["bun run apps/app/scripts/update-production-env.ts"],
+        "commands": [
+          "cp -rf ./apps/app/src/environment/index.ts ./apps/app/src/environment/index.lock.ts",
+          "cp -rf ./apps/app/src/environment/production.ts ./apps/app/src/environment/index.ts"
+        ],
+        "parallel": false
+      }
+    },
+    "env.unlock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "cp -rf ./apps/app/src/environment/index.lock.ts ./apps/app/src/environment/index.ts",
+          "rm -rf ./apps/app/src/environment/index.lock.ts"
+        ],
         "parallel": false
       }
     }

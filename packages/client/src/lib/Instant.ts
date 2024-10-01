@@ -706,7 +706,7 @@ export class Instant<
     const token = this.token;
     const headers = this.#headers;
     const params = this.#params;
-    const method = item['_expires_at']
+    let method: 'DELETE' | 'PUT' | 'POST' = item['_expires_at']
       ? 'DELETE'
       : item['_created_at'] !== item['_updated_at']
       ? 'PUT'
@@ -716,7 +716,14 @@ export class Instant<
       url += `/${item['_id']}`;
     }
 
-    // data should be only updated fields if updated
+    // if data has no server id yet
+    // we need to make sure this is a POST operation
+    if (item['_id'].includes('-')) {
+      method = 'POST';
+      url = `${this.#serverURL}/sync/${collection}`;
+    }
+
+    // updated data should be restricted to only updated fields
     const data =
       method === 'PUT'
         ? item['_updated_fields']
@@ -1219,6 +1226,11 @@ export class Instant<
       self.postMessage({
         validation: err,
       });
+
+      // in case of not_found we need to remove the local record
+      if (err.type === 'not_found') {
+        await this.db.table(collection).delete(id as string);
+      }
     }
   }
 
@@ -1896,25 +1908,34 @@ export class Instant<
 
         // skip if nothing changed
         if (Object.keys(updatedFields).length === 0) {
-          return;
+          const err = createError(
+            400,
+            'validation_error',
+            'No changes provided',
+            'The data provided for this document is not valid. Please provide at least one field to update.'
+          );
+
+          this.errors.next(err as unknown as InstaError<CloudSchema>);
+          return Promise.reject(err);
         }
 
         // append required fields to updatedFields
-        const schemaFields = this.#schema[collection as keyof CollectionSchema];
-        const schema = schemaFields as unknown as z.ZodObject<any>;
-        const requiredFields = Object.keys(schema.shape).filter(
-          (key) => !schema.shape[key].isOptional()
-        );
+        // const schemaFields = this.#schema[collection as keyof CollectionSchema];
+        // const schema = schemaFields as unknown as z.ZodObject<any>;
+        // const requiredFields = Object.keys(schema.shape).filter(
+        //   (key) => !schema.shape[key].isOptional()
+        // );
 
-        requiredFields.forEach((field) => {
-          updatedFields[field] = value[field];
-        });
+        // requiredFields.forEach((field) => {
+        //   updatedFields[field] = value[field];
+        // });
 
         await this.db.transaction(
           'rw!',
           this.db.table(collection as string),
           async () => {
             await this.db.table(collection as string).update(id, {
+              ...currentDoc,
               ...value,
               _sync: 1,
               _updated_at: new Date().toISOString(),

@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 const distPath = './';
 
 const contentTypes = {
@@ -16,6 +19,21 @@ Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     let path = url.pathname;
+
+    // Handle ngsw.json specifically
+    if (path === '/ngsw.json') {
+      const filePath = join(distPath, 'ngsw.json');
+      const file = Bun.file(filePath);
+      const exists = existsSync(filePath);
+
+      if (exists) {
+        const headers = new Headers({
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+        });
+        return new Response(file, { headers });
+      }
+    }
 
     // Serve index.html for all navigation requests
     if (!path.includes('.')) {

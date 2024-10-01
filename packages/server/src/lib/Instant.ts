@@ -1803,7 +1803,11 @@ export class Instant<
       let data = omit(body, ['_id', '_created_at', '_updated_at']);
       const now = new Date();
 
-      data['_id'] = newObjectId();
+      if (body['_id']?.includes('-')) {
+        data['_uuid'] = body['_id'];
+      }
+
+      data['_id'] = newObjectId(); 
 
       // run cloud hooks
       if (this.#cloudHooks?.[collection]?.['beforeSave']) {

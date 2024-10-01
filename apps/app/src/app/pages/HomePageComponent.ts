@@ -41,13 +41,15 @@ import {
 import { insta } from '../borda';
 import { LoginFormComponent } from '../components/LoginFormComponent';
 import { PulsingDot } from '../components/PulsingDot';
+import { PwaUpdateStatusComponent } from '../components/PwaStatusComponent';
 
 @Component({
   standalone: true,
-  selector: 'app-home-page',
+  selector: 'home-page',
   imports: [
     RouterLink,
     PulsingDot,
+    PwaUpdateStatusComponent,
     HlmAlertTitleDirective,
     HlmAlertIconDirective,
     HlmAlertDescriptionDirective,
@@ -68,7 +70,7 @@ import { PulsingDot } from '../components/PulsingDot';
   styles: ``,
   template: `
     <div class="p-4 flex flex-col items-center justify-center h-screen">
-      @if (display()) {
+      @if (banner()) {
       <div hlmAlert class="max-w-sm">
         <h4 hlmAlertTitle class="inline-flex items-center">
           <hlm-icon
@@ -243,11 +245,12 @@ import { PulsingDot } from '../components/PulsingDot';
       } @else{
       <login-form class="block w-full max-w-sm my-2"></login-form>
       } }
+      <pwa-update-status class="block mt-4 mx-auto"></pwa-update-status>
     </div>
   `,
 })
 export class HomePageComponent {
-  display = toSignal(of(true).pipe(delay(100)), {
+  banner = toSignal(of(true).pipe(delay(100)), {
     initialValue: false,
   });
 
