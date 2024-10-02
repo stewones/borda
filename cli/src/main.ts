@@ -21,8 +21,8 @@ async function main() {
       name: () =>
         p.text({
           message: 'Enter your project name',
-          placeholder: 'my-borda-app',
-          defaultValue: 'my-borda-app',
+          placeholder: 'my-insta-app',
+          defaultValue: 'my-insta-app',
         }),
       pathname: ({ results }) =>
         p.text({

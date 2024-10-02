@@ -14,7 +14,7 @@ import { insta } from './borda';
 
 @Component({
   standalone: true,
-  selector: 'borda-app',
+  selector: 'insta-app',
   imports: [RouterModule, HlmToasterComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
