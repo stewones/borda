@@ -1,8 +1,8 @@
 {
   "name": "Instante",
   "short_name": "Instante",
-  "theme_color": "#1976d2",
-  "background_color": "#fafafa",
+  "theme_color": "#1a1a1a",
+  "background_color": "#0a0a0a",
   "display": "standalone",
   "scope": "./",
   "start_url": "./",
