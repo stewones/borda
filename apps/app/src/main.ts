@@ -62,6 +62,13 @@ Promise.allSettled(startup)
       ],
     });
   })
+  .then(() => {
+    if ('serviceWorker' in navigator && environment.production) {
+      // for whatever reason, angular sometimes doesn't register the service worker
+      // so to make we do it manually
+      navigator.serviceWorker.register('ngsw-worker.js');
+    }
+  })
   .catch((err) => {
     console.error(err);
   });
