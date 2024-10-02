@@ -27,5 +27,16 @@
       }
     }
   ],
-  "navigationUrls": ["/**", "!/**/*.{js,css,json,ico}"]
+  "navigationUrls": ["/**", "!/**/*.{js,css,json,ico}"],
+  "dataGroups": [
+    {
+      "name": "ngsw-json",
+      "urls": ["/ngsw.json"],
+      "cacheConfig": {
+        "maxSize": 0,
+        "maxAge": "0u",
+        "strategy": "freshness"
+      }
+    }
+  ]
 }
