@@ -19,3 +19,9 @@ free -m
 
 # show all containers and memory usage (run on host)
 docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}" | awk 'BEGIN {print "NAME\tMEMORY USAGE"} NR>1 {print $0; split($2,a,"/"); sum+=a[1]} END {print "---------------------"; printf "Total\t%.2f MB\n", sum}'
+
+# show app containers
+kamal app containers -c apps/app/deploy.yml
+
+# rollback app to previous version
+kamal app rollback container_hash -c apps/app/deploy.yml
