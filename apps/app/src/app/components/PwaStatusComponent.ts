@@ -39,24 +39,24 @@ export class PwaUpdateRef {
 
   constructor() {
     if (this.sw.isEnabled) {
-      // this.checkForUpdate();
       this.listenForUpdates();
+      this.checkForUpdate();
     } else {
       console.warn('Service Worker updates are disabled.');
     }
   }
 
-  //   checkForUpdate(): void {
-  //     this.sw
-  //       .checkForUpdate()
-  //       .then((newVersionAvailable) => {
-  //         console.log('Checked for app updates', newVersionAvailable);
-  //       })
-  //       .catch((error) => {
-  //         console.error('Failed to check for updates:', error);
-  //         this.state.next({ status: 'error', error });
-  //       });
-  //   }
+  checkForUpdate() {
+    this.sw
+      .checkForUpdate()
+      .then((newVersionAvailable) => {
+        console.log('Checked for app updates', newVersionAvailable);
+      })
+      .catch((error) => {
+        console.error('Failed to check for updates:', error);
+        this.state.next({ status: 'error', error });
+      });
+  }
 
   private listenForUpdates(): void {
     this.sw.unrecoverable.subscribe((event) => {
@@ -204,7 +204,7 @@ export class PwaUpdateRef {
     <br />
     <br />
     <br />
-    test updated version 6
+    test updated version 9
   `,
 })
 export class PwaUpdateStatusComponent {
