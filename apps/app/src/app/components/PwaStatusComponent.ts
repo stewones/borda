@@ -44,7 +44,7 @@ export class PwaUpdateRef {
         this.listenForUpdates(),
         this.checkForUpdate(),
       ]);
-      interval(10_000).subscribe(() => this.checkForUpdate());
+      interval(5 * 60_000).subscribe(() => this.checkForUpdate());
     } else {
       console.warn('Service Worker updates are disabled.');
     }
