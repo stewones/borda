@@ -116,7 +116,8 @@
     "tailwindcss-animate": "^1.0.6",
     "ts-jest": "29.1.2",
     "ts-node": "10.9.1",
-    "bun-types": "^1.1.29"
+    "bun-types": "^1.1.29",
+    "zone.js": "^0.15.0"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.1.0",
