@@ -212,7 +212,7 @@ export class PwaUpdateRef {
     <br />
     <br />
     <br />
-    test updated version 4
+    test updated version 5
   `,
 })
 export class PwaUpdateStatusComponent {
