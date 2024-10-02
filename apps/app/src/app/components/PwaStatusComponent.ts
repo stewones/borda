@@ -39,8 +39,11 @@ export class PwaUpdateRef {
 
   constructor() {
     if (this.sw.isEnabled) {
-      this.listenForUpdates();
-      this.checkForUpdate();
+      Promise.allSettled([
+        this.sw.activateUpdate(),
+        this.listenForUpdates(),
+        this.checkForUpdate(),
+      ]);
       interval(10_000).subscribe(() => this.checkForUpdate());
     } else {
       console.warn('Service Worker updates are disabled.');
@@ -205,7 +208,7 @@ export class PwaUpdateRef {
     <br />
     <br />
     <br />
-    test updated version 12
+    test updated version 14
   `,
 })
 export class PwaUpdateStatusComponent {
