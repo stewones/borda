@@ -100,10 +100,19 @@ import { UsersTableComponent } from '../components/UsersTableComponent';
   `,
 })
 export class UsersPageComponent {
-  syncing = toSignal(insta.syncing());
-  online = toSignal(insta.online);
+  syncing = toSignal(insta.syncing(), {
+    initialValue: false,
+  });
+
+  online = toSignal(insta.online, {
+    initialValue: this.on(),
+  });
 
   display = toSignal(of(true).pipe(delay(100)), {
     initialValue: false,
   });
+
+  on() {
+    return navigator.onLine;
+  }
 }

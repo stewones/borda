@@ -11,14 +11,12 @@ import {
 import { singular } from 'pluralize';
 import {
   bufferTime,
-  distinctUntilChanged,
   filter,
   from,
   fromEvent,
   interval,
   map,
   merge,
-  startWith,
   Subject,
   Subscription,
   takeUntil,
@@ -307,22 +305,25 @@ export class Instant<
     fromEvent(!isServer() ? window : new EventTarget(), 'offline').pipe(
       map(() => false)
     )
-  ).pipe(startWith(navigator.onLine), distinctUntilChanged());
+  );
 
   public syncing = (collection?: keyof CollectionSchema) =>
-    from(liveQuery(() => this.db.table('_sync').toArray())).pipe(
-      map((activities) => {
-        const filteredActivities = collection
-          ? activities.filter((item) => item.collection === collection)
-          : activities;
-        return (
-          filteredActivities.some(
-            (item) => item.activity === 'oldest' && item.status === 'incomplete'
-          ) && navigator.onLine
-        );
-      }),
-      startWith(false)
-      //distinctUntilChanged()
+    merge(
+      from(this.online),
+      from(liveQuery(() => this.db.table('_sync').toArray())).pipe(
+        map((activities) => {
+          const filteredActivities = collection
+            ? activities.filter((item) => item.collection === collection)
+            : activities;
+
+          return (
+            filteredActivities.some(
+              (item) =>
+                item.activity === 'oldest' && item.status === 'incomplete'
+            ) && navigator.onLine
+          );
+        })
+      )
     );
 
   public errors = new Subject<InstaError<CloudSchema>>();

@@ -1,14 +1,8 @@
 import { liveQuery } from 'dexie';
-import { delay, from, of, tap } from 'rxjs';
+import { delay, from, of } from 'rxjs';
 
-import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  computed,
-  inject,
-} from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 
 import { provideIcons } from '@ng-icons/core';
@@ -245,8 +239,6 @@ import { PwaUpdateStatusComponent } from '../components/PwaStatusComponent';
   `,
 })
 export class HomePageComponent {
-  cdr = inject(ChangeDetectorRef);
-
   banner = toSignal(of(true).pipe(delay(100)), {
     initialValue: false,
   });
@@ -271,11 +263,6 @@ export class HomePageComponent {
     initialValue: 0,
   });
 
-  syncingOrgs = toSignal(insta.syncing('orgs'));
-  syncingUsers = toSignal(insta.syncing('users'));
-  syncingPosts = toSignal(insta.syncing('posts'));
-  syncingComments = toSignal(insta.syncing('comments'));
-
   nameInitials = computed(() => {
     const { name } = this.session().user;
     return name
@@ -285,16 +272,10 @@ export class HomePageComponent {
       .join('');
   });
 
-  online$ = insta.online
-    .pipe(
-      takeUntilDestroyed(),
-      tap(() => {
-        setTimeout(() => {
-          this.cdr.markForCheck();
-        }, 0);
-      })
-    )
-    .subscribe();
+  syncingOrgs = toSignal(insta.syncing('orgs'));
+  syncingUsers = toSignal(insta.syncing('users'));
+  syncingPosts = toSignal(insta.syncing('posts'));
+  syncingComments = toSignal(insta.syncing('comments'));
 
   async logout() {
     await Promise.allSettled([
