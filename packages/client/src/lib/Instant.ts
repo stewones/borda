@@ -321,8 +321,8 @@ export class Instant<
           ) && navigator.onLine
         );
       }),
-      startWith(false),
-      distinctUntilChanged()
+      startWith(false)
+      //distinctUntilChanged()
     );
 
   public errors = new Subject<InstaError<CloudSchema>>();
