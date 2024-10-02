@@ -66,6 +66,24 @@ export type InstaErrorType =
   | 'bad_request'
   | 'bad_response';
 
+interface WorkerPayload {
+  action?:
+    | 'batch'
+    | 'live'
+    | 'unsync'
+    | 'scheduler'
+    | 'recordTasks'
+    | 'closeWebsocket';
+  actionParams?: {
+    synced_at?: string;
+    activity?: 'recent' | 'oldest';
+  };
+  token?: string;
+  headers: Record<string, string>;
+  params: Record<string, string>;
+  serverURL: string;
+}
+
 /**
  * A subset of Dexie's query language, inspired by MongoDB query style.
  * This interface allows for strongly-typed queries based on the provided schema.
@@ -359,25 +377,45 @@ export class Instant<
   }>;
 
   #been_offline = false;
+  #been_online = navigator.onLine;
   #online = this.online
     .pipe(
       tap((isOnline) => {
         if (isOnline && this.#been_offline && this.token) {
           this.syncBatch('recent');
           this.syncBatch('oldest');
-          this.recordActivity();
+          this.recordTasks();
+
           /* istanbul ignore next */
           if (this.#inspect) {
             console.log('🟢 client is online');
           }
         }
+
+        if (!isOnline && this.#been_online) {
+          // close the websocket
+          this.execWorker({
+            action: 'closeWebsocket',
+            token: this.token,
+            headers: this.#headers,
+            params: this.#params,
+            serverURL: this.#serverURL,
+          });
+          /* istanbul ignore next */
+          if (this.#inspect) {
+            console.log('🔴 client is offline');
+          }
+        }
       }),
-      tap((isOnline) => (this.#been_offline = !isOnline))
+      tap((isOnline) => {
+        this.#been_offline = !isOnline;
+        this.#been_online = isOnline;
+      })
     )
     .subscribe();
 
-  private lastActivityTimestamp: number = Date.now();
-  private inactivityThreshold: number = 10 * 1000;
+  private lastTasksActivityTimestamp = Date.now();
+  private inactivityThreshold = 10 * 1000;
   private schedulerSubscription: Subscription | null = null;
 
   get inspect() {
@@ -1089,7 +1127,7 @@ export class Instant<
           }
         } finally {
           // run tasks
-          this.lastActivityTimestamp = Date.now();
+          this.lastTasksActivityTimestamp = Date.now();
           if (!this.schedulerSubscription) {
             this.startTaskScheduler();
           }
@@ -1140,15 +1178,6 @@ export class Instant<
           }, retryDelay);
         };
         retry();
-
-        // retry
-        // setTimeout(() => {
-        //   /* istanbul ignore next */
-        //   if (this.inspect) {
-        //     console.log('🟡 sync live worker on retry');
-        //   }
-        //   this.buildWebSocket(url)(webSocket);
-        // }, 1_000);
       },
     };
 
@@ -1242,41 +1271,44 @@ export class Instant<
   }
 
   protected async syncLive() {
-    this.#worker.postMessage(
-      JSON.stringify({
-        sync: 'live',
-        token: this.token,
-        headers: this.#headers,
-        params: this.#params,
-        serverURL: this.#serverURL,
-      })
-    );
+    this.execWorker({
+      action: 'live',
+      token: this.token,
+      headers: this.#headers,
+      params: this.#params,
+      serverURL: this.#serverURL,
+    });
   }
 
   protected async syncBatch(activity: SyncActivity) {
-    this.#worker.postMessage(
-      JSON.stringify({
-        sync: 'batch',
+    this.execWorker({
+      action: 'batch',
+      actionParams: {
         activity,
-        token: this.token,
-        headers: this.#headers,
-        params: this.#params,
-        serverURL: this.#serverURL,
-      })
-    );
+      },
+      token: this.token,
+      headers: this.#headers,
+      params: this.#params,
+      serverURL: this.#serverURL,
+    });
   }
 
   protected async syncScheduler() {
-    this.#worker.postMessage(
-      JSON.stringify({
-        sync: 'scheduler',
-        serverURL: this.#serverURL,
-      })
-    );
+    this.execWorker({
+      action: 'scheduler',
+      serverURL: this.#serverURL,
+      token: this.token,
+      headers: this.#headers,
+      params: this.#params,
+    });
   }
 
   public setWorker({ worker }: { worker: Worker }) {
     this.#worker = worker;
+  }
+
+  public execWorker(payload: WorkerPayload) {
+    this.#worker.postMessage(JSON.stringify(payload));
   }
 
   /**
@@ -1473,14 +1505,14 @@ export class Instant<
   public worker() {
     return async ({ data }: { data: string }) => {
       const {
-        sync = 'batch', // batch|live|unsync|scheduler|recordActivity
-        synced_at,
+        action = 'batch',
+        actionParams,
         token = '',
         headers = {},
         params = {},
-        activity = 'recent', // recent|oldest
         serverURL = '',
-      } = JSON.parse(data);
+      }: WorkerPayload = JSON.parse(data);
+      const { activity, synced_at } = actionParams || {};
 
       try {
         if (!this.#db) {
@@ -1491,12 +1523,17 @@ export class Instant<
           this.#serverURL = serverURL;
         }
 
-        if (sync === 'unsync') {
+        if (action === 'closeWebsocket') {
+          this.wss?.close();
+          return;
+        }
+
+        if (action === 'unsync') {
           await this.cloud.unsync();
           return;
         }
 
-        if (sync === 'scheduler') {
+        if (action === 'scheduler') {
           /**
            * task scheduler for
            * - pending mutations
@@ -1514,8 +1551,8 @@ export class Instant<
           return;
         }
 
-        if (sync === 'recordActivity') {
-          this.lastActivityTimestamp = Date.now();
+        if (action === 'recordTasks') {
+          this.lastTasksActivityTimestamp = Date.now();
           if (!this.schedulerSubscription) {
             this.startTaskScheduler();
           }
@@ -1532,7 +1569,7 @@ export class Instant<
          * including realtime updates via dexie livequery 🎉
          */
 
-        if (sync === 'batch') {
+        if (action === 'batch') {
           if (!token) {
             if (this.#inspect) {
               console.warn('No token provided for batch sync');
@@ -1572,7 +1609,7 @@ export class Instant<
 
               const sync = await this.#useSync({
                 collection,
-                activity,
+                activity: activity as SyncActivity,
               });
 
               if (activity === 'recent' && !sync.synced_at) {
@@ -1616,7 +1653,7 @@ export class Instant<
           }
         }
 
-        if (sync === 'live') {
+        if (action === 'live') {
           const url = `${this.#serverURL.replace(
             'http',
             'ws'
@@ -1736,12 +1773,12 @@ export class Instant<
       }
 
       if (!isServer()) {
-        this.#worker.postMessage(
-          JSON.stringify({
-            sync: 'unsync',
-            serverURL: this.#serverURL,
-          })
-        );
+        this.execWorker({
+          action: 'unsync',
+          serverURL: this.#serverURL,
+          headers: this.#headers,
+          params: this.#params,
+        });
       } else {
         await this.#db.table('_sync').clear();
 
@@ -1895,7 +1932,7 @@ export class Instant<
           this.db.table(collection as string),
           async () => {
             await this.db.table(collection as string).add(valueWithMetadata);
-            this.recordActivity();
+            this.recordTasks();
           }
         );
 
@@ -1949,7 +1986,7 @@ export class Instant<
               _updated_by: createPointer('users', this.user),
               _updated_fields: updatedFields,
             });
-            this.recordActivity();
+            this.recordTasks();
           }
         );
       },
@@ -1964,7 +2001,7 @@ export class Instant<
               _expires_at: new Date().toISOString(),
               _deleted_by: createPointer('users', this.user),
             });
-            this.recordActivity();
+            this.recordTasks();
           }
         );
       },
@@ -2585,7 +2622,7 @@ export class Instant<
         tap(async () => {
           const currentTime = Date.now();
           if (
-            currentTime - this.lastActivityTimestamp >
+            currentTime - this.lastTasksActivityTimestamp >
             this.inactivityThreshold
           ) {
             this.stopTaskScheduler();
@@ -2608,10 +2645,13 @@ export class Instant<
     }
   }
 
-  // Call this method whenever there's user activity
-  public recordActivity() {
-    this.#worker.postMessage(
-      JSON.stringify({ sync: 'recordActivity', serverURL: this.#serverURL })
-    );
+  private recordTasks() {
+    this.execWorker({
+      action: 'recordTasks',
+      serverURL: this.#serverURL,
+      token: this.token,
+      headers: this.#headers,
+      params: this.#params,
+    });
   }
 }
