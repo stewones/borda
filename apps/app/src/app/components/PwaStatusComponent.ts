@@ -205,10 +205,6 @@ export class PwaUpdateRef {
       {{ error() }}
     </div>
     }
-    <br />
-    <br />
-    <br />
-    test updated version 16
   `,
 })
 export class PwaUpdateStatusComponent {
