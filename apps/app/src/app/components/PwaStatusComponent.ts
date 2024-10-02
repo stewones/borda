@@ -1,5 +1,5 @@
 import { toast } from 'ngx-sonner';
-import { BehaviorSubject } from 'rxjs';
+import { BehaviorSubject, interval } from 'rxjs';
 import { filter } from 'rxjs/operators';
 
 import { CommonModule } from '@angular/common';
@@ -41,6 +41,7 @@ export class PwaUpdateRef {
     if (this.sw.isEnabled) {
       this.listenForUpdates();
       this.checkForUpdate();
+      interval(10_000).subscribe(() => this.checkForUpdate());
     } else {
       console.warn('Service Worker updates are disabled.');
     }
