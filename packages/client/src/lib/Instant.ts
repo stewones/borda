@@ -1089,7 +1089,10 @@ export class Instant<
           }
         } finally {
           // run tasks
-          this.recordActivity();
+          this.lastActivityTimestamp = Date.now();
+          if (!this.schedulerSubscription) {
+            this.startTaskScheduler();
+          }
         }
       },
 
