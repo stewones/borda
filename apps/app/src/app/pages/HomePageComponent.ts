@@ -28,6 +28,7 @@ import {
 } from '@spartan-ng/ui-tooltip-helm';
 
 import { insta } from '../borda';
+import { HomePrimaryOptionsComponent } from '../components/HomePrimaryOptionsComponent';
 import { LoginFormComponent } from '../components/LoginFormComponent';
 import { PulsingDot } from '../components/PulsingDot';
 import { PwaUpdateStatusComponent } from '../components/PwaStatusComponent';
@@ -38,6 +39,7 @@ import { PwaUpdateStatusComponent } from '../components/PwaStatusComponent';
   imports: [
     RouterLink,
     PulsingDot,
+    HomePrimaryOptionsComponent,
     PwaUpdateStatusComponent,
     HlmAlertTitleDirective,
     HlmAlertIconDirective,
@@ -61,13 +63,18 @@ import { PwaUpdateStatusComponent } from '../components/PwaStatusComponent';
     <div class="p-4 flex flex-col items-center justify-center h-screen">
       @if (banner()) {
       <div hlmAlert class="max-w-sm">
-        <h4 hlmAlertTitle class="inline-flex items-center">
-          <hlm-icon
-            hlmAlertIcon
-            name="lucideCloudLightning"
-            class="w-5 mr-1.5"
-          />
-          Instante
+        <h4 hlmAlertTitle class="flex items-center justify-between">
+          <div class="inline-flex items-center">
+            <hlm-icon
+              hlmAlertIcon
+              name="lucideCloudLightning"
+              class="w-5 mr-1.5"
+            />
+            Instante
+          </div>
+          <div class="">
+            <home-primary-options></home-primary-options>
+          </div>
         </h4>
         <p hlmAlertDesc class="mt-2 px-2">
           Instante helps you create offline-first, collaborative apps using Bun,

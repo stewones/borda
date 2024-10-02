@@ -1087,6 +1087,9 @@ export class Instant<
           if (this.#inspect) {
             console.log('🔴 live mutation failed', collection, value, err);
           }
+        } finally {
+          // run tasks
+          this.recordActivity();
         }
       },
 
