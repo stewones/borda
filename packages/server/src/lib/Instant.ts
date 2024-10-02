@@ -1552,12 +1552,12 @@ export class Instant<
     headers: Record<string, string | undefined>;
     set: SetOptions;
   }) {
+    const { collection } = params;
+    const { activity, synced_at, limit = 100 } = query;
+
+    const maxLimit = Math.min(limit, this.#maxBatchSize);
+
     try {
-      const { collection } = params;
-      const { activity, synced_at, limit = 100 } = query;
-
-      const maxLimit = Math.min(limit, this.#maxBatchSize);
-
       const validation = await this.validateRequest({
         collection,
         headers,
@@ -1732,7 +1732,7 @@ export class Instant<
       return createError(
         500,
         'internal_server_error',
-        'An error occurred while syncing',
+        `An error occurred while syncing ${collection}`,
         'We were not able to process your request. Please try again later or contact support.'
       );
     }
@@ -1751,9 +1751,9 @@ export class Instant<
     set: SetOptions;
     body: Document;
   }) {
-    try {
-      const { collection } = params;
+    const { collection } = params;
 
+    try {
       const validation = await this.validateRequest({
         collection,
         body,
@@ -1778,26 +1778,28 @@ export class Instant<
       });
 
       // make a query to check for existing records with the same unique fields
-      const existingRecord = await this.db.collection(collection).findOne({
-        $or: extractedUniqueFields.map((field) => ({
-          [field]: body[field],
-        })),
-      });
+      if (extractedUniqueFields.length) {
+        const existingRecord = await this.db.collection(collection).findOne({
+          $or: extractedUniqueFields.map((field) => ({
+            [field]: body[field],
+          })),
+        });
 
-      if (existingRecord) {
-        set.status = 400;
-        return createError(
-          400,
-          'bad_request',
-          'Document already exists',
-          `A ${collection} document already exists with the same fields.`,
-          [
-            ...extractedUniqueFields.map((field) => ({
-              path: field,
-              message: existingRecord[field],
-            })),
-          ]
-        );
+        if (existingRecord) {
+          set.status = 400;
+          return createError(
+            400,
+            'bad_request',
+            'Document already exists',
+            `A ${collection} document already exists with the same fields.`,
+            [
+              ...extractedUniqueFields.map((field) => ({
+                path: field,
+                message: existingRecord[field],
+              })),
+            ]
+          );
+        }
       }
 
       let data = omit(body, ['_id', '_created_at', '_updated_at']);
@@ -1807,7 +1809,7 @@ export class Instant<
         data['_uuid'] = body['_id'];
       }
 
-      data['_id'] = newObjectId(); 
+      data['_id'] = newObjectId();
 
       // run cloud hooks
       if (this.#cloudHooks?.[collection]?.['beforeSave']) {
@@ -1857,7 +1859,7 @@ export class Instant<
       return createError(
         500,
         'internal_server_error',
-        'An error occurred while syncing',
+        `An error occurred while syncing ${collection}`,
         'We were not able to process your request. Please try again later or contact support.'
       );
     }
@@ -1934,27 +1936,30 @@ export class Instant<
         return Object.keys(value.definition)[0];
       });
 
-      // make a query to check for existing records with the same unique fields
-      const existingRecord = await this.db.collection(collection).findOne({
-        $or: extractedUniqueFields.map((field) => ({
-          [field]: body[field],
-        })),
-      });
+      if (extractedUniqueFields.length) {
+        // make a query to check for existing records with the same unique fields
+        const existingRecord = await this.db.collection(collection).findOne({
+          $or:
+            extractedUniqueFields.map((field) => ({
+              [field]: body[field],
+            })) || [],
+        });
 
-      if (existingRecord) {
-        set.status = 400;
-        return createError(
-          400,
-          'bad_request',
-          'Document already exists',
-          `A ${collection} document already exists with the same fields.`,
-          [
-            ...extractedUniqueFields.map((field) => ({
-              path: field,
-              message: existingRecord[field],
-            })),
-          ]
-        );
+        if (existingRecord) {
+          set.status = 400;
+          return createError(
+            400,
+            'bad_request',
+            'Document already exists',
+            `A ${collection} document already exists with the same fields.`,
+            [
+              ...extractedUniqueFields.map((field) => ({
+                path: field,
+                message: existingRecord[field],
+              })),
+            ]
+          );
+        }
       }
 
       // run cloud hooks
@@ -2016,9 +2021,9 @@ export class Instant<
     headers: Record<string, string | undefined>;
     set: SetOptions;
   }) {
-    try {
-      const { collection, id } = params;
+    const { collection, id } = params;
 
+    try {
       if (!this.collections.includes(collection)) {
         set.status = 400;
 
@@ -2104,7 +2109,7 @@ export class Instant<
       return createError(
         500,
         'internal_server_error',
-        'An error occurred while syncing',
+        `An error occurred while syncing ${collection}`,
         'We were not able to process your request. Please try again later or contact support.'
       );
     }

@@ -161,6 +161,13 @@
         ],
         "parallel": false
       }
+    },
+    "logs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["kamal app logs -c apps/app/deploy.yml"],
+        "parallel": false
+      }
     }
   }
 }

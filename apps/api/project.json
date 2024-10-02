@@ -74,6 +74,13 @@
     "lint": {
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"]
+    },
+    "logs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["kamal app logs -c apps/api/deploy.yml"],
+        "parallel": false
+      }
     }
   },
   "tags": []

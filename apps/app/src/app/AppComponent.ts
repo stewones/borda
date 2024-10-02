@@ -46,7 +46,9 @@ export class AppComponent {
   errors$ = insta.errors
     .pipe(
       filter((err) =>
-        ['validation_error', 'bad_request'].includes(err.type ?? '')
+        ['validation_error', 'bad_request', 'internal_server_error'].includes(
+          err.type ?? ''
+        )
       )
     )
     .subscribe((err) => {
