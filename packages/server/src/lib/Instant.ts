@@ -1,10 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import Elysia, {
-  StatusMap,
-  t,
-} from 'elysia';
+import Elysia, { StatusMap } from 'elysia';
 import type { HTTPHeaders } from 'elysia/dist/types';
 import { ElysiaWS } from 'elysia/dist/ws';
+import { SignJWT } from 'jose';
 import type {
   AggregateOptions,
   CreateIndexesOptions,
@@ -22,19 +20,15 @@ import {
   MongoClient,
 } from 'mongodb';
 import { singular } from 'pluralize';
-import {
-  interval,
-  Subscription,
-  tap,
-} from 'rxjs';
+import { interval, Subscription, tap } from 'rxjs';
 import { z } from 'zod';
 
 import {
-  createError,
   createPointer,
   ejectPointerCollection,
   ejectPointerId,
   InstaError,
+  InstaErrorParams,
   InstaSession,
   InstaSessionSchema,
   InstaUser,
@@ -50,14 +44,18 @@ import {
   SyncStatus,
 } from '@borda/client';
 
-import {
-  compare,
-  hash,
-  newObjectId,
-  newToken,
-} from '../utils';
+import { JWTPayloadSpec } from '@elysiajs/jwt';
+
+import { compare, hash, newObjectId } from '../utils';
 
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
+
+type JWT = {
+  readonly sign: (
+    morePayload: Record<string, string | number> & JWTPayloadSpec
+  ) => Promise<string>;
+  readonly verify: (jwt?: string | undefined) => Promise<any>;
+};
 
 /**
  * A custom query language inspired by MongoDB query style.
@@ -142,61 +140,6 @@ export type IndexDictionary<CollectionSchema> = Partial<
   >
 >;
 
-// {
-//   [key: keyof CollectionSchema]: Record<
-//     string,
-//     {
-//       definition: IndexSpecification;
-//       options?: CreateIndexesOptions;
-//     }
-//   >;
-
-//   // {
-//   //   [key: string]: {
-//   //     definition: IndexSpecification;
-//   //     options?: CreateIndexesOptions;
-//   //   };
-//   // };
-// };
-
-// @todo needs to replace typebox with zod and validate it internally
-const SyncParamsSchema = <T extends string>(collections: readonly T[]) =>
-  t.Object({
-    collection: t.Union(collections.map((c) => t.Literal(c))),
-  });
-
-const CloudParamsSchema = <T extends string>(functions: readonly T[]) =>
-  t.Object({
-    function: t.Union(functions.map((f) => t.Literal(f))),
-  });
-
-const SyncMutationParamsSchema = <T extends string>(
-  collections: readonly T[]
-) =>
-  t.Object({
-    collection: t.Union(collections.map((c) => t.Literal(c))),
-    id: t.String(),
-  });
-
-const SyncBatchQuery = {
-  synced: t.Optional(t.Union([t.Null(), t.Date()])),
-  activity: t.Union([t.Literal('recent'), t.Literal('oldest')]),
-};
-
-const SyncHeaders = {
-  authorization: t.String({ pattern: '^Bearer ' }),
-};
-
-const SyncHeadersSchema = t.Object(SyncHeaders);
-
-const SyncBatchQuerySchema = t.Object(SyncBatchQuery);
-
-const SyncLiveQuery = {
-  session: t.String(),
-};
-
-const SyncLiveQuerySchema = t.Object(SyncLiveQuery);
-
 export const InstaSyncHeadersSchema = z.object({
   authorization: z.string().regex(/^Bearer /),
   synced_at: z.optional(z.union([z.null(), z.date()])),
@@ -205,6 +148,13 @@ export const InstaSyncHeadersSchema = z.object({
 });
 
 export type InstaSyncHeaders = z.infer<typeof InstaSyncHeadersSchema>;
+
+interface DerivedSession {
+  _id?: string | undefined;
+  _expires_at?: number | undefined;
+  token?: string | undefined;
+  user?: InstaUser | undefined;
+}
 
 export class Instant<
   CollectionSchema extends SchemaType,
@@ -216,7 +166,8 @@ export class Instant<
     headers: Record<string, never>;
     body: Record<string, never>;
     response: Record<string, never>;
-  }
+  },
+  CacheSchema extends SchemaType = Record<string, never>
 > {
   #maxBatchSize = 10_000;
   #inspect = false;
@@ -224,6 +175,16 @@ export class Instant<
   #index!: IndexDictionary<CollectionSchema>;
   #constraints: SyncConstraint[] = [];
   #schema!: CollectionSchema;
+  #cache!: CacheSchema;
+  #cacheTTL!: number;
+  #secret!: string;
+  #cacheStorage = new Map<
+    keyof CacheSchema,
+    {
+      expiresAt: number;
+      value: NonNullable<z.infer<CacheSchema[keyof CacheSchema]>>;
+    }
+  >();
   #pendingTasks: Subscription | undefined;
   #pendingPointersBusy = false;
   #mongoURI: string;
@@ -246,23 +207,12 @@ export class Instant<
     Record<
       CloudHookAction,
       (data: {
-        session?: string | undefined; // @todo session should be an object
+        session: DerivedSession;
         before?: CollectionSchema[keyof CollectionSchema] | undefined;
         doc: CollectionSchema[keyof CollectionSchema];
       }) => Promise<CollectionSchema[keyof CollectionSchema]>
     >
   >;
-
-  static SyncBatchQuery = SyncBatchQuery;
-  static SyncBatchQuerySchema = SyncBatchQuerySchema;
-  static SyncLiveQuery = SyncLiveQuery;
-  static SyncLiveQuerySchema = SyncLiveQuerySchema;
-  static SyncHeaders = SyncHeaders;
-  static SyncHeadersSchema = SyncHeadersSchema;
-  static SyncParamsSchema = SyncParamsSchema;
-  static SyncMutationParamsSchema = SyncMutationParamsSchema;
-
-  static CloudParamsSchema = CloudParamsSchema;
 
   get db() {
     if (!this.#db) {
@@ -272,9 +222,7 @@ export class Instant<
       addHook: <C extends keyof CollectionSchema>(
         action: DBHookAction,
         collection: C,
-        fn: (data: {
-          doc: CollectionSchema[keyof CollectionSchema];
-        }) => Promise<void>
+        fn: (data: { doc: z.infer<CollectionSchema[C]> }) => Promise<void>
       ) => void;
       removeHook: <C extends keyof CollectionSchema>(
         action: DBHookAction,
@@ -295,18 +243,24 @@ export class Instant<
     inspect,
     constraints,
     schema,
+    cache,
     cloud,
     db,
     mongoURI,
     index,
+    secret,
+    cacheTTL,
   }: {
     inspect?: boolean | undefined;
     constraints?: SyncConstraint[];
     schema: CollectionSchema;
+    cache?: CacheSchema;
     cloud?: CloudSchema;
     db?: Db;
     mongoURI?: string;
     index?: IndexDictionary<CollectionSchema>;
+    secret?: string;
+    cacheTTL?: number;
   }) {
     if (!schema) {
       throw new Error('a data schema is required');
@@ -328,12 +282,14 @@ export class Instant<
       sessions: InstaSessionSchema,
       ...schema,
     };
-
+    this.#cache = cache || ({} as CacheSchema);
+    this.#cacheTTL =
+      cacheTTL || parseInt(process.env['INSTA_CACHE_TTL'] || '3600');
     this.#inspect = inspect || this.#inspect;
     this.#constraints = constraints || [];
     this.#mongoURI = mongoURI || process.env['INSTA_MONGO_URI'] || '';
     this.#index = index || {};
-
+    this.#secret = secret || process.env['INSTA_SECRET'] || '1nSt@nT3';
     this.#collections = Object.keys(schema).filter((key) => {
       try {
         const { sync } = JSON.parse(
@@ -441,7 +397,7 @@ export class Instant<
         );
     };
 
-    for (const collection of this.#collections) {
+    for (const collection of [...this.#collections, 'sessions']) {
       const task = this.db.collection(collection);
       const stream = task.watch(
         [
@@ -490,53 +446,60 @@ export class Instant<
                   return;
                 }
 
-                if (fullDocument['_expires_at']) {
+                const in2min = Date.now() + 2 * 60 * 1000;
+
+                if (
+                  fullDocument['_expires_at'] &&
+                  fullDocument['_expires_at'] <= in2min
+                ) {
                   return broadcast.delete();
                 }
 
-                const { updatedFields, removedFields, truncatedArrays } =
-                  updateDescription ?? {};
+                if (!['sessions'].includes(collection)) {
+                  const { updatedFields, removedFields, truncatedArrays } =
+                    updateDescription ?? {};
 
-                const fullDocumentAsQueryParams: Record<string, string> =
-                  docQueryParams(fullDocument || {});
+                  const fullDocumentAsQueryParams: Record<string, string> =
+                    docQueryParams(fullDocument || {});
 
-                const constraintsKeys = this.#constraints.map(
-                  (constraint) => constraint.key
-                );
-
-                if (constraintsKeys.includes(collection)) {
-                  const theKey = constraintsKeys.find(
-                    (key) => key === collection
+                  const constraintsKeys = this.#constraints.map(
+                    (constraint) => constraint.key
                   );
-                  if (theKey) {
-                    fullDocumentAsQueryParams[theKey] = fullDocument['_id'];
+
+                  if (constraintsKeys.includes(collection)) {
+                    const theKey = constraintsKeys.find(
+                      (key) => key === collection
+                    );
+                    if (theKey) {
+                      fullDocumentAsQueryParams[theKey] = fullDocument['_id'];
+                    }
                   }
-                }
 
-                const identifiers = this.#buildIdentifiers({
-                  query: fullDocumentAsQueryParams,
-                  constraints: this.#constraints,
-                });
+                  const identifiers = this.#buildIdentifiers({
+                    query: fullDocumentAsQueryParams,
+                    constraints: this.#constraints,
+                  });
 
-                // cleanup value props with sync: false according to the schema
-                const value = this.#cleanValue(collection, fullDocument);
+                  // cleanup value props with sync: false according to the schema
+                  const value = this.#cleanValue(collection, fullDocument);
 
-                const response: SyncResponseData = {
-                  collection: collection,
-                  status: 'updated',
-                  value,
-                  updatedFields,
-                  removedFields,
-                  truncatedArrays,
-                };
-
-                for (const identifier of identifiers) {
-                  const { clients } = this.#connection.get(identifier) || {
-                    clients: [],
+                  const response: SyncResponseData = {
+                    collection: collection,
+                    status: 'updated',
+                    value,
+                    updatedFields,
+                    removedFields,
+                    truncatedArrays,
                   };
 
-                  for (const client of clients) {
-                    client.send(JSON.stringify(response));
+                  for (const identifier of identifiers) {
+                    const { clients } = this.#connection.get(identifier) || {
+                      clients: [],
+                    };
+
+                    for (const client of clients) {
+                      client.send(JSON.stringify(response));
+                    }
                   }
                 }
 
@@ -552,44 +515,45 @@ export class Instant<
                 if (!fullDocument) {
                   return;
                 }
+                if (!['sessions'].includes(collection)) {
+                  const fullDocumentAsQueryParams: Record<string, string> =
+                    docQueryParams(fullDocument || {});
 
-                const fullDocumentAsQueryParams: Record<string, string> =
-                  docQueryParams(fullDocument || {});
-
-                const constraintsKeys = this.#constraints.map(
-                  (constraint) => constraint.key
-                );
-
-                if (constraintsKeys.includes(collection)) {
-                  const theKey = constraintsKeys.find(
-                    (key) => key === collection
+                  const constraintsKeys = this.#constraints.map(
+                    (constraint) => constraint.key
                   );
-                  if (theKey) {
-                    fullDocumentAsQueryParams[theKey] = fullDocument['_id'];
+
+                  if (constraintsKeys.includes(collection)) {
+                    const theKey = constraintsKeys.find(
+                      (key) => key === collection
+                    );
+                    if (theKey) {
+                      fullDocumentAsQueryParams[theKey] = fullDocument['_id'];
+                    }
                   }
-                }
 
-                const identifiers = this.#buildIdentifiers({
-                  query: fullDocumentAsQueryParams,
-                  constraints: this.#constraints,
-                });
+                  const identifiers = this.#buildIdentifiers({
+                    query: fullDocumentAsQueryParams,
+                    constraints: this.#constraints,
+                  });
 
-                // cleanup value props with sync: false according to the schema
-                const value = this.#cleanValue(collection, fullDocument);
+                  // cleanup value props with sync: false according to the schema
+                  const value = this.#cleanValue(collection, fullDocument);
 
-                const response: SyncResponseData = {
-                  collection: collection,
-                  status: 'created',
-                  value,
-                };
-
-                for (const identifier of identifiers) {
-                  const { clients } = this.#connection.get(identifier) || {
-                    clients: [],
+                  const response: SyncResponseData = {
+                    collection: collection,
+                    status: 'created',
+                    value,
                   };
 
-                  for (const client of clients) {
-                    client.send(JSON.stringify(response));
+                  for (const identifier of identifiers) {
+                    const { clients } = this.#connection.get(identifier) || {
+                      clients: [],
+                    };
+
+                    for (const client of clients) {
+                      client.send(JSON.stringify(response));
+                    }
                   }
                 }
 
@@ -611,43 +575,45 @@ export class Instant<
                   return;
                 }
 
-                const fullDocumentAsQueryParams: Record<string, string> =
-                  docQueryParams(doc || {});
+                if (!['sessions'].includes(collection)) {
+                  const fullDocumentAsQueryParams: Record<string, string> =
+                    docQueryParams(doc || {});
 
-                const constraintsKeys = this.#constraints.map(
-                  (constraint) => constraint.key
-                );
-
-                if (constraintsKeys.includes(collection)) {
-                  const theKey = constraintsKeys.find(
-                    (key) => key === collection
+                  const constraintsKeys = this.#constraints.map(
+                    (constraint) => constraint.key
                   );
-                  if (theKey) {
-                    fullDocumentAsQueryParams[theKey] = doc['_id'];
+
+                  if (constraintsKeys.includes(collection)) {
+                    const theKey = constraintsKeys.find(
+                      (key) => key === collection
+                    );
+                    if (theKey) {
+                      fullDocumentAsQueryParams[theKey] = doc['_id'];
+                    }
                   }
-                }
 
-                const identifiers = this.#buildIdentifiers({
-                  query: fullDocumentAsQueryParams,
-                  constraints: this.#constraints,
-                });
+                  const identifiers = this.#buildIdentifiers({
+                    query: fullDocumentAsQueryParams,
+                    constraints: this.#constraints,
+                  });
 
-                const response: SyncResponseData = {
-                  collection: collection,
-                  status: 'deleted',
-                  value: {
-                    _id: doc['_id'],
-                    _uuid: doc['_uuid'],
-                  },
-                };
-
-                for (const identifier of identifiers) {
-                  const { clients } = this.#connection.get(identifier) || {
-                    clients: [],
+                  const response: SyncResponseData = {
+                    collection: collection,
+                    status: 'deleted',
+                    value: {
+                      _id: doc['_id'],
+                      _uuid: doc['_uuid'],
+                    },
                   };
 
-                  for (const client of clients) {
-                    client.send(JSON.stringify(response));
+                  for (const identifier of identifiers) {
+                    const { clients } = this.#connection.get(identifier) || {
+                      clients: [],
+                    };
+
+                    for (const client of clients) {
+                      client.send(JSON.stringify(response));
+                    }
                   }
                 }
 
@@ -722,6 +688,11 @@ export class Instant<
         )
         .subscribe();
 
+      /**
+       * clock the cache
+       */
+      this.cache.clock();
+
       if (this.#inspect) {
         console.log('🦊 Instant Server is ready');
       }
@@ -752,72 +723,300 @@ export class Instant<
     this.#connection.clear();
   }
 
+  public cache = {
+    get: <CacheKey extends keyof CacheSchema>(
+      key: CacheKey
+    ): NonNullable<z.infer<CacheSchema[CacheKey]>> | null => {
+      const { value, expiresAt } = this.#cacheStorage.get(key) || {
+        expiresAt: 0,
+        value: undefined,
+      };
+
+      if (!value) {
+        return null;
+      }
+
+      if (expiresAt < Date.now()) {
+        this.#cacheStorage.delete(key);
+        return null;
+      }
+
+      return value as NonNullable<z.infer<CacheSchema[CacheKey]>>;
+    },
+    set: async <CacheKey extends keyof CacheSchema>(
+      key: CacheKey,
+      value: NonNullable<z.infer<CacheSchema[CacheKey]>>,
+      {
+        // time to live in seconds
+        // default to 1h
+        ttl = this.#cacheTTL,
+      }: {
+        ttl?: number;
+      } = {}
+    ) => {
+      const expiresAt = Date.now() + ttl * 1000;
+      this.#cacheStorage.set(key, {
+        value,
+        expiresAt,
+      });
+      return {
+        value,
+        expiresAt,
+      };
+    },
+    del: async <CacheKey extends keyof CacheSchema>(key: CacheKey) => {
+      this.#cacheStorage.delete(key);
+    },
+    default: <CacheKey extends keyof CacheSchema>(key: CacheKey) => {
+      return Promise.reject('Method not implemented on server');
+    },
+    populate: async () => {
+      return Promise.reject('Method not implemented on server');
+    },
+    clear: async () => {
+      this.#cacheStorage.clear();
+    },
+    clock: () => {
+      const now = Date.now();
+
+      for (const [key, value] of this.#cacheStorage) {
+        if (value.expiresAt < now) {
+          if (this.#inspect) {
+            console.log('🧹 cache removed', key);
+          }
+          this.#cacheStorage.delete(key);
+        }
+      }
+
+      setTimeout(this.cache.clock.bind(this), this.#cacheTTL * 1000);
+    },
+  };
+
   /**
    * collection sync handler
    */
   public collection = {
-    get: () => {
-      const ParamsSchema = Instant.SyncParamsSchema(this.#collections);
-
+    derive: () => {
       return ({
         headers,
         params,
-        query,
-        set,
       }: {
         headers: Record<string, string | undefined>;
-        params: typeof ParamsSchema;
+        params: any;
+      }) => {
+        const auth = headers['authorization'];
+        const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
+        const { collection } = params;
+        return {
+          collection,
+          session: {
+            token,
+            user: undefined,
+          },
+        } as {
+          collection: keyof CollectionSchema;
+          session: DerivedSession;
+        };
+      };
+    },
+    beforeHandle: () => {
+      return async ({
+        session,
+        headers,
+        set,
+        query,
+        body,
+        collection,
+        jwt,
+      }: {
+        collection: keyof CollectionSchema;
+        session: DerivedSession;
+        headers: Record<string, string | undefined>;
+        set: SetOptions;
+        query: Record<string, string | undefined>;
+        body: unknown;
+        jwt: JWT;
+      }) => {
+        // check token
+        if (!session.token) {
+          set.status = 401;
+          return new InstaError({
+            status: 401,
+            type: 'unauthorized',
+            message: 'Unauthorized',
+            summary: 'You are not authorized to access this resource',
+          }).toJSON();
+        }
+
+        // validate collection
+        if (!this.collections.includes(collection as string)) {
+          set.status = 400;
+          return new InstaError({
+            status: 400,
+            type: 'bad_request',
+            message: 'Collection not found',
+            summary: 'The collection you are trying to retrieve was not found.',
+          }).toJSON();
+        }
+
+        let validation: InstaErrorParams<CloudSchema>;
+
+        // validate headers
+        validation = await this.validateHeaders(
+          'sync',
+          headers,
+          InstaSyncHeadersSchema
+        );
+
+        if (validation.type) {
+          set.status = validation.status;
+          return validation;
+        }
+
+        // validate query
+        if (query) {
+          const querySchema = z.object({
+            synced: z.string().optional(),
+            activity: z.enum(['recent', 'oldest']).optional(),
+          });
+          validation = await this.validateQuery(query, querySchema);
+          if (validation.type) {
+            set.status = validation.status;
+            return validation;
+          }
+        }
+
+        // validate the body
+        if (body) {
+          validation = await this.validateBody(collection as string, body, {
+            strict: false,
+          });
+          if (validation.type) {
+            set.status = validation.status;
+            return validation;
+          }
+        }
+
+        // check cached token in memory to speed up things
+        const cachedSession = this.cache.get(`session:${session.token}`);
+
+        if (!cachedSession) {
+          // verify token
+          const { sessionId, userId } = await jwt.verify(session.token);
+
+          if (!sessionId || !userId) {
+            set.status = 401;
+            return new InstaError({
+              status: 401,
+              type: 'unauthorized',
+              message: 'Unauthorized',
+              summary: 'You are not authorized to access this resource',
+            }).toJSON();
+          }
+
+          // fetch session from db
+          const in2min = new Date(Date.now() + 2 * 60 * 1000);
+          const { sessions } = await this.query({
+            sessions: {
+              $include: ['user'],
+              $filter: {
+                _id: { $eq: sessionId },
+                _expires_at: { $gt: in2min },
+              },
+            },
+          });
+
+          const actualSession = sessions[0];
+
+          if (!actualSession || !actualSession.user) {
+            set.status = 401;
+            return new InstaError({
+              status: 401,
+              type: 'unauthorized',
+              message: 'Unauthorized',
+              summary: 'You are not authorized to access this resource',
+            }).toJSON();
+          }
+
+          // cache the actual session
+          this.cache.set(`session:${session.token}`, {
+            token: actualSession.token,
+            user: actualSession.user,
+            _expires_at: actualSession._expires_at,
+            _id: actualSession._id,
+          });
+
+          session.user = actualSession.user;
+          session.token = actualSession.token;
+          session._expires_at = actualSession._expires_at;
+          session._id = actualSession._id;
+
+          if (this.#inspect) {
+            console.log('session cache miss', session._id);
+          }
+        } else {
+          session.user = cachedSession.user;
+          session.token = cachedSession.token;
+          session._expires_at = cachedSession._expires_at;
+          session._id = cachedSession._id;
+
+          if (this.#inspect) {
+            console.log('session cache hit', session._id);
+          }
+        }
+      };
+    },
+    get: () => {
+      return ({
+        params,
+        query,
+        set,
+        session,
+      }: {
+        params: Record<string, string>;
         query: InstaSyncHeaders;
         set: SetOptions;
-      }) => this.#getData({ headers, params, query, set });
+        session: DerivedSession;
+      }) => {
+        return this.#getData({ params, query, set, session });
+      };
     },
     post: () => {
-      const ParamsSchema = Instant.SyncParamsSchema(this.#collections);
-
       return ({
-        headers,
         params,
-        query,
         set,
         body,
+        session,
       }: {
-        headers: Record<string, string | undefined>;
-        params: typeof ParamsSchema;
-        query: InstaSyncHeaders;
+        params: Record<string, string>;
         set: SetOptions;
         body: Document;
-      }) => this.#postData({ headers, params, query, set, body });
+        session: DerivedSession;
+      }) => this.#postData({ params, set, body, session });
     },
     put: () => {
-      const ParamsSchema = Instant.SyncMutationParamsSchema(this.#collections);
       return ({
         params,
         set,
         body,
-        query,
-        headers,
+        session,
       }: {
-        headers: Record<string, string | undefined>;
-        params: typeof ParamsSchema;
-        query: InstaSyncHeaders;
+        params: Record<string, string>;
         set: SetOptions;
         body: Document;
-      }) => this.#putData({ params, set, body, query, headers });
+        session: DerivedSession;
+      }) => this.#putData({ params, set, body, session });
     },
     delete: () => {
-      const ParamsSchema = Instant.SyncMutationParamsSchema(this.#collections);
-
       return ({
-        headers,
         params,
-        query,
         set,
+        session,
       }: {
-        headers: Record<string, string | undefined>;
-        params: typeof ParamsSchema;
-        query: InstaSyncHeaders;
+        params: Record<string, string>;
         set: SetOptions;
-      }) => this.#deleteData({ headers, params, query, set });
+        session: DerivedSession;
+      }) => this.#deleteData({ params, set, session });
     },
   };
 
@@ -825,52 +1024,189 @@ export class Instant<
    * cloud functions handler
    */
   public cloud = {
-    addFunction: <K extends keyof CloudSchema['body']>(
-      name: K,
-      fn: (args: {
-        body: z.infer<CloudSchema['body'][K]>;
-        headers: z.infer<CloudSchema['headers'][K]>;
+    derive: () => {
+      return ({
+        headers,
+        params,
+      }: {
+        headers: Record<string, string | undefined>;
+        params: any;
+      }) => {
+        const auth = headers['authorization'];
+        const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
+        const { fn } = params;
+        return {
+          fn,
+          session: {
+            token,
+            user: undefined,
+          },
+        } as {
+          fn: keyof CloudSchema['body'];
+          session: DerivedSession;
+        };
+      };
+    },
+    beforeHandle: () => {
+      return async ({
+        session,
+        headers,
+        set,
+        query,
+        body,
+        fn,
+        jwt,
+      }: {
+        fn: keyof CloudSchema['body'];
+        session: DerivedSession;
+        headers: Record<string, string | undefined>;
         set: SetOptions;
-      }) => Promise<z.infer<CloudSchema['response'][K]>>
-    ) => {
-      this.#functions.push(name as string);
-      this.#cloud[name as string] = fn;
-    },
+        query: Record<string, string | undefined>;
+        body: unknown;
+        jwt: JWT;
+      }) => {
+        const fnExists = this.#functions.find(
+          (availableFn) => availableFn === fn
+        );
 
-    removeFunction: <K extends keyof CollectionSchema>(name: K) => {
-      this.#functions = this.#functions.filter((fn) => fn !== name);
-      delete this.#cloud[name as string];
-    },
+        if (!fnExists || !this.#cloud[fn as string]) {
+          set.status = 404;
+          return new InstaError({
+            status: 404,
+            type: 'not_found',
+            message: 'Function not found',
+            summary: 'The function you are trying to call does not exist',
+            errors: [],
+            fn,
+          }).toJSON();
+        }
 
-    addHook: <A extends CloudHookAction, C extends keyof CollectionSchema>(
-      action: A,
-      collection: C,
-      fn: (data: {
-        session?: string | undefined; // @todo
-        before?: CollectionSchema[keyof CollectionSchema] | undefined;
-        doc: CollectionSchema[keyof CollectionSchema];
-      }) => A extends 'beforeSave'
-        ? Promise<CollectionSchema[keyof CollectionSchema]>
-        : Promise<void>
-    ) => {
-      if (!this.#cloudHooks) {
-        this.#cloudHooks = {} as any;
-      }
-      if (!this.#cloudHooks?.[collection]) {
-        this.#cloudHooks![collection] = {} as any;
-      }
-      if (!this.#cloudHooks?.[collection]?.[action]) {
-        this.#cloudHooks![collection][action] = fn as any;
-      }
-    },
+        const fnSchema = this.#cloudSchema[fn];
 
-    removeHook: <Y extends CloudHookAction, K extends keyof CollectionSchema>(
-      name: Y,
-      collection: K
-    ) => {
-      delete this.#cloudHooks![collection][name];
-    },
+        if (!fnSchema) {
+          set.status = 400;
+          return new InstaError({
+            status: 400,
+            type: 'bad_request',
+            message: 'Function schema not found',
+            summary: 'The function you are trying to call is not valid',
+            errors: [],
+            fn,
+          }).toJSON();
+        }
 
+        // validate headers
+        const headersSchema = this.#cloudHeaders[fn];
+        if (headersSchema) {
+          const validation = await this.validateHeaders(
+            fn as string,
+            headers,
+            headersSchema
+          );
+          if (validation.type) {
+            set.status = validation.status;
+            return validation;
+          }
+        }
+
+        // validate token if not public
+        const { public: isPublic } = JSON.parse(fnSchema.description || '{}');
+
+        if (!isPublic && !session.token) {
+          set.status = 401;
+          return new InstaError({
+            status: 401,
+            type: 'unauthorized',
+            message: 'Unauthorized',
+            summary: 'You are not authorized to call this function',
+            errors: [],
+            fn,
+          }).toJSON();
+        }
+
+        // validate body
+        let validation = await this.validateFunctionBody(
+          fn as string,
+          body,
+          fnSchema
+        );
+
+        if (validation.type) {
+          set.status = validation.status;
+          return validation;
+        }
+
+        if (!isPublic && session.token) {
+          // check cached token in memory to speed up things
+          const cachedSession = this.cache.get(`session:${session.token}`);
+
+          if (!cachedSession) {
+            // verify token
+            const { sessionId, userId } = await jwt.verify(session.token);
+
+            if (!sessionId || !userId) {
+              set.status = 401;
+              return new InstaError({
+                status: 401,
+                type: 'unauthorized',
+                message: 'Unauthorized',
+                summary: 'You are not authorized to access this resource',
+              }).toJSON();
+            }
+
+            // fetch session from db
+            const in2min = new Date(Date.now() + 2 * 60 * 1000);
+            const { sessions } = await this.query({
+              sessions: {
+                $include: ['user'],
+                $filter: {
+                  _id: { $eq: sessionId },
+                  _expires_at: { $gt: in2min },
+                },
+              },
+            });
+
+            const actualSession = sessions[0];
+
+            if (!actualSession || !actualSession.user) {
+              set.status = 401;
+              return new InstaError({
+                status: 401,
+                type: 'unauthorized',
+                message: 'Unauthorized',
+                summary: 'You are not authorized to access this function',
+              }).toJSON();
+            }
+
+            // cache the actual session
+            this.cache.set(`session:${session.token}`, {
+              token: actualSession.token,
+              user: actualSession.user,
+              _expires_at: actualSession._expires_at,
+              _id: actualSession._id,
+            });
+
+            session.user = actualSession.user;
+            session.token = actualSession.token;
+            session._expires_at = actualSession._expires_at;
+            session._id = actualSession._id;
+
+            if (this.#inspect) {
+              console.log('session cache miss', session._id);
+            }
+          } else {
+            session.user = cachedSession.user;
+            session.token = cachedSession.token;
+            session._expires_at = cachedSession._expires_at;
+            session._id = cachedSession._id;
+
+            if (this.#inspect) {
+              console.log('session cache hit', session._id);
+            }
+          }
+        }
+      };
+    },
     // function execution is only possible via elysia post
     // this is to ensure the function is properly validated and executed one way client -> server
     post: () => {
@@ -879,105 +1215,31 @@ export class Instant<
         params,
         set,
         body,
+        fn,
+        session,
       }: {
         headers: Record<string, string | undefined>;
         params: Record<string, string>;
         set: SetOptions;
         body: Document;
+        fn: keyof CloudSchema['body'];
+        session: DerivedSession;
       }) => {
         try {
-          const token = (headers['Authorization'] || 'Bearer ').split(' ')[1];
-          const fn = this.#functions.find((fn) => fn === params['function']);
-
-          if (!fn || !this.#cloud[fn]) {
-            const { status, ...rest } = createError(
-              404,
-              'not_found',
-              'Function not found',
-              'The function you are trying to call does not exist',
-              [],
-              {
-                fn: params['function'],
-              }
-            );
-            set.status = status;
-            return { ...rest, status, fn: params['function'] };
-          }
-
-          const fnSchema = this.#cloudSchema[fn];
-
-          if (!fnSchema) {
-            const { status, ...rest } = createError(
-              400,
-              'bad_request',
-              'Function schema not found',
-              'The function you are trying to call is not valid',
-              [],
-              {
-                fn: params['function'],
-              }
-            );
-            set.status = status;
-            return { ...rest, status, fn: params['function'] };
-          }
-
-          // validate headers
-          const headersSchema = this.#cloudHeaders[fn];
-          if (headersSchema) {
-            const validation = await this.validateHeaders(
-              fn,
+          const result =
+            (await this.#cloud[fn as string]({
               headers,
-              headersSchema
-            );
-            if (validation.type) {
-              set.status = validation.status;
-              return validation;
-            }
-          }
-
-          // validate token if not public
-          const { public: isPublic } = JSON.parse(fnSchema.description || '{}');
-          if (!isPublic && !token) {
-            const { status, ...rest } = createError(
-              401,
-              'unauthorized',
-              'Unauthorized',
-              'You are not authorized to call this function',
-              [],
-              {
-                fn: params['function'],
-              }
-            );
-            set.status = status;
-            return { ...rest, status, fn: params['function'] };
-          }
-
-          if (!isPublic && token) {
-            // @todo validate token against cache (5min) and db
-            // grab a session and pass down to the function
-          }
-
-          // validate body
-          let validation = await this.validateFunctionBody(fn, body, fnSchema);
-
-          if (validation.type) {
-            set.status = validation.status;
-            return validation;
-          }
-
-          const result = await this.#cloud[fn]({
-            headers,
-            params,
-            set,
-            body,
-            // session // @todo pass the session here
-          });
+              params,
+              set,
+              body,
+              session,
+            })) || {};
 
           // validate response
           const responseSchema = this.#cloudResponse[fn];
           if (responseSchema) {
-            validation = await this.validateFunctionResponse(
-              fn,
+            const validation = await this.validateFunctionResponse(
+              fn as string,
               result,
               responseSchema
             );
@@ -997,22 +1259,62 @@ export class Instant<
 
           if (err?.type) {
             set.status = err.status;
-            return { ...err, fn: params['function'] };
+            return { ...err, fn: params['fn'] };
           }
 
           set.status = 500;
-          return createError(
-            500,
-            'internal_server_error',
-            'Function execution failed',
-            'There was an error while executing this function. Please contact support.',
-            [],
-            {
-              fn: params['function'],
-            }
-          );
+          return new InstaError({
+            status: 500,
+            type: 'internal_server_error',
+            message: 'Function execution failed',
+            summary: 'There was an error while executing this request.',
+            errors: [],
+            fn: params['fn'],
+          }).toJSON();
         }
       };
+    },
+    addFunction: <K extends keyof CloudSchema['body']>(
+      name: K,
+      fn: (args: {
+        body: z.infer<CloudSchema['body'][K]>;
+        headers: z.infer<CloudSchema['headers'][K]>;
+        set: SetOptions;
+      }) => Promise<z.infer<CloudSchema['response'][K]>>
+    ) => {
+      this.#functions.push(name as string);
+      this.#cloud[name as string] = fn;
+    },
+    removeFunction: <K extends keyof CollectionSchema>(name: K) => {
+      this.#functions = this.#functions.filter((fn) => fn !== name);
+      delete this.#cloud[name as string];
+    },
+    addHook: <A extends CloudHookAction, C extends keyof CollectionSchema>(
+      action: A,
+      collection: C,
+      fn: (data: {
+        session?: string | undefined; // @todo
+        before?: z.infer<CollectionSchema[C]> | undefined;
+        doc: z.infer<CollectionSchema[C]>;
+      }) => A extends 'beforeSave'
+        ? Promise<z.infer<CollectionSchema[C]>>
+        : Promise<void>
+    ) => {
+      if (!this.#cloudHooks) {
+        this.#cloudHooks = {} as any;
+      }
+      if (!this.#cloudHooks?.[collection]) {
+        this.#cloudHooks![collection] = {} as any;
+      }
+      if (!this.#cloudHooks?.[collection]?.[action]) {
+        this.#cloudHooks![collection][action] = fn as any;
+      }
+    },
+    removeHook: <Y extends CloudHookAction, K extends keyof CollectionSchema>(
+      name: Y,
+      collection: K
+    ) => {
+      delete this.#cloudHooks![collection][name];
     },
   };
 
@@ -1021,7 +1323,6 @@ export class Instant<
    * @returns Elysia handler
    */
   public live = {
-    query: Instant.SyncLiveQuerySchema,
     open: (
       // eslint-disable-next-line  @typescript-eslint/no-explicit-any
       ws: ElysiaWS<any, any, any>
@@ -1115,12 +1416,14 @@ export class Instant<
         .findOne({ email: email.toLowerCase() });
       if (!user) {
         return Promise.reject(
-          createError(
-            401,
-            'unauthorized',
-            'Unauthorized',
-            'The email or password is incorrect'
-          )
+          new InstaError({
+            status: 401,
+            type: 'unauthorized',
+            message: 'Unauthorized',
+            summary: 'The email or password is incorrect',
+            errors: [],
+            fn: 'signIn',
+          }).toJSON()
         );
       }
 
@@ -1128,12 +1431,14 @@ export class Instant<
 
       if (!passwordMatch) {
         return Promise.reject(
-          createError(
-            401,
-            'unauthorized',
-            'Unauthorized',
-            'The email or password is incorrect'
-          )
+          new InstaError({
+            status: 401,
+            type: 'unauthorized',
+            message: 'Unauthorized',
+            summary: 'The email or password is incorrect',
+            errors: [],
+            fn: 'signIn',
+          }).toJSON()
         );
       }
 
@@ -1155,12 +1460,14 @@ export class Instant<
         .findOne({ email: email.toLowerCase() });
       if (user) {
         return Promise.reject(
-          createError(
-            400,
-            'validation_error',
-            'Email already exists',
-            'The email provided already exists.'
-          )
+          new InstaError({
+            status: 400,
+            type: 'validation_error',
+            message: 'Email already exists',
+            summary: 'The email provided already exists.',
+            errors: [],
+            fn: 'signUp',
+          }).toJSON()
         );
       }
       const now = new Date();
@@ -1182,30 +1489,63 @@ export class Instant<
       });
     },
     signOut: async ({ token }: { token: string }) => {
-      await this.db.collection('sessions').deleteOne({ token });
-      // @todo invalidate session cache
-    },
-    createSession: async ({ user }: { user: InstaUser }) => {
-      /**
-       * expires in 1 year
-       * @todo make this an option ?
-       */
-      const expiresAt = new Date();
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      const now = new Date();
+      const in2min = new Date(
+        new Date().setMinutes(new Date().getMinutes() + 2)
+      );
 
+      // issue a soft delete so that db hook listeners can be notified
+      await this.db.collection('sessions').updateOne(
+        { token },
+        {
+          $set: {
+            _updated_at: now,
+            _expires_at: in2min,
+          },
+        }
+      );
+
+      this.cache.del(`session:${token}`);
+    },
+    createSession: async ({
+      user,
+      nbf,
+      exp = new Date().setFullYear(new Date().getFullYear() + 1),
+      ...rest
+    }: {
+      user: InstaUser;
+    } & JWTPayloadSpec) => {
       /**
        * generate a new session token
        */
+      const userId = user._id;
+      const sessionId = newObjectId();
+      const key = new TextEncoder().encode(this.#secret);
+
+      let jwt = new SignJWT({
+        ...rest,
+        userId,
+        sessionId,
+        nbf: undefined,
+        exp: undefined,
+      }).setProtectedHeader({
+        alg: 'HS256',
+        crit: undefined,
+      });
+
+      if (nbf) jwt = jwt.setNotBefore(nbf);
+      if (exp) jwt = jwt.setExpirationTime(exp);
+
+      const token = await jwt.sign(key);
       const now = new Date();
-      const token = `i:${newToken()}`;
 
       const session = {
-        _id: newObjectId(),
-        _p_user: pointer('users', user._id),
-        token: token,
-        _expires_at: expiresAt,
+        _id: sessionId,
+        _p_user: pointer('users', userId),
+        _expires_at: new Date(exp),
         _created_at: now,
         _updated_at: now,
+        token,
       };
 
       await this.db.collection('sessions').insertOne(session as Document, {
@@ -1219,26 +1559,59 @@ export class Instant<
     },
   };
 
+  public async validate(
+    collection: keyof CollectionSchema,
+    data: unknown,
+    { strict = true } = {}
+  ) {
+    const schema = this.#schema[collection];
+
+    try {
+      if (strict) {
+        await (schema as any).strict().parseAsync(data);
+      } else {
+        await (schema as any).parseAsync(data);
+      }
+    } catch (zodError) {
+      if (zodError instanceof z.ZodError) {
+        return new InstaError<CloudSchema>({
+          status: 400,
+          type: 'validation_error',
+          message: 'Invalid data provided',
+          summary: `The data provided for ${singular(
+            collection as string
+          )} is not valid.`,
+          errors: zodError.errors.map((err) => ({
+            path: err.path.join('.'),
+            message: err.message,
+          })),
+        }).toJSON();
+      }
+    }
+
+    return {} as InstaErrorParams<CloudSchema>;
+  }
+
   public async validateQuery(query: unknown, schema: z.ZodType<any, any, any>) {
     try {
       await (schema as z.ZodObject<any>).parseAsync(query);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return createError(
-          400,
-          'validation_error',
-          'Invalid query',
-          'The query provided is not valid.',
-          zodError.errors.map((err) => ({
+        return new InstaError<CloudSchema>({
+          status: 400,
+          type: 'validation_error',
+          message: 'Invalid query',
+          summary: 'The query provided is not valid.',
+          errors: zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
-          }))
-        );
+          })),
+        }).toJSON();
       }
       throw zodError;
     }
 
-    return {} as InstaError;
+    return {} as InstaErrorParams<CloudSchema>;
   }
 
   public async validateBody(
@@ -1261,21 +1634,23 @@ export class Instant<
       }
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return createError(
-          400,
-          'validation_error',
-          'Invalid data',
-          `The data provided for ${singular(collection)} is not valid.`,
-          zodError.errors.map((err) => ({
+        return new InstaError<CloudSchema>({
+          status: 400,
+          type: 'validation_error',
+          message: 'Invalid data',
+          summary: `The data provided for ${singular(
+            collection
+          )} is not valid.`,
+          errors: zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
-          }))
-        );
+          })),
+        }).toJSON();
       }
       throw zodError; // Re-throw if it's not a ZodError
     }
 
-    return {} as InstaError;
+    return {} as InstaErrorParams<CloudSchema>;
   }
 
   public async validateFunctionBody(
@@ -1287,24 +1662,22 @@ export class Instant<
       await (schema as z.ZodObject<any>).strict().parseAsync(body);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return createError(
-          400,
-          'validation_error',
-          'Invalid data provided',
-          `The data provided for the ${name} function is not valid.`,
-          zodError.errors.map((err) => ({
+        return new InstaError<CloudSchema>({
+          status: 400,
+          type: 'validation_error',
+          message: 'Invalid data provided',
+          summary: `The data provided for ${name} is not valid.`,
+          errors: zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
           })),
-          {
-            fn: name,
-          }
-        );
+          fn: name,
+        }).toJSON();
       }
       throw zodError; // Re-throw if it's not a ZodError
     }
 
-    return {} as InstaError;
+    return {} as InstaErrorParams<CloudSchema>;
   }
 
   public async validateFunctionResponse(
@@ -1316,24 +1689,22 @@ export class Instant<
       await (schema as z.ZodObject<any>).parseAsync(body);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return createError(
-          500,
-          'bad_response',
-          'Invalid response',
-          `Server generated an invalid response for the ${name} function. Please contact support.`,
-          zodError.errors.map((err) => ({
+        return new InstaError<CloudSchema>({
+          status: 500,
+          type: 'bad_response',
+          message: 'Invalid response',
+          summary: `Server generated an invalid response for ${name}.`,
+          errors: zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
           })),
-          {
-            fn: name,
-          }
-        );
+          fn: name,
+        }).toJSON();
       }
       throw zodError; // Re-throw if it's not a ZodError
     }
 
-    return {} as InstaError;
+    return {} as InstaErrorParams<CloudSchema>;
   }
 
   public async validateHeaders(
@@ -1345,114 +1716,27 @@ export class Instant<
       await (schema as z.ZodObject<any>).parseAsync(headers);
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return createError(
-          400,
-          'bad_headers',
-          'Invalid headers provided',
-          `The headers provided for the ${name} function is not valid.`,
-          zodError.errors.map((err) => ({
+        return new InstaError<CloudSchema>({
+          fn: name,
+          status: 400,
+          type: 'bad_headers',
+          message: 'Invalid headers provided',
+          summary: `The headers provided for ${name} is not valid.`,
+          errors: zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
           })),
-          {
-            fn: name,
-          }
-        );
+        }).toJSON();
       }
       throw zodError; // Re-throw if it's not a ZodError
     }
 
-    return {} as InstaError;
-  }
-
-  private async validateRequest({
-    collection,
-    headers,
-    body,
-    strict = true,
-    query,
-  }: {
-    query?: InstaSyncHeaders;
-    headers: Record<string, string | undefined>;
-    body?: Document;
-    collection: string;
-    strict?: boolean;
-  }) {
-    // validate collection
-    if (!this.collections.includes(collection)) {
-      return createError(
-        400,
-        'bad_request',
-        'collection not found',
-        'the collection you are trying to retrieve was not found.'
-      );
-    }
-
-    // validate headers - sync requires session at a minimum
-
-    let validation = await this.validateHeaders(
-      'sync',
-      headers,
-      InstaSyncHeadersSchema
-    );
-
-    if (validation.type && validation.errors) {
-      return validation;
-    }
-
-    // validate query
-    if (query) {
-      const querySchema = z.object({
-        synced: z.string().optional(),
-        activity: z.enum(['recent', 'oldest']).optional(),
-      });
-      validation = await this.validateQuery(query, querySchema);
-      if (validation.type && validation.errors) {
-        return validation;
-      }
-    }
-
-    // validate the body
-    if (body) {
-      validation = await this.validateBody(collection, body, { strict });
-    }
-
-    if (validation.type && validation.errors) {
-      return validation;
-    }
-
-    return {} as InstaError;
+    return {} as InstaErrorParams<CloudSchema>;
   }
 
   async #createIndexes() {
     const collections = Object.keys(this.#schema);
     const mongoCollections = await this.db.listCollections().toArray();
-
-    // this.#index = {
-    //   users: {
-    //     unique_email: {
-    //       definition: {
-    //         email: 1,
-    //       },
-    //       options: {
-    //         unique: true,
-    //       },
-    //     },
-    //     ...this.#index['users'],
-    //   },
-    //   ...this.#index,
-    // } as Partial<
-    //   Record<
-    //     keyof CollectionSchema,
-    //     Record<
-    //       string,
-    //       {
-    //         definition: IndexSpecification;
-    //         options?: CreateIndexesOptions | undefined;
-    //       }
-    //     >
-    //   >
-    // >;
 
     for (const collection of collections) {
       // if the collections doesn't in mongo, skip
@@ -1542,15 +1826,15 @@ export class Instant<
   }
 
   async #getData({
-    headers,
     params,
     query,
     set,
+    session, // @todo implement hooks for before and after get
   }: {
     params: Record<string, string>;
     query: InstaSyncHeaders;
-    headers: Record<string, string | undefined>;
     set: SetOptions;
+    session: DerivedSession;
   }) {
     const { collection } = params;
     const { activity, synced_at, limit = 100 } = query;
@@ -1558,21 +1842,8 @@ export class Instant<
     const maxLimit = Math.min(limit, this.#maxBatchSize);
 
     try {
-      const validation = await this.validateRequest({
-        collection,
-        headers,
-        query,
-      });
-
-      if (validation.type && validation.errors) {
-        set.status = 400;
-        return validation;
-      }
-
       const operator = activity === 'oldest' ? '$lt' : '$gt';
       const constraints = this.#constraints || [];
-
-      // console.log(collection, query);
 
       // determine the constraint key and value to be used in the mongo query
       // based on the query params. it can be multiple constraints
@@ -1607,12 +1878,13 @@ export class Instant<
       // throw if the constraints defined don't match the query
       if (Object.keys(constraintsQuery).length !== constraints.length) {
         set.status = 400;
-        return createError(
-          400,
-          'bad_request',
-          'Params mismatch',
-          'There is a mismatch between the params and constraints. Ensure that the params defined in the constraints are the same as the ones used in the sync method.'
-        );
+        return new InstaError({
+          status: 400,
+          type: 'bad_request',
+          summary: 'Params mismatch',
+          message:
+            'There is a mismatch between the params and constraints. Ensure that the params defined in the constraints are the same as the ones used in the sync method.',
+        }).toJSON();
       }
 
       // try to determine the collection _id field name
@@ -1700,6 +1972,8 @@ export class Instant<
 
       const nextSynced = data[data.length - 1]?.['_updated_at'].toISOString();
 
+      set.status = 200;
+
       return {
         collection,
         count,
@@ -1728,13 +2002,13 @@ export class Instant<
     } catch (error) {
       console.error('sync error', error);
       set.status = 500;
-
-      return createError(
-        500,
-        'internal_server_error',
-        `An error occurred while syncing ${collection}`,
-        'We were not able to process your request. Please try again later or contact support.'
-      );
+      return new InstaError({
+        status: 500,
+        type: 'internal_server_error',
+        summary: `An error occurred while syncing ${collection}`,
+        message:
+          'We were not able to process your request. Please try again later or contact support.',
+      }).toJSON();
     }
   }
 
@@ -1742,29 +2016,16 @@ export class Instant<
     params,
     set,
     body,
-    headers,
-    query,
+    session,
   }: {
     params: Record<string, string>;
-    query: InstaSyncHeaders;
-    headers: Record<string, string | undefined>;
     set: SetOptions;
     body: Document;
+    session: DerivedSession;
   }) {
     const { collection } = params;
 
     try {
-      const validation = await this.validateRequest({
-        collection,
-        body,
-        headers,
-      });
-
-      if (validation.type && validation.errors) {
-        set.status = 400;
-        return validation;
-      }
-
       // check for unique index fields so we can return a nice error
       // in case the record already exists
       const index = this.#index[collection] || {};
@@ -1787,18 +2048,16 @@ export class Instant<
 
         if (existingRecord) {
           set.status = 400;
-          return createError(
-            400,
-            'bad_request',
-            'Document already exists',
-            `A ${collection} document already exists with the same fields.`,
-            [
-              ...extractedUniqueFields.map((field) => ({
-                path: field,
-                message: existingRecord[field],
-              })),
-            ]
-          );
+          return new InstaError({
+            status: 400,
+            type: 'bad_request',
+            summary: 'Document already exists',
+            message: `A ${collection} document already exists with the same fields.`,
+            errors: extractedUniqueFields.map((field) => ({
+              path: field,
+              message: existingRecord[field],
+            })),
+          }).toJSON();
         }
       }
 
@@ -1816,7 +2075,7 @@ export class Instant<
         data = await this.#cloudHooks?.[collection]?.['beforeSave']({
           before: undefined,
           doc: data as CollectionSchema[keyof CollectionSchema],
-          session: undefined, // @todo add session
+          session,
         });
       }
 
@@ -1844,7 +2103,7 @@ export class Instant<
         await this.#cloudHooks?.[collection]?.['afterSave']({
           before: undefined,
           doc: data as CollectionSchema[keyof CollectionSchema],
-          session: undefined, // @todo add session
+          session,
         });
       }
 
@@ -1856,12 +2115,13 @@ export class Instant<
       console.error('sync error', error);
       set.status = 500;
 
-      return createError(
-        500,
-        'internal_server_error',
-        `An error occurred while syncing ${collection}`,
-        'We were not able to process your request. Please try again later or contact support.'
-      );
+      return new InstaError({
+        status: 500,
+        type: 'internal_server_error',
+        summary: `An error occurred while syncing ${collection}`,
+        message:
+          'We were not able to process your request. Please try again later or contact support.',
+      }).toJSON();
     }
   }
 
@@ -1869,28 +2129,25 @@ export class Instant<
     params,
     set,
     body,
-    query,
-    headers,
+    session,
   }: {
     params: Record<string, string>;
     set: SetOptions;
     body: Document;
-    query: InstaSyncHeaders;
-    headers: Record<string, string | undefined>;
+    session: DerivedSession;
   }) {
     try {
       const { collection, id } = params;
 
-      const validation = await this.validateRequest({
-        collection,
-        body,
-        headers,
-        strict: false,
-      });
-
-      if (validation.type && validation.errors) {
+      if (!id) {
         set.status = 400;
-        return validation;
+
+        return new InstaError({
+          status: 400,
+          type: 'bad_request',
+          summary: 'Document required',
+          message: 'The document id is required for update.',
+        }).toJSON();
       }
 
       let data = omit(body, ['_id', '_created_at', '_updated_at']);
@@ -1908,20 +2165,18 @@ export class Instant<
           params,
           set,
           body,
-          query,
-          headers,
+          session,
         });
       }
 
       if (isEmpty(doc)) {
         set.status = 404;
-
-        return createError(
-          404,
-          'not_found',
-          'Document not found',
-          'The document you are trying to update was not found.'
-        );
+        return new InstaError({
+          status: 404,
+          type: 'not_found',
+          summary: 'Document not found',
+          message: 'The document you are trying to update was not found.',
+        }).toJSON();
       }
 
       // check for unique index fields so we can return a nice error
@@ -1947,18 +2202,16 @@ export class Instant<
 
         if (existingRecord) {
           set.status = 400;
-          return createError(
-            400,
-            'bad_request',
-            'Document already exists',
-            `A ${collection} document already exists with the same fields.`,
-            [
-              ...extractedUniqueFields.map((field) => ({
-                path: field,
-                message: existingRecord[field],
-              })),
-            ]
-          );
+          return new InstaError({
+            status: 400,
+            type: 'bad_request',
+            summary: 'Document already exists',
+            message: `A ${collection} document already exists with the same fields.`,
+            errors: extractedUniqueFields.map((field) => ({
+              path: field,
+              message: existingRecord[field],
+            })),
+          }).toJSON();
         }
       }
 
@@ -1967,7 +2220,7 @@ export class Instant<
         data = await this.#cloudHooks?.[collection]?.['beforeSave']({
           before: doc as any,
           doc: { ...doc, ...data } as any,
-          session: undefined, // @todo add session
+          session,
         });
       }
 
@@ -1987,7 +2240,7 @@ export class Instant<
         await this.#cloudHooks?.[collection]?.['afterSave']({
           before: doc as any,
           doc: { ...doc, ...data } as any,
-          session: undefined, // @todo add session
+          session,
         });
       }
 
@@ -2003,47 +2256,35 @@ export class Instant<
       console.error('sync error', error);
       set.status = 500;
 
-      return createError(
-        500,
-        'internal_server_error',
-        'An error occurred while syncing',
-        'We were not able to process your request. Please try again later or contact support.'
-      );
+      return new InstaError({
+        status: 500,
+        type: 'internal_server_error',
+        summary: 'An error occurred while syncing',
+        message: 'We were not able to process your request.',
+      }).toJSON();
     }
   }
 
   async #deleteData({
     params,
     set,
+    session,
   }: {
     params: Record<string, string>;
-    query: InstaSyncHeaders;
-    headers: Record<string, string | undefined>;
     set: SetOptions;
+    session: DerivedSession;
   }) {
     const { collection, id } = params;
-
     try {
-      if (!this.collections.includes(collection)) {
-        set.status = 400;
-
-        return createError(
-          400,
-          'bad_request',
-          'Collection not found',
-          'The collection you are trying to delete is not found.'
-        );
-      }
-
       if (!id) {
         set.status = 400;
 
-        return createError(
-          400,
-          'bad_request',
-          'Document required',
-          'The document id you are trying to delete is required.'
-        );
+        return new InstaError({
+          status: 400,
+          type: 'bad_request',
+          summary: 'Document required',
+          message: 'The document id is required for deletion.',
+        }).toJSON();
       }
 
       const doc = await this.db.collection(collection).findOne({
@@ -2053,12 +2294,12 @@ export class Instant<
       if (isEmpty(doc)) {
         set.status = 404;
 
-        return createError(
-          404,
-          'not_found',
-          'Document not found',
-          'The document you are trying to delete was not found.'
-        );
+        return new InstaError({
+          status: 404,
+          type: 'not_found',
+          summary: 'Document not found',
+          message: 'The document you are trying to delete was not found.',
+        }).toJSON();
       }
 
       const now = new Date();
@@ -2075,7 +2316,7 @@ export class Instant<
         await this.#cloudHooks?.[collection]?.['beforeDelete']({
           before: doc as any,
           doc: data as any,
-          session: undefined, // @todo add session
+          session,
         });
       }
 
@@ -2094,7 +2335,7 @@ export class Instant<
         await this.#cloudHooks?.[collection]?.['afterDelete']({
           before: doc as any,
           doc: { ...doc, ...data } as any,
-          session: undefined, // @todo add session
+          session,
         });
       }
 
@@ -2106,12 +2347,12 @@ export class Instant<
       console.error('sync error', error);
       set.status = 500;
 
-      return createError(
-        500,
-        'internal_server_error',
-        `An error occurred while syncing ${collection}`,
-        'We were not able to process your request. Please try again later or contact support.'
-      );
+      return new InstaError({
+        status: 500,
+        type: 'internal_server_error',
+        summary: `An error occurred while syncing ${collection}`,
+        message: 'We were not able to process your request.',
+      }).toJSON();
     }
   }
 
@@ -2252,6 +2493,12 @@ export class Instant<
     return this.#executeQuery(iql);
   }
 
+  /**
+   * mutate data
+   * this api is to ensure behavior consistency with cloud hooks which are activated by client requests (ie syncing data)
+   * note that the cloud hooks here have no session as there's no user context when mutating data from the server
+   * but you can still benefit from structured documents, e2e types and validation
+   */
   public mutate<C extends keyof CollectionSchema>(collection: C) {
     return {
       add: async (value: Partial<z.infer<CollectionSchema[C]>>) => {
@@ -2263,12 +2510,21 @@ export class Instant<
           _id: newObjectId(),
         };
 
+        // run validation
+        const validation = await this.validate(collection, doc);
+        const { errors } = validation;
+        if (errors) {
+          return Promise.reject(validation);
+        }
+
         // run beforeSave hooks
         if (this.#cloudHooks?.[collection]?.beforeSave) {
           doc = await this.#cloudHooks[collection].beforeSave({
             doc,
             before: undefined,
-            session: undefined,
+            session: {
+              user: undefined,
+            },
           });
         }
 
@@ -2282,7 +2538,9 @@ export class Instant<
         if (this.#cloudHooks?.[collection]?.afterSave) {
           await this.#cloudHooks[collection].afterSave({
             before: undefined,
-            session: undefined,
+            session: {
+              user: undefined,
+            },
             doc,
           });
         }
@@ -2298,7 +2556,14 @@ export class Instant<
           .findOne({ _id: id as unknown as ObjectId });
 
         if (!beforeDoc) {
-          return Promise.reject('Document not found');
+          return Promise.reject(
+            new InstaError({
+              status: 404,
+              type: 'not_found',
+              summary: 'Document not found',
+              message: 'The document you are trying to update was not found.',
+            })
+          );
         }
 
         let nextDoc: any = {
@@ -2306,12 +2571,23 @@ export class Instant<
           _updated_at: new Date(),
         };
 
+        // run validation
+        const validation = await this.validate(collection, nextDoc, {
+          strict: false,
+        });
+        const { errors } = validation;
+        if (errors) {
+          return Promise.reject(validation);
+        }
+
         // run beforeSave hooks
         if (this.#cloudHooks?.[collection]?.beforeSave) {
           nextDoc = await this.#cloudHooks[collection].beforeSave({
             doc: nextDoc,
             before: beforeDoc,
-            session: undefined,
+            session: {
+              user: undefined,
+            },
           });
         }
 
@@ -2327,7 +2603,9 @@ export class Instant<
           await this.#cloudHooks[collection].afterSave({
             before: beforeDoc,
             doc: { ...beforeDoc, ...nextDoc } as any,
-            session: undefined,
+            session: {
+              user: undefined,
+            },
           });
         }
 
@@ -2344,7 +2622,14 @@ export class Instant<
           .findOne({ _id: id as unknown as ObjectId });
 
         if (!beforeDoc) {
-          return Promise.reject('Document not found');
+          return Promise.reject(
+            new InstaError({
+              status: 404,
+              type: 'not_found',
+              summary: 'Document not found',
+              message: 'The document you are trying to delete was not found.',
+            })
+          );
         }
 
         // run beforeDelete hooks
@@ -2352,7 +2637,9 @@ export class Instant<
           await this.#cloudHooks[collection].beforeDelete({
             before: beforeDoc as any,
             doc: { ...beforeDoc, _expires_at: in1year } as any,
-            session: undefined,
+            session: {
+              user: undefined,
+            },
           });
         }
 
@@ -2375,7 +2662,9 @@ export class Instant<
               _expires_at: in1year,
               _updated_at: now,
             } as any,
-            session: undefined,
+            session: {
+              user: undefined,
+            },
           });
         }
       },
@@ -2407,6 +2696,7 @@ export class Instant<
         $include,
         $aggregate,
         $options,
+        $eq,
         ...nestedQueries
       } = query as iQLDirectives<any> & Record<string, any>;
 
@@ -2460,17 +2750,20 @@ export class Instant<
       }
 
       // Handle nested queries recursively
-      for (const doc of result[collection]) {
-        for (const [nestedCollection, nestedQuery] of Object.entries(
-          nestedQueries
-        )) {
-          if (typeof nestedQuery === 'object' && nestedQuery !== null) {
-            const nestedResult = await this.#executeQuery(
-              { [nestedCollection]: nestedQuery } as any,
-              collection,
-              doc._id.toString()
-            );
-            doc[nestedCollection] = nestedResult[nestedCollection];
+      // only if there's nested queries
+      if (Object.entries(nestedQueries).length > 0) {
+        for (const doc of result[collection]) {
+          for (const [nestedCollection, nestedQuery] of Object.entries(
+            nestedQueries
+          )) {
+            if (typeof nestedQuery === 'object' && nestedQuery !== null) {
+              const nestedResult = await this.#executeQuery(
+                { [nestedCollection]: nestedQuery } as any,
+                collection,
+                doc._id.toString()
+              );
+              doc[nestedCollection] = nestedResult[nestedCollection];
+            }
           }
         }
       }

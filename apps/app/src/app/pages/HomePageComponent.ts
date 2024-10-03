@@ -240,12 +240,17 @@ import { PwaUpdateStatusComponent } from '../components/PwaStatusComponent';
       </div>
       } @else{
       <login-form class="block w-full max-w-sm my-2"></login-form>
-      } }
+      } } @if (display()) {
       <pwa-update-status class="block mt-4 mx-auto"></pwa-update-status>
+      }
     </div>
   `,
 })
 export class HomePageComponent {
+  display = toSignal(of(true).pipe(delay(100)), {
+    initialValue: false,
+  });
+
   banner = toSignal(of(true).pipe(delay(100)), {
     initialValue: false,
   });

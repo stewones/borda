@@ -8,6 +8,7 @@ import {
   createObjectIdSchema,
   createPointer,
   createSchema,
+  InstaSessionSchema,
   InstaUserEmailSchema,
   InstaUserPasswordSchema,
   InstaUserSchema,
@@ -54,6 +55,11 @@ export const UserSchema = withOptions(
   }
 );
 
+export const SessionSchema = withOptions(InstaSessionSchema, {
+  sync: false,
+  description: 'the session schema, never synced',
+});
+
 export const PostSchema = createSchema('posts', {
   _p_user: z.string(), // default way to reference the user (so nested queries work out of the box)
   _p_org: z.string(),
@@ -76,6 +82,7 @@ export const SyncSchema = {
   users: UserSchema,
   posts: PostSchema,
   comments: CommentSchema,
+  sessions: SessionSchema,
 };
 
 export const CloudSchema = {

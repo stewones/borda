@@ -54,7 +54,16 @@ export class AppComponent {
     .subscribe((err) => {
       const { message, summary, errors } = err;
       const niceMessage = errors
-        ?.map((e) => `- ${e.path}: ${e.message}`)
+        ?.map((e) => {
+          const messageWords = e.message.split(' ');
+          const firstWord = messageWords[0];
+
+          if (e.path.toLowerCase() === firstWord.toLowerCase()) {
+            return `- ${e.message}`;
+          }
+
+          return `- ${e.path}: ${e.message}`;
+        })
         .join('<br />');
 
       toast(message, {
@@ -86,19 +95,9 @@ export class AppComponent {
         });
       }, 0);
     });
+
   async ngOnInit() {
     const usage = await insta.usage();
     console.log(`💽 total indexeddb usage`, usage);
-    /**
-     * starts the sync process
-     */
-    // insta.sync({
-    //   session: 'the-token',
-    //   user: 'the-user-id',
-    //   params: {
-    //     // org: 'YwkJYEdhgh,HnPHIL7PKx,r24qXJr9nh,LNcx7jlL7P',
-    //     // something: 'else',
-    //   },
-    // });
   }
 }

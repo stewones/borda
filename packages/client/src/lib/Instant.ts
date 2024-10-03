@@ -35,7 +35,7 @@ import { WebSocketFactory } from './websocket';
 
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
 
-export interface InstaError<
+export interface InstaErrorParams<
   CloudSchema extends {
     headers: SchemaType;
     body: SchemaType;
@@ -50,11 +50,54 @@ export interface InstaError<
   type: InstaErrorType;
   message: string;
   summary: string;
-  errors: {
+  errors?: {
     path: string;
     message: string;
   }[];
   fn?: keyof CloudSchema['body'];
+}
+
+export class InstaError<
+  CloudSchema extends {
+    headers: SchemaType;
+    body: SchemaType;
+    response: SchemaType;
+  } = {
+    headers: Record<string, never>;
+    body: Record<string, never>;
+    response: Record<string, never>;
+  }
+> extends Error {
+  override message!: string;
+  public status!: number;
+  public type!: InstaErrorType;
+  public summary!: string;
+  public errors!: {
+    path: string;
+    message: string;
+  }[];
+  public fn?: keyof CloudSchema['body'];
+
+  constructor(params: InstaErrorParams<CloudSchema>) {
+    super(params.message);
+    this.status = params.status;
+    this.type = params.type;
+    this.message = params.message;
+    this.summary = params.summary;
+    this.errors = params.errors || [];
+    this.fn = params.fn;
+  }
+
+  toJSON() {
+    return {
+      status: this.status,
+      type: this.type,
+      message: this.message,
+      summary: this.summary,
+      errors: this.errors,
+      fn: this.fn,
+    } as InstaErrorParams<CloudSchema>;
+  }
 }
 
 export type InstaErrorType =
@@ -225,28 +268,6 @@ export const createPointer = (collection: string, id: string) => {
   return `${collection}$${id}`;
 };
 
-export const createError = (
-  status: number,
-  type: InstaError['type'],
-  message: InstaError['message'],
-  summary: InstaError['summary'],
-  errors: InstaError['errors'] = [],
-  {
-    fn = '',
-  }: {
-    fn?: InstaError['fn'];
-  } = {}
-) => {
-  return {
-    status,
-    type,
-    message,
-    summary,
-    errors,
-    fn,
-  } as InstaError;
-};
-
 const InstaSyncSchema = z.object({
   collection: z.string(),
   count: z.number(),
@@ -344,7 +365,7 @@ export class Instant<
       )
     );
 
-  public errors = new Subject<InstaError<CloudSchema>>();
+  public errors = new Subject<InstaErrorParams<CloudSchema>>();
 
   protected wss: WebSocket | undefined;
 
@@ -719,27 +740,6 @@ export class Instant<
   }
 
   protected async processMutation(collection: string, item: Document) {
-    // check for validation, if fails, skip
-    const validation = this.validate(collection, item);
-    const { type, message, summary, errors } = validation;
-    if (errors) {
-      // skip from syncing
-      await this.db.table(collection).update(item['_id'], {
-        _sync: 0,
-      });
-
-      // post errors to the client
-      self.postMessage({
-        validation,
-      });
-
-      /* istanbul ignore next */
-      if (this.#inspect) {
-        console.error('❌ validation failed', type, message, summary, errors);
-      }
-      return;
-    }
-
     let url = `${this.#serverURL}/sync/${collection}`;
 
     const token = this.token;
@@ -757,7 +757,7 @@ export class Instant<
 
     // if data has no server id yet
     // we need to make sure this is a POST operation
-    if (item['_id'].includes('-')) {
+    if (method === 'PUT' && item['_id'].includes('-')) {
       method = 'POST';
       url = `${this.#serverURL}/sync/${collection}`;
     }
@@ -893,6 +893,10 @@ export class Instant<
       await this.ready();
     }
 
+    if (!this.#session) {
+      return;
+    }
+
     const customParams = new URLSearchParams(params).toString();
     if (customParams) {
       url += `&${customParams}`;
@@ -905,7 +909,6 @@ export class Instant<
         headers: {
           authorization: `Bearer ${token}`,
           ...headers,
-          // ['x-timezone']: Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
       });
 
@@ -1513,10 +1516,17 @@ export class Instant<
         serverURL = '',
       }: WorkerPayload = JSON.parse(data);
       const { activity, synced_at } = actionParams || {};
-
+      this.token
       try {
         if (!this.#db) {
           await this.ready();
+        }
+
+        if (token && !this.#session?.token) {
+          this.#session = {
+            ...this.#session,
+            token,
+          } as InstaSession;
         }
 
         if (serverURL && !this.#serverURL) {
@@ -1570,19 +1580,14 @@ export class Instant<
          */
 
         if (action === 'batch') {
-          if (!token) {
+          if (!this.token) {
             if (this.#inspect) {
               console.warn('No token provided for batch sync');
             }
             return Promise.resolve();
           }
 
-          if (token && !this.#session?.token) {
-            this.#session = {
-              ...this.#session,
-              token,
-            } as InstaSession;
-          }
+      
 
           this.#headers = headers;
           this.#params = params;
@@ -1654,10 +1659,13 @@ export class Instant<
         }
 
         if (action === 'live') {
+          if (!this.token) {
+            return Promise.reject(new Error('No token provided for live sync'));
+          }
           const url = `${this.#serverURL.replace(
             'http',
             'ws'
-          )}/sync/live?session=${this.token}`;
+          )}/live?session=${this.token}`;
           this.runLiveWorker({ url, token, headers, params });
         }
       } catch (err) {
@@ -1927,6 +1935,14 @@ export class Instant<
         valueWithMetadata._created_by = createPointer('users', this.user);
         valueWithMetadata._updated_by = createPointer('users', this.user);
 
+        // run validation
+        const validation = await this.validate(collection, valueWithMetadata);
+        const { errors } = validation;
+        if (errors) {
+          this.errors.next(validation);
+          return Promise.reject(validation);
+        }
+
         await this.db.transaction(
           'rw!',
           this.db.table(collection as string),
@@ -1944,7 +1960,14 @@ export class Instant<
       ) => {
         const currentDoc = await this.db.table(collection as string).get(id);
         if (!currentDoc) {
-          throw new Error('Document not found');
+          const error = new InstaError<CloudSchema>({
+            status: 404,
+            type: 'not_found',
+            message: 'Document not found',
+            summary: 'The document you are trying to update does not exist.',
+          }).toJSON();
+          this.errors.next(error);
+          return Promise.reject(error);
         }
 
         // calc what changed excluding _updated_at, _created_at, _sync
@@ -1952,45 +1975,61 @@ export class Instant<
 
         // skip if nothing changed
         if (Object.keys(updatedFields).length === 0) {
-          const err = createError(
-            400,
-            'validation_error',
-            'No changes provided',
-            'The data provided for this document is not valid. Please provide at least one field to update.'
-          );
+          const err = new InstaError<CloudSchema>({
+            status: 400,
+            type: 'validation_error',
+            message: 'No changes provided',
+            summary:
+              'The data provided for this document is not valid. Please provide at least one field to update.',
+          }).toJSON();
 
-          this.errors.next(err as unknown as InstaError<CloudSchema>);
+          this.errors.next(err);
           return Promise.reject(err);
         }
 
-        // append required fields to updatedFields
-        // const schemaFields = this.#schema[collection as keyof CollectionSchema];
-        // const schema = schemaFields as unknown as z.ZodObject<any>;
-        // const requiredFields = Object.keys(schema.shape).filter(
-        //   (key) => !schema.shape[key].isOptional()
-        // );
+        const nextDoc = {
+          ...currentDoc,
+          ...value,
+          _sync: 1,
+          _updated_at: new Date().toISOString(),
+          _updated_by: createPointer('users', this.user),
+          _updated_fields: updatedFields,
+        };
 
-        // requiredFields.forEach((field) => {
-        //   updatedFields[field] = value[field];
-        // });
+        // run validation
+        const validation = await this.validate(collection, nextDoc, {
+          strict: false,
+        });
+        const { errors } = validation;
+        if (errors) {
+          this.errors.next(validation);
+          return Promise.reject(validation);
+        }
 
         await this.db.transaction(
           'rw!',
           this.db.table(collection as string),
           async () => {
-            await this.db.table(collection as string).update(id, {
-              ...currentDoc,
-              ...value,
-              _sync: 1,
-              _updated_at: new Date().toISOString(),
-              _updated_by: createPointer('users', this.user),
-              _updated_fields: updatedFields,
-            });
+            await this.db.table(collection as string).update(id, nextDoc);
             this.recordTasks();
           }
         );
       },
       delete: async (id: string) => {
+        const currentDoc = await this.db.table(collection as string).get(id);
+        if (!currentDoc) {
+          const error = new InstaError<CloudSchema>({
+            status: 404,
+            type: 'not_found',
+            message: 'Document not found',
+            summary: 'The document you are trying to delete does not exist.',
+          }).toJSON();
+
+          this.errors.next(error);
+
+          return Promise.reject(error);
+        }
+
         await this.db.transaction(
           'rw!',
           this.db.table(collection as string),
@@ -2008,27 +2047,37 @@ export class Instant<
     };
   }
 
-  public validate(collection: string, data: unknown) {
+  public async validate(
+    collection: keyof CollectionSchema,
+    data: unknown,
+    { strict = true } = {}
+  ) {
     const schema = this.#schema[collection];
 
     try {
-      (schema as z.ZodObject<any>).strict().parse(data);
+      if (strict) {
+        await (schema as any).strict().parseAsync(data);
+      } else {
+        await (schema as any).parseAsync(data);
+      }
     } catch (zodError) {
       if (zodError instanceof z.ZodError) {
-        return createError(
-          400,
-          'validation_error',
-          'Invalid data provided',
-          `The data provided for ${singular(collection)} is not valid.`,
-          zodError.errors.map((err) => ({
+        return new InstaError<CloudSchema>({
+          status: 400,
+          type: 'validation_error',
+          message: 'Invalid data provided',
+          summary: `The data provided for ${singular(
+            collection as string
+          )} is not valid.`,
+          errors: zodError.errors.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
-          }))
-        );
+          })),
+        }).toJSON();
       }
     }
 
-    return {} as InstaError;
+    return {} as InstaErrorParams<CloudSchema>;
   }
 
   /**

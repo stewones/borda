@@ -2661,7 +2661,7 @@ describe('Instant Client', () => {
       await insta.ready();
       // @ts-ignore
       await insta.runLiveWorker({
-        url: 'ws://localhost:8080/sync/live?session=1337',
+        url: 'ws://localhost:8080/live?session=1337',
         params: {
           org: 'a1b2c3d4e',
         },
@@ -2672,7 +2672,7 @@ describe('Instant Client', () => {
 
       expect(buildWebSocketSpy).toHaveBeenCalled();
       expect(buildWebSocketSpy).toHaveBeenCalledWith(
-        'ws://localhost:8080/sync/live?session=1337&org=a1b2c3d4e&timezone=GMT'
+        'ws://localhost:8080/live?session=1337&org=a1b2c3d4e&timezone=GMT'
       );
 
       // clean up
@@ -2711,7 +2711,7 @@ describe('Instant Client', () => {
       await insta.ready();
       // @ts-ignore
       await insta.runLiveWorker({
-        url: 'ws://localhost:8080/sync/live?session=1337',
+        url: 'ws://localhost:8080/live?session=1337',
         params: {
           org: 'a1b2c3d4e',
         },
@@ -2771,7 +2771,7 @@ describe('Instant Client', () => {
 
       // @ts-ignore
       await insta.runLiveWorker({
-        url: 'ws://localhost:8080/sync/live?session=1337',
+        url: 'ws://localhost:8080/live?session=1337',
         params: {
           org: 'a1b2c3d4e',
         },
@@ -2836,7 +2836,7 @@ describe('Instant Client', () => {
 
       // @ts-ignore
       await insta.runLiveWorker({
-        url: 'ws://localhost:8080/sync/live?session=1337',
+        url: 'ws://localhost:8080/live?session=1337',
         params: {
           org: 'a1b2c3d4e',
         },
@@ -2893,7 +2893,7 @@ describe('Instant Client', () => {
 
       // @ts-ignore
       await insta.runLiveWorker({
-        url: 'ws://localhost:8080/sync/live?session=1337',
+        url: 'ws://localhost:8080/live?session=1337',
         params: {
           org: 'a1b2c3d4e',
         },
@@ -2950,7 +2950,7 @@ describe('Instant Client', () => {
 
       // @ts-ignore
       await insta.runLiveWorker({
-        url: 'ws://localhost:8080/sync/live?session=1337',
+        url: 'ws://localhost:8080/live?session=1337',
         params: {
           org: 'a1b2c3d4e',
         },
@@ -3014,7 +3014,7 @@ describe('Instant Client', () => {
 
       // @ts-ignore
       await insta.runLiveWorker({
-        url: 'ws://localhost:8080/sync/live?session=1337',
+        url: 'ws://localhost:8080/live?session=1337',
         params: {
           org: 'a1b2c3d4e',
         },
@@ -3076,7 +3076,7 @@ describe('Instant Client', () => {
       // run live worker
       // @ts-ignore
       await insta.runLiveWorker({
-        url: 'ws://localhost:8080/sync/live?session=1337',
+        url: 'ws://localhost:8080/live?session=1337',
         params: {
           org: 'a1b2c3d4e',
         },
@@ -3138,7 +3138,7 @@ describe('Instant Client', () => {
       // run live worker
       // @ts-ignore
       await insta.runLiveWorker({
-        url: 'ws://localhost:8080/sync/live?session=1337',
+        url: 'ws://localhost:8080/live?session=1337',
         params: {
           org: 'a1b2c3d4e',
         },

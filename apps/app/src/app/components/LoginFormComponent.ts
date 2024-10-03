@@ -132,7 +132,7 @@ export class LoginFormComponent {
     )
     .subscribe((error) =>
       toast(error.message, {
-        description: error.errors[0]?.message || error.summary,
+        description: error.errors?.[0]?.message || error.summary,
       })
     );
 

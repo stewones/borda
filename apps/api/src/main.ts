@@ -1,10 +1,14 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 
 import { Instant } from '@borda/server';
 
-import { CloudSchema, SyncSchema } from '@/common';
+import {
+  CloudSchema,
+  SyncSchema,
+} from '@/common';
 import { cors } from '@elysiajs/cors';
 import { html } from '@elysiajs/html';
+import { jwt } from '@elysiajs/jwt';
 
 /**
  * instantiate and export the borda server
@@ -65,6 +69,7 @@ import { html } from '@elysiajs/html';
  * Setup Instant with schemas and options
  */
 const insta = new Instant({
+  inspect: true,
   schema: SyncSchema,
   cloud: CloudSchema,
   index: {
@@ -78,7 +83,6 @@ const insta = new Instant({
       },
     },
   },
-  // live: LiveSchema, // @todo migrate from Typebox
   // set constraints to restrict broadcast and filtered data
   // constraints: [
   //   {
@@ -86,92 +90,47 @@ const insta = new Instant({
   //     collection: 'orgs',
   //   },
   // ],
-  inspect: true,
 });
 
 await insta.ready();
-
-// custom route params schema
-// const SyncParamsSchema = Instant.SyncParamsSchema(insta.collections);
-// const SyncMutationParamsSchema = Instant.SyncMutationParamsSchema(
-//   insta.collections
-// );
-
-// custom query schema
-// const SyncBatchQueryCustomSchema = t.Object({
-//   ...Instant.SyncBatchQuery,
-//   //org: t.String(), // can also be multiple orgs split by comma
-// });
-
-// custom mutation query schema
-// const SyncMutationQueryCustomSchema = t.Object({
-//   // org: t.String(), // can also be multiple orgs split by comma
-// });
-
-// custom headers schema
-// const SyncHeadersCustomSchema = t.Object({
-//   ...Instant.SyncHeaders,
-//   // another custom header
-//   //someCustomHeaderParam: t.Optional(t.String()),
-// });
-
-// custom live query schema
-// @todo replace with Zod and a new schema prop "livequery" in the initialization
-const SyncLiveQueryOrgSchema = t.Object({
-  ...Instant.SyncLiveQuery,
-  // org: t.String(), // can also be multiple orgs split by comma - the key must be a pointer mapped in the constraints
-});
 
 /**
  * attach server functions with full type safety
  */
 insta.cloud.addFunction('login', async ({ body, headers, set }) => {
-  console.log('body', body); // expected to be { email: string; password: string }
-  console.log('headers', headers); // expected to be unknown
-  try {
-    const session = await insta.auth.signIn({
-      email: body.email,
-      password: body.password,
-    });
+  console.log('login body', body); // expected to be { email: string; password: string }
+  console.log('login headers', headers); // expected to be unknown
 
-    // expects a session to be returned
-    // containing a token and user info
-    return session;
-  } catch (err: any) {
-    console.log('login error', err);
-    set.status = err.status;
-    return Promise.reject(err);
-  }
+  const session = await insta.auth.signIn({
+    email: body.email,
+    password: body.password,
+  });
+
+  // expects a session to be returned
+  // containing a token and user info
+  return session;
 });
 
 insta.cloud.addFunction('logout', async ({ headers, set }) => {
-  console.log('headers', headers); // expected authorization header to be used
-  try {
-    await insta.auth.signOut({ token: headers.authorization.split(' ')[1] });
-    // doesn't expect return
-  } catch (err: any) {
-    set.status = err.status;
-    console.log('logout error', err);
-  }
+  console.log('logout headers', headers); // expects authorization header
+  const bearer = headers.authorization.split(' ')[1].replace('Bearer ', '');
+  await insta.auth.signOut({ token: bearer });
+  // doesn't expect return
 });
 
 insta.cloud.addFunction('sign-up', async ({ body, headers }) => {
-  console.log('body', body); // expected to be { name: string; email: string; password: string }
-  console.log('headers', headers); // expected to be unknown
-  try {
-    const session = await insta.auth.signUp({
-      name: body.name,
-      email: body.email,
-      password: body.password,
-    });
+  console.log('sign-up body', body); // expected to be { name: string; email: string; password: string }
+  console.log('sign-up headers', headers); // expected to be unknown
 
-    // expects a session to be returned
-    // containing a token and user info
-    return session;
-  } catch (err: any) {
-    console.log('create account error', err.status, err);
-    return Promise.reject(err);
-  }
+  const session = await insta.auth.signUp({
+    name: body.name,
+    email: body.email,
+    password: body.password,
+  });
+
+  // expects a session to be returned
+  // containing a token and user info
+  return session;
 });
 
 /**
@@ -223,6 +182,12 @@ insta.db.addHook('afterDelete', 'users', async ({ doc }) => {
   console.log('db afterDelete doc', doc);
 });
 
+// @todo add to the built-in version
+insta.db.addHook('afterDelete', 'sessions', async ({ doc }) => {
+  // remove cached token
+  insta.cache.del(`session:${doc.token}`);
+});
+
 /**
  * create the Elysia app
  */
@@ -242,7 +207,93 @@ api
   .use(cors())
   // handle html response for custom routes
   .use(html())
-  // add custom routes
+  // use jwt plugin
+  .use(
+    jwt({
+      name: 'jwt',
+      secret: process.env['INSTA_SECRET'] || '1nSt@nT3',
+    })
+  )
+  // eject sync endpoints
+  .group('sync', (endpoint) =>
+    endpoint
+      .derive(insta.collection.derive())
+      .get(':collection', insta.collection.get(), {
+        beforeHandle: insta.collection.beforeHandle(),
+        afterHandle({ session, collection, response }) {
+          // add your custom logic here
+          // if there's no user session, that means the request is unauthorized initially
+          // but you still can access information and elysia features
+          if (session.user) {
+            // console.log(
+            //   `sync get ${collection} request by ${session.user.name}`,
+            //   response
+            // );
+          }
+        },
+      })
+      .post(':collection', insta.collection.post(), {
+        beforeHandle: insta.collection.beforeHandle(),
+        afterHandle({ session, collection, response }) {
+          if (session.user) {
+            console.log(
+              `sync post ${collection} request by ${session.user.name}`,
+              response
+            );
+          }
+        },
+      })
+      .put(':collection/:id', insta.collection.put(), {
+        beforeHandle: insta.collection.beforeHandle(),
+        afterHandle({ session, collection, response }) {
+          if (session.user) {
+            console.log(
+              `sync put ${collection} request by ${session.user.name}`,
+              response
+            );
+          }
+        },
+      })
+      .delete(':collection/:id', insta.collection.delete(), {
+        beforeHandle: insta.collection.beforeHandle(),
+        afterHandle({ session, collection, response }) {
+          if (session.user) {
+            console.log(
+              `sync delete ${collection} request by ${session.user.name}`,
+              response
+            );
+          }
+        },
+      })
+  )
+  // eject cloud endpoint
+  .group('cloud', (endpoint) =>
+    endpoint.derive(insta.cloud.derive()).post(':fn', insta.cloud.post(), {
+      beforeHandle: insta.cloud.beforeHandle(),
+      afterHandle({ session, fn, response }) {
+        // add your custom logic here
+        // if there's no user session, that means the request is unauthorized initially
+        // but you still can access information and elysia features
+        if (session.user || response['user']) {
+          const user = session.user || response['user'];
+          console.log(
+            `cloud function ${fn} executed by ${user.name}`,
+            response
+          );
+        }
+      },
+    })
+  )
+  // eject live endpoint
+  .ws('live', {
+    ...insta.live,
+    // custom logic to validate request before it's handled
+    beforeHandle(ws) {
+      // console.log('url', ws.url);
+      // throw new Error('custom error');
+    },
+  })
+  // @todo add custom routes
   .get('/', () => 'Hello from Elysia')
   // @todo add password reset flow
   // .get('/password/reset', ({ set, query, html }) =>
@@ -261,109 +312,6 @@ api
   //     })
   //   )
   // )
-  // eject sync endpoints
-  .group('sync', (endpoint) =>
-    endpoint
-      .get(':collection', insta.collection.get(), {
-        // already supports bearer token auth validation out of the box
-        // uncomment the following to add custom validation
-        // query: SyncBatchQueryCustomSchema,
-        // params: SyncParamsSchema,
-        // headers: SyncHeadersCustomSchema,
-        // custom logic to validate request before it's handled
-        // beforeHandle({ headers, params }) {
-        //   // console.log('params', params);
-        //   // console.log('headers', headers);
-        // },
-      })
-      .post(':collection', insta.collection.post(), {
-        // already supports bearer token auth validation out of the box
-        // uncomment the following to add custom validation
-        // query: SyncMutationQueryCustomSchema,
-        // params: SyncParamsSchema,
-        // headers: SyncHeadersCustomSchema,
-        // custom logic to validate request before it's handled
-        // beforeHandle({ headers, params, body, set }) {
-        //   // console.log('params', params);
-        //   // console.log('headers', headers);
-        //   const collection = params.collection;
-        //   const { type, message, summary, errors } = insta.validateBody(
-        //     collection,
-        //     body
-        //   );
-        //   if (errors) {
-        //     set.status = 400;
-        //     return {
-        //       type,
-        //       message,
-        //       summary,
-        //       errors,
-        //     };
-        //   }
-        // },
-      })
-      .put(':collection/:id', insta.collection.put(), {
-        // already supports bearer token auth validation out of the box
-        // uncomment the following to add custom validation
-        // query: SyncMutationQueryCustomSchema,
-        // params: SyncMutationParamsSchema,
-        // headers: SyncHeadersCustomSchema,
-        // custom logic to validate request before it's handled
-        // beforeHandle({ headers, params, body, set }) {
-        //   // console.log('params', params);
-        //   // console.log('headers', headers);
-        //   const collection = params.collection;
-        //   const { type, message, summary, errors } = insta.validateBody(
-        //     collection,
-        //     body
-        //   );
-        //   if (errors) {
-        //     set.status = 400;
-        //     return {
-        //       type,
-        //       message,
-        //       summary,
-        //       errors,
-        //     };
-        //   }
-        // },
-      })
-      .delete(':collection/:id', insta.collection.delete(), {
-        // already supports bearer token auth validation out of the box
-        // uncomment the following to add custom validation
-        // query: SyncMutationQueryCustomSchema,
-        // params: SyncMutationParamsSchema,
-        // headers: SyncHeadersCustomSchema,
-        // custom logic to validate request before it's handled
-        // beforeHandle({ headers, params, body }) {
-        //   // console.log('params', params);
-        //   // console.log('headers', headers);
-        // },
-      })
-      .ws('live', {
-        ...insta.live,
-        // custom query schema
-        query: SyncLiveQueryOrgSchema, // @todo replace with Zod
-        // custom logic to validate request before it's handled
-        beforeHandle(ws) {
-          // console.log('url', ws.url);
-          // throw new Error('custom error');
-        },
-      })
-  )
-  // eject cloud endpoint
-  .group('cloud', (endpoint) =>
-    // already supports bearer token auth and public endpoints out of the box
-    endpoint.post(':function', insta.cloud.post(), {
-      // custom logic to validate request before it's handled
-      beforeHandle({ headers, params }) {
-        // @todo validate headers
-        // console.log('params', params);
-        // console.log('headers', headers);
-      },
-    })
-  )
-
   // start the server
   .listen(1337);
 
