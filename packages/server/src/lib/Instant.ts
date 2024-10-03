@@ -197,7 +197,6 @@ export class Instant<
     >
   >;
   #collections: string[] = [];
-  #functions: string[] = [];
   #cloud: Record<string, (args: any) => Promise<any>> = {};
   #cloudSchema!: CloudSchema['body'];
   #cloudHeaders!: CloudSchema['headers'];
@@ -236,7 +235,7 @@ export class Instant<
   }
 
   get functions() {
-    return this.#functions;
+    return Object.keys(this.#cloudSchema);
   }
 
   constructor({
@@ -270,7 +269,6 @@ export class Instant<
       this.#cloudSchema = cloud.body;
       this.#cloudHeaders = cloud.headers;
       this.#cloudResponse = cloud.response;
-      this.#functions = Object.keys(cloud.body);
     }
 
     if (db) {
@@ -1072,7 +1070,7 @@ export class Instant<
         body: unknown;
         jwt: JWT;
       }) => {
-        const fnExists = this.#functions.find(
+        const fnExists = this.functions.find(
           (availableFn) => availableFn === fn
         );
 
@@ -1289,11 +1287,9 @@ export class Instant<
         set: SetOptions;
       }) => Promise<z.infer<CloudSchema['response'][K]>>
     ) => {
-      this.#functions.push(name as string);
       this.#cloud[name as string] = fn;
     },
     removeFunction: <K extends keyof CollectionSchema>(name: K) => {
-      this.#functions = this.#functions.filter((fn) => fn !== name);
       delete this.#cloud[name as string];
     },
     addHook: <A extends CloudHookAction, C extends keyof CollectionSchema>(
