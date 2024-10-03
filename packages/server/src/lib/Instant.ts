@@ -1329,7 +1329,83 @@ export class Instant<
    * live sync handler
    * @returns Elysia handler
    */
-  public live = {
+  public live = () => ({
+    beforeHandle: async (ws: any) => {
+      try {
+        const url = new URL(ws.url);
+        const token = url.searchParams.get('session');
+        if (!token) {
+          ws.close();
+          return new InstaError({
+            status: 401,
+            type: 'unauthorized',
+            message: 'Unauthorized',
+            summary: 'You are not authorized to access this resource',
+          }).toJSON();
+        }
+
+        // check cached token in memory to speed up things
+        const cachedSession = this.cache.get(`session:${token}`);
+
+        if (!cachedSession) {
+          // verify token
+          const { sessionId, userId } = await ws.jwt.verify(token);
+
+          if (!sessionId || !userId) {
+            ws.close();
+            return new InstaError({
+              status: 401,
+              type: 'unauthorized',
+              message: 'Unauthorized',
+              summary: 'You are not authorized to access this resource',
+            }).toJSON();
+          }
+
+          // fetch session from db
+          const in2min = new Date(Date.now() + 2 * 60 * 1000);
+          const { sessions } = await this.query({
+            sessions: {
+              $include: ['user'],
+              $filter: {
+                _id: { $eq: sessionId },
+                _expires_at: { $gt: in2min },
+              },
+            },
+          });
+
+          const actualSession = sessions[0];
+
+          if (!actualSession || !actualSession.user) {
+            ws.close();
+            return new InstaError({
+              status: 401,
+              type: 'unauthorized',
+              message: 'Unauthorized',
+              summary: 'You are not authorized to access this function',
+            }).toJSON();
+          }
+
+          // cache the actual session
+          this.cache.set(`session:${token}`, {
+            token: actualSession.token,
+            user: actualSession.user,
+            _expires_at: actualSession._expires_at,
+            _id: actualSession._id,
+          });
+
+          if (this.#inspect) {
+            console.log('live session cache miss', actualSession._id);
+          }
+        } else {
+          if (this.#inspect) {
+            console.log('live session cache hit', cachedSession._id);
+          }
+        }
+      } catch (err) {
+        console.log('live beforeHandle error', err);
+        ws.close();
+      }
+    },
     open: (
       // eslint-disable-next-line  @typescript-eslint/no-explicit-any
       ws: ElysiaWS<any, any, any>
@@ -1408,7 +1484,7 @@ export class Instant<
         console.log('sync message', message);
       }
     },
-  };
+  });
 
   public auth = {
     signIn: async ({

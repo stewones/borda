@@ -133,7 +133,6 @@ const insta = new Instant({
       }),
     }),
   },
-  // @todo make this an option to the schema fields?
   index: {
     users: ['_updated_at', '_expires_at', 'name', 'email'],
     orgs: ['_updated_at', 'name'],

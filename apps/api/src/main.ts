@@ -216,12 +216,15 @@ api
   )
   // eject live endpoint
   .ws('live', {
-    ...insta.live,
-    // custom logic to validate request before it's handled
-    beforeHandle(ws) {
-      // console.log('url', ws.url);
-      // throw new Error('custom error');
-    },
+    ...insta.live(),
+    // custom beforeHandle and other ElysiaWS methods
+    // please note that this will override the default live sync logic
+    // so you need to replicate anything needed here
+    // beforeHandle(ws) {
+    //   console.log('live beforeHandle', ws);
+    //   // console.log('url', ws.url);
+    //   // throw new Error('custom error');
+    // },
   })
   // eject sync endpoints
   .group('sync', (endpoint) =>
@@ -230,7 +233,7 @@ api
       .get(':collection', insta.collection.get(), {
         beforeHandle: insta.collection.beforeHandle(),
         afterHandle({ session, collection, response }) {
-          // add your custom logic here
+          // add your custom logic here for after handling requests
           // if there's no user session, that means the request was unauthorized
           // but you still can access information and elysia features
           if (session.user) {
@@ -280,13 +283,14 @@ api
     endpoint.derive(insta.cloud.derive()).post(':fn', insta.cloud.post(), {
       beforeHandle: insta.cloud.beforeHandle(),
       afterHandle({ session, fn, response }) {
-        // add your custom logic here
+        // add your custom logic here for after handling requests
         // if there's no user session, that means the request was unauthorized
         // but you still can access information and elysia features
 
         const user = session.user || response['user'];
         // response['user'] here is the return value of a cloud function.
-        // eg: the login one which returns a session + user info
+        // for example the login one above which returns a session + user info.
+        // it's totally up to you what to return.
         if (user) {
           console.log(
             `cloud function ${fn} executed by ${user.name}`,
@@ -296,9 +300,8 @@ api
       },
     })
   )
-  // @todo add custom routes
+  // @todo add custom routes for password reset flow
   .get('/', () => 'Hello from Elysia')
-  // @todo add password reset flow
   // .get('/password/reset', ({ set, query, html }) =>
   //   html(
   //     passwordResetGet({
