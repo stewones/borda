@@ -651,6 +651,12 @@ export class Instant<
     return value;
   }
 
+  #extractCollectionOptions(collection: string) {
+    const schema = this.#schema[collection];
+    const description = (schema as any).description || '{}';
+    return JSON.parse(description);
+  }
+
   /**
    * listen to mongo change stream
    * and notify the clients about the changes
@@ -680,7 +686,8 @@ export class Instant<
       /**
        * task scheduler
        */
-      this.#pendingTasks = interval(1000)
+      await this.#runPendingPointers();
+      this.#pendingTasks = interval(1_000 * 60)
         .pipe(
           tap(
             async () => await Promise.allSettled([this.#runPendingPointers()])
@@ -2365,14 +2372,22 @@ export class Instant<
       this.#pendingPointersBusy = true;
 
       const collections = Object.keys(this.#schema);
+
       for (const collection of collections) {
+        // skip collections with no sync
+        const { sync } = this.#extractCollectionOptions(collection);
+        if (!sync) {
+          continue;
+        }
+
         // Extract pointer fields from the schema
         const pointerFields = Object.entries(
           (this.#schema[collection] as z.ZodObject<any>).shape
         )
           .filter(
             ([key, value]) =>
-              key.startsWith('_p_') && value instanceof z.ZodString
+              key.startsWith('_p_') &&
+              (value instanceof z.ZodString || value instanceof z.ZodOptional)
           )
           .map(([key]) => key);
 
@@ -2386,6 +2401,7 @@ export class Instant<
               },
             })),
           });
+
           const data = await query.toArray();
 
           // replace any pending pointers with the actual data

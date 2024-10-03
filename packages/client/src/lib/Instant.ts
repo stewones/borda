@@ -1417,12 +1417,12 @@ export class Instant<
       const averageSize = totalSize / sampleSize;
       const estimatedTotalSize = averageSize * count;
       const estimatedTotalMB = estimatedTotalSize / (1024 * 1024);
-
-      return `${(estimatedTotalMB || 0).toFixed(2)} MB`;
+      return `${estimatedTotalMB.toFixed(2)} MB`;
     }
 
     //  calculate overall for all collections
     const collections = Object.keys(this.#schema);
+
     let totalSize = 0;
 
     for (const collection of collections) {
@@ -1442,7 +1442,7 @@ export class Instant<
       const estimatedTotalSize = averageSize * count;
       const estimatedTotalMB = estimatedTotalSize / (1024 * 1024);
 
-      totalSize += estimatedTotalMB;
+      totalSize += estimatedTotalMB || 0;
     }
 
     return `${(totalSize || 0).toFixed(2)} MB`;
@@ -1516,7 +1516,7 @@ export class Instant<
         serverURL = '',
       }: WorkerPayload = JSON.parse(data);
       const { activity, synced_at } = actionParams || {};
-      this.token
+      
       try {
         if (!this.#db) {
           await this.ready();
@@ -1586,8 +1586,6 @@ export class Instant<
             }
             return Promise.resolve();
           }
-
-      
 
           this.#headers = headers;
           this.#params = params;
@@ -1662,10 +1660,9 @@ export class Instant<
           if (!this.token) {
             return Promise.reject(new Error('No token provided for live sync'));
           }
-          const url = `${this.#serverURL.replace(
-            'http',
-            'ws'
-          )}/live?session=${this.token}`;
+          const url = `${this.#serverURL.replace('http', 'ws')}/live?session=${
+            this.token
+          }`;
           this.runLiveWorker({ url, token, headers, params });
         }
       } catch (err) {

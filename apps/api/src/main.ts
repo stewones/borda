@@ -214,6 +214,15 @@ api
       secret: process.env['INSTA_SECRET'] || '1nSt@nT3',
     })
   )
+  // eject live endpoint
+  .ws('live', {
+    ...insta.live,
+    // custom logic to validate request before it's handled
+    beforeHandle(ws) {
+      // console.log('url', ws.url);
+      // throw new Error('custom error');
+    },
+  })
   // eject sync endpoints
   .group('sync', (endpoint) =>
     endpoint
@@ -222,7 +231,7 @@ api
         beforeHandle: insta.collection.beforeHandle(),
         afterHandle({ session, collection, response }) {
           // add your custom logic here
-          // if there's no user session, that means the request is unauthorized initially
+          // if there's no user session, that means the request was unauthorized
           // but you still can access information and elysia features
           if (session.user) {
             // console.log(
@@ -272,10 +281,13 @@ api
       beforeHandle: insta.cloud.beforeHandle(),
       afterHandle({ session, fn, response }) {
         // add your custom logic here
-        // if there's no user session, that means the request is unauthorized initially
+        // if there's no user session, that means the request was unauthorized
         // but you still can access information and elysia features
-        if (session.user || response['user']) {
-          const user = session.user || response['user'];
+
+        const user = session.user || response['user'];
+        // response['user'] here is the return value of a cloud function.
+        // eg: the login one which returns a session + user info
+        if (user) {
           console.log(
             `cloud function ${fn} executed by ${user.name}`,
             response
@@ -284,15 +296,6 @@ api
       },
     })
   )
-  // eject live endpoint
-  .ws('live', {
-    ...insta.live,
-    // custom logic to validate request before it's handled
-    beforeHandle(ws) {
-      // console.log('url', ws.url);
-      // throw new Error('custom error');
-    },
-  })
   // @todo add custom routes
   .get('/', () => 'Hello from Elysia')
   // @todo add password reset flow
