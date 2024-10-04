@@ -2,7 +2,11 @@ import { liveQuery } from 'dexie';
 import { DateFnsModule } from 'ngx-date-fns';
 import { toast } from 'ngx-sonner';
 import { derivedAsync } from 'ngxtension/derived-async';
-import { from, map, tap } from 'rxjs';
+import {
+  from,
+  map,
+  tap,
+} from 'rxjs';
 
 import { SelectionModel } from '@angular/cdk/collections';
 import {
@@ -11,6 +15,7 @@ import {
   TitleCasePipe,
 } from '@angular/common';
 import {
+  ChangeDetectionStrategy,
   Component,
   computed,
   signal,
@@ -23,7 +28,10 @@ import { FormsModule } from '@angular/forms';
 
 import { ejectPointerId } from '@borda/client';
 
-import { Org, User } from '@/common';
+import {
+  Org,
+  User,
+} from '@/common';
 import {
   lucideArrowDown,
   lucideArrowUp,
@@ -39,7 +47,10 @@ import {
   HlmCheckboxCheckIconComponent,
   HlmCheckboxComponent,
 } from '@spartan-ng/ui-checkbox-helm';
-import { HlmIconComponent, provideIcons } from '@spartan-ng/ui-icon-helm';
+import {
+  HlmIconComponent,
+  provideIcons,
+} from '@spartan-ng/ui-icon-helm';
 import { HlmInputDirective } from '@spartan-ng/ui-input-helm';
 import { BrnMenuTriggerDirective } from '@spartan-ng/ui-menu-brain';
 import { HlmMenuModule } from '@spartan-ng/ui-menu-helm';
@@ -94,6 +105,7 @@ import { UsersPrimaryActionComponent } from './UsersPrimaryActionComponent';
     }),
   ],
   encapsulation: ViewEncapsulation.None,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
   cdk-header-row {
    @apply rounded-t-lg;
@@ -431,7 +443,6 @@ export class UsersTableComponent {
     async () => {
       this.reload(); // to trigger angular change detection
       const { users } = await insta.query(this.query());
-      console.log(users);
       // for each user, get the org
       for (const user of users) {
         if (!user._p_org) {

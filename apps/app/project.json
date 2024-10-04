@@ -168,6 +168,12 @@
         "commands": ["kamal app logs -c apps/app/deploy.yml"],
         "parallel": false
       }
+    },
+    "prune": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["kamal prune all -c apps/app/deploy.yml"]
+      }
     }
   }
 }

@@ -71,6 +71,12 @@
         ]
       }
     },
+    "prune": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["kamal prune all -c apps/api/deploy.yml"]
+      }
+    },
     "lint": {
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"]

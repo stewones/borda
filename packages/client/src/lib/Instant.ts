@@ -580,24 +580,27 @@ export class Instant<
       ) => Promise<void>
     > = {
       created: async (collection: string, value: Document) => {
-        await this.db
-          .table(collection)
-          .add({ ...value, _sync: 0 })
-          .catch((err) => {
-            /* istanbul ignore next */
-            if (this.#inspect) {
-              console.error('Error adding document', collection, value, err);
-            }
-          });
+        // check if doc exits, if not, create it
+        const docExists = await this.db.table(collection).get(value['_id']);
+        if (!docExists) {
+          await this.db
+            .table(collection)
+            .add({ ...value, _sync: 0 })
+            .catch((err) => {
+              /* istanbul ignore next */
+              if (this.#inspect) {
+                console.error('Error adding document', collection, value, err);
+              }
+            });
+        }
       },
       updated: async (
         collection: string,
         value: Document,
         updatedFields?: Record<string, any>
       ) => {
-        // check if doc exits, if not, create it
-        const doc = await this.db.table(collection).get(value['_id']);
-        if (!doc) {
+        const docExists = await this.db.table(collection).get(value['_id']);
+        if (!docExists) {
           await persist.created(collection, value);
         } else {
           await this.db
@@ -622,22 +625,25 @@ export class Instant<
         }
       },
       deleted: async (collection: string, value: Document) => {
-        await this.db
-          .table(collection)
-          .delete(value['_id'])
-          .catch(
-            /* istanbul ignore next */
-            (err) => {
-              if (this.#inspect) {
-                console.error(
-                  'Error deleting document',
-                  collection,
-                  value,
-                  err
-                );
+        const docExists = await this.db.table(collection).get(value['_id']);
+        if (docExists) {
+          await this.db
+            .table(collection)
+            .delete(value['_id'])
+            .catch(
+              /* istanbul ignore next */
+              (err) => {
+                if (this.#inspect) {
+                  console.error(
+                    'Error deleting document',
+                    collection,
+                    value,
+                    err
+                  );
+                }
               }
-            }
-          );
+            );
+        }
       },
     };
     await persist[status](collection, value, updatedFields);
@@ -1068,73 +1074,12 @@ export class Instant<
           updatedFields?: Record<string, any>;
         };
 
-        try {
-          // needs to handle data owner scenario with uuid
-          if (status === 'created') {
-            // make sure to mark as synced and update with server timestamp
-            const uuid = value['_uuid'];
-            if (uuid) {
-              const localDocByUuid = await this.db
-                .table(collection as string)
-                .get(uuid);
-
-              if (localDocByUuid) {
-                await this.db.transaction(
-                  'rw!',
-                  this.db.table(collection as string),
-                  async () =>
-                    await Promise.allSettled([
-                      // gotta delete the old doc and create new one with server timestamp
-                      this.db.table(collection as string).delete(uuid),
-                      // create new one with updated stuff
-                      this.db.table(collection as string).add({
-                        ...value,
-                        _sync: 0, // to make sure response is marked as synced
-                      }),
-                    ])
-                );
-              } else {
-                await this.db.table(collection as string).add({
-                  ...value,
-                  _sync: 0, // to make sure response is marked as synced
-                });
-              }
-            } else {
-              await this.db.table(collection as string).add({
-                ...value,
-                _sync: 0, // to make sure response is marked as synced
-              });
-            }
-          } else {
-            // handle all other cases
-            await this.#syncProcess({
-              collection,
-              status,
-              value,
-              updatedFields,
-            });
-          }
-
-          // update last sync
-          const synced_at = value['_updated_at'];
-          await this.#setSync({
-            collection,
-            activity: 'recent',
-            synced_at,
-            count: 0,
-          });
-        } catch (err) {
-          /* istanbul ignore next */
-          if (this.#inspect) {
-            console.log('🔴 live mutation failed', collection, value, err);
-          }
-        } finally {
-          // run tasks
-          this.lastTasksActivityTimestamp = Date.now();
-          if (!this.schedulerSubscription) {
-            this.startTaskScheduler();
-          }
-        }
+        await this.reconcile({
+          collection,
+          value,
+          updatedFields,
+          status,
+        });
       },
 
       onClose: (_, ev) => {
@@ -1190,6 +1135,86 @@ export class Instant<
     this.buildWebSocket(url)(webSocket);
   }
 
+  protected async reconcile({
+    collection,
+    value,
+    updatedFields,
+    status,
+  }: {
+    status: SyncStatus;
+    collection: string;
+    value: Document;
+    updatedFields?: Record<string, any>;
+  }) {
+    try {
+      // needs to handle data owner scenario with uuid
+      if (status === 'created') {
+        // make sure to mark as synced and update with server timestamp
+        const uuid = value['_uuid'];
+        if (uuid) {
+          const localDocByUuid = await this.db
+            .table(collection as string)
+            .get(uuid);
+
+          if (localDocByUuid) {
+            await this.db.transaction(
+              'rw!',
+              this.db.table(collection as string),
+              async () =>
+                await Promise.allSettled([
+                  // gotta delete the old doc and create new one with server timestamp
+                  this.db.table(collection as string).delete(uuid),
+                  // create new one with updated stuff
+                  this.db.table(collection as string).add({
+                    ...value,
+                    _sync: 0, // to make sure response is marked as synced
+                  }),
+                ])
+            );
+          } else {
+            await this.db.table(collection as string).add({
+              ...value,
+              _sync: 0, // to make sure response is marked as synced
+            });
+          }
+        } else {
+          await this.db.table(collection as string).add({
+            ...value,
+            _sync: 0, // to make sure response is marked as synced
+          });
+        }
+      } else {
+        // handle all other cases
+        await this.#syncProcess({
+          collection,
+          status,
+          value,
+          updatedFields,
+        });
+      }
+
+      // update last sync
+      const synced_at = value['_updated_at'];
+      await this.#setSync({
+        collection,
+        activity: 'recent',
+        synced_at,
+        count: 0,
+      });
+    } catch (err) {
+      /* istanbul ignore next */
+      if (this.#inspect) {
+        console.log('🔴 live mutation failed for', collection, value, err);
+      }
+    } finally {
+      // run tasks
+      this.lastTasksActivityTimestamp = Date.now();
+      if (!this.schedulerSubscription) {
+        this.startTaskScheduler();
+      }
+    }
+  }
+
   protected async runMutationWorker({
     collection,
     url,
@@ -1236,7 +1261,7 @@ export class Instant<
 
     try {
       // post to the server
-      await fetcher(url, {
+      const { value, updatedFields } = await fetcher(url, {
         direct: true,
         method,
         body: data,
@@ -1245,21 +1270,22 @@ export class Instant<
           ...headers,
         },
       });
-
-      // mark record as synced since the network request was successful
-      await this.db.table(collection).update(id, {
-        _sync: 0,
+      await this.reconcile({
+        collection,
+        value,
+        updatedFields,
+        status:
+          method === 'POST'
+            ? 'created'
+            : method === 'PUT'
+            ? 'updated'
+            : 'deleted',
       });
     } catch (err: any) {
       /* istanbul ignore next */
       if (this.#inspect) {
         console.error('🔴 Error mutating document', collection, data, err);
       }
-
-      // skip from syncing
-      await this.db.table(collection).update(id, {
-        _sync: 0,
-      });
 
       // post error to the client
       self.postMessage({
@@ -1270,6 +1296,11 @@ export class Instant<
       if (err.type === 'not_found') {
         await this.db.table(collection).delete(id as string);
       }
+    } finally {
+      // this is a one-shot attempt. in case of error the sync will be retried on the next mutation
+      await this.db.table(collection).update(id, {
+        _sync: 0,
+      });
     }
   }
 
@@ -1516,7 +1547,7 @@ export class Instant<
         serverURL = '',
       }: WorkerPayload = JSON.parse(data);
       const { activity, synced_at } = actionParams || {};
-      
+
       try {
         if (!this.#db) {
           await this.ready();

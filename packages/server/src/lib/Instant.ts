@@ -20,7 +20,11 @@ import {
   MongoClient,
 } from 'mongodb';
 import { singular } from 'pluralize';
-import { interval, Subscription, tap } from 'rxjs';
+import {
+  interval,
+  Subscription,
+  tap,
+} from 'rxjs';
 import { z } from 'zod';
 
 import {
@@ -46,7 +50,11 @@ import {
 
 import { JWTPayloadSpec } from '@elysiajs/jwt';
 
-import { compare, hash, newObjectId } from '../utils';
+import {
+  compare,
+  hash,
+  newObjectId,
+} from '../utils';
 
 type SchemaType = Record<string, z.ZodType<any, any, any>>;
 
@@ -444,12 +452,7 @@ export class Instant<
                   return;
                 }
 
-                const in2min = Date.now() + 2 * 60 * 1000;
-
-                if (
-                  fullDocument['_expires_at'] &&
-                  fullDocument['_expires_at'] <= in2min
-                ) {
+                if (fullDocument['_expires_at']) {
                   return broadcast.delete();
                 }
 
@@ -2140,38 +2143,38 @@ export class Instant<
         }
       }
 
-      let data = omit(body, ['_id', '_created_at', '_updated_at']);
+      let newDoc = omit(body, ['_id', '_created_at', '_updated_at']);
       const now = new Date();
 
       if (body['_id']?.includes('-')) {
-        data['_uuid'] = body['_id'];
+        newDoc['_uuid'] = body['_id'];
       }
 
-      data['_id'] = newObjectId();
+      newDoc['_id'] = newObjectId();
 
       // run cloud hooks
       if (this.#cloudHooks?.[collection]?.['beforeSave']) {
-        data = await this.#cloudHooks?.[collection]?.['beforeSave']({
+        newDoc = await this.#cloudHooks?.[collection]?.['beforeSave']({
           before: undefined,
-          doc: data as CollectionSchema[keyof CollectionSchema],
+          doc: newDoc as CollectionSchema[keyof CollectionSchema],
           session,
         });
       }
 
       // enforce _updated_at by the server
-      data['_created_at'] = now;
-      data['_updated_at'] = now;
+      newDoc['_created_at'] = now;
+      newDoc['_updated_at'] = now;
 
-      if (data['_sync']) {
-        delete data['_sync'];
+      if (newDoc['_sync']) {
+        delete newDoc['_sync'];
       }
 
-      if (data['_expires_at']) {
-        data['_expires_at'] = new Date(data['_expires_at']);
+      if (newDoc['_expires_at']) {
+        newDoc['_expires_at'] = new Date(newDoc['_expires_at']);
       }
 
       await this.db.collection(collection).insertOne(
-        { ...data },
+        { ...newDoc },
         {
           forceServerObjectId: false,
         }
@@ -2181,14 +2184,16 @@ export class Instant<
       if (this.#cloudHooks?.[collection]?.['afterSave']) {
         await this.#cloudHooks?.[collection]?.['afterSave']({
           before: undefined,
-          doc: data as CollectionSchema[keyof CollectionSchema],
+          doc: newDoc as CollectionSchema[keyof CollectionSchema],
           session,
         });
       }
 
+      // cleanup value props with sync: false according to the schema
+      const value = this.#cleanValue(collection, newDoc);
       return {
-        _id: body['_id'], // which can also be an uuid generated locally. so we need to match it so that the client can mark as synced
-        _updated_at: new Date().toISOString(),
+        value,
+        updatedFields: {},
       };
     } catch (error) {
       console.error('sync error', error);
@@ -2229,17 +2234,17 @@ export class Instant<
         }).toJSON();
       }
 
-      let data = omit(body, ['_id', '_created_at', '_updated_at']);
+      let nextDoc = omit(body, ['_id', '_created_at', '_updated_at']);
 
-      if (data['_sync']) {
-        delete data['_sync'];
+      if (nextDoc['_sync']) {
+        delete nextDoc['_sync'];
       }
-      const doc = await this.db.collection(collection).findOne({
+      const currentDoc: any = await this.db.collection(collection).findOne({
         $or: [{ _id: id as unknown as ObjectId }, { _uuid: id }],
       });
 
       // if doc doesn't exist and id is an uuid, create it
-      if (isEmpty(doc) && id.includes('-')) {
+      if (isEmpty(currentDoc) && id.includes('-')) {
         return this.#postData({
           params,
           set,
@@ -2248,7 +2253,7 @@ export class Instant<
         });
       }
 
-      if (isEmpty(doc)) {
+      if (isEmpty(currentDoc)) {
         set.status = 404;
         return new InstaError({
           status: 404,
@@ -2296,40 +2301,40 @@ export class Instant<
 
       // run cloud hooks
       if (this.#cloudHooks?.[collection]?.['beforeSave']) {
-        data = await this.#cloudHooks?.[collection]?.['beforeSave']({
-          before: doc as any,
-          doc: { ...doc, ...data } as any,
+        nextDoc = await this.#cloudHooks?.[collection]?.['beforeSave']({
+          before: currentDoc as any,
+          doc: { ...currentDoc, ...nextDoc } as any,
           session,
         });
       }
 
       // enforce _updated_at by the server
-      data['_updated_at'] = new Date();
+      nextDoc['_updated_at'] = new Date();
 
       await this.db.collection(collection).updateOne(
         {
           $or: [{ _id: id as unknown as ObjectId }, { _uuid: id }],
         },
-        { $set: data },
+        { $set: nextDoc },
         { upsert: false }
       );
 
       // run cloud hooks
       if (this.#cloudHooks?.[collection]?.['afterSave']) {
         await this.#cloudHooks?.[collection]?.['afterSave']({
-          before: doc as any,
-          doc: { ...doc, ...data } as any,
+          before: currentDoc as any,
+          doc: { ...currentDoc, ...nextDoc } as any,
           session,
         });
       }
 
       // cleanup value props with sync: false according to the schema
-      const value = this.#cleanValue(collection, data);
+      const value = this.#cleanValue(collection, nextDoc);
+      const updatedFields = this.#updatedFields(currentDoc, nextDoc);
 
       return {
-        ...value,
-        _updated_at: data['_updated_at'].toISOString(),
-        _id: id,
+        value,
+        updatedFields,
       };
     } catch (error) {
       console.error('sync error', error);
@@ -2419,8 +2424,11 @@ export class Instant<
       }
 
       return {
-        _id: id,
-        _updated_at: now.toISOString(),
+        value:{
+          _id: id,
+          _updated_at: now.toISOString(),
+        },
+        updatedFields: {},
       };
     } catch (error) {
       console.error('sync error', error);
@@ -3001,5 +3009,20 @@ export class Instant<
         return acc;
       }, {} as Record<string, string[]>) ?? {}
     );
+  }
+
+  #updatedFields(
+    currentDoc: Document,
+    newDoc: Partial<z.infer<CollectionSchema[keyof CollectionSchema]>>
+  ) {
+    return Object.keys(newDoc).reduce((acc, key) => {
+      if (
+        !['_updated_at', '_created_at', '_sync'].includes(key) &&
+        newDoc[key] !== currentDoc[key]
+      ) {
+        acc[key] = newDoc[key];
+      }
+      return acc;
+    }, {} as Record<string, any>);
   }
 }

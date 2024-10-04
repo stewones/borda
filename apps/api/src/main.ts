@@ -69,7 +69,7 @@ import { jwt } from '@elysiajs/jwt';
  * Setup Instant with schemas and options
  */
 const insta = new Instant({
-  inspect: true,
+  inspect: false,
   schema: SyncSchema,
   cloud: CloudSchema,
   index: {
